@@ -38,7 +38,7 @@ def calculate_focus_measure(image:ImageType,method:FocusMeasureOperators=FocusMe
     else:
         assert False, f"{method} is an invalid focus measure method"
 
-    return focus_measure
+    return float(focus_measure)
 
 @TypecheckFunction
 def rotate_and_flip_image(image:ImageType,rotate_image_angle:int,flip_image:Optional[str]) -> ImageType:
