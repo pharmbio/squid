@@ -23,6 +23,8 @@ from control.typechecker import TypecheckFunction
 
 from tqdm import tqdm
 
+from pathlib import Path
+
 class AbortAcquisitionException(Exception):
     def __init__(self):
         super().__init__()
@@ -270,11 +272,16 @@ class MultiPointWorker(QObject):
         self.FOV_counter = 0
 
         print('multipoint acquisition - time point ' + str(self.time_point+1))
-        
-        # for each time point, create a new folder
-        current_path = os.path.join(self.base_path,self.experiment_ID,str(self.time_point))
-        self.current_path=current_path
-        os.mkdir(current_path)
+
+        if self.Nt > 1:
+            # for each time point, create a new folder
+            current_path = os.path.join(self.base_path,self.experiment_ID,str(self.time_point))
+            self.current_path=current_path
+            os.mkdir(current_path)
+        else:
+            # only one time point, save it directly in the experiment folder
+            current_path = os.path.join(self.base_path,self.experiment_ID)
+            self.current_path=current_path
 
         # create a dataframe to save coordinates
         coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
@@ -511,18 +518,44 @@ class MultiPointController(QObject):
 
     @TypecheckFunction
     def prepare_folder_for_new_experiment(self,experiment_ID:str):
-        # generate unique experiment ID
-        self.experiment_ID = experiment_ID.replace(' ','_') + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%-S.%f')
+        assert not self.base_path is None
+        base_path = Path(self.base_path)
+
+        while True:
+            # generate unique experiment ID based on the current datetime
+            now = datetime.now()
+            now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
+            now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
+
+            experiment_pathname = experiment_ID + '_' + now_str
+            experiment_pathname = experiment_pathname.replace(' ', '_')
+            experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
+            experiment_path = base_path / experiment_pathname
+            if experiment_path.exists():
+                time.sleep(1) # wait until next second to get a unique experiment ID
+            else:
+                experiment_path.mkdir(parents=True) # create a new folder
+                self.experiment_ID = experiment_pathname
+                break
+
         self.recording_start_time = time.time()
 
-        # create a new folder
-        assert not self.base_path is None
-        os.mkdir(os.path.join(self.base_path,self.experiment_ID))
-        self.configurationManager.write_configuration(os.path.join(self.base_path,self.experiment_ID)+"/configurations.json") # save the configuration for the experiment
-        acquisition_parameters = {'dx(mm)':self.deltaX, 'Nx':self.NX, 'dy(mm)':self.deltaY, 'Ny':self.NY, 'dz(um)':self.deltaZ*1000,'Nz':self.NZ,'dt(s)':self.deltat,'Nt':self.Nt,'with AF':self.do_autofocus,'with reflection AF':self.do_reflection_af}
-        f = open(os.path.join(self.base_path,self.experiment_ID)+"/acquisition parameters.json","w")
-        f.write(json.dumps(acquisition_parameters))
-        f.close()
+        conf_json: Path = experiment_path / 'configurations.json'
+        self.configurationManager.write_configuration(str(conf_json)) # save the configuration for the experiment
+        acquisition_parameters = {
+            'dx(mm)':             self.deltaX,
+            'Nx':                 self.NX,
+            'dy(mm)':             self.deltaY,
+            'Ny':                 self.NY,
+            'dz(um)':             self.deltaZ*1000,
+            'Nz':                 self.NZ,
+            'dt(s)':              self.deltat,
+            'Nt':                 self.Nt,
+            'with AF':            self.do_autofocus,
+            'with reflection AF': self.do_reflection_af,
+        }
+        acq_json: Path = experiment_path / 'acquisition_parameters.json'
+        acq_json.write_text(json.dumps(acquisition_parameters))
 
     @TypecheckFunction
     def set_selected_configurations(self, selected_configurations_name:List[str]):
