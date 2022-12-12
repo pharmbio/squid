@@ -19,7 +19,6 @@ class HCSController(QObject):
     def __init__(self,home:bool=True):
         super().__init__()
 
-        self.home_on_startup=home
         if not home:
             print("warning: disabled homing on startup can lead to misalignment of the stage. proceed at your own risk. (may damage objective, and/or run into software stage position limits, which can lead to unexpected behaviour)")
 
@@ -83,6 +82,7 @@ class HCSController(QObject):
         self.camera.set_callback(self.streamHandler.on_new_frame)
         self.camera.enable_callback()
 
+        self.home_on_startup=home
         if home:
             self.navigationController.home(home_x=MACHINE_CONFIG.HOMING_ENABLED_X,home_y=MACHINE_CONFIG.HOMING_ENABLED_Y,home_z=MACHINE_CONFIG.HOMING_ENABLED_Z)
 

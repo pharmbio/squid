@@ -10,7 +10,7 @@ from typing import Optional, Union, List, Tuple, Callable, Any
 
 import pyqtgraph.dockarea as dock
 
-from control.typechecker import *
+from control.typechecker import TypecheckClass, ClosedRange, ClosedSet, TypecheckFunction
 
 def flatten(l:list):
     ret=[]
@@ -324,6 +324,7 @@ class Dropdown(HasWidget):
                     getattr(self.widget,signal_name).connect(value)
 
 class FileDialog:
+    @TypecheckFunction
     def __init__(self,
         mode:ClosedSet[str]('save','open'),
 
@@ -347,12 +348,13 @@ class FileDialog:
     def run(self):
         if self.mode=='save':
             return self.window.getSaveFileName(**self.kwargs)[0]
-        elif self.mode=='load':
+        elif self.mode=='open':
             return self.window.getOpenFileName(**self.kwargs)[0]
         else:
             assert False
 
 class MessageBox:
+    @TypecheckFunction
     def __init__(self,
         title:str,
         mode:ClosedSet[str]('information','critical','warning','question'),

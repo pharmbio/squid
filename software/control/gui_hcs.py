@@ -171,7 +171,7 @@ class OctopiGUI(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.hcs_controller=HCSController(home=not os.environ.get('skip_homing'))
+        self.hcs_controller=HCSController(home=not bool(int(os.environ.get('skip_homing') or 0))) # var is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
 
         self.named_widgets=ObjectManager()
 

@@ -212,12 +212,12 @@ class NavigationController(QObject):
     def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
         assert not self.is_in_loading_position
         if home_z:
-            self.is_in_loading_position=True
-
 			# retract the objective
             self.home_z()
 			# wait for the operation to finish
             self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
+
+            self.is_in_loading_position=True
 
             print('homing - objective retracted')
 
@@ -235,13 +235,10 @@ class NavigationController(QObject):
                 print("homing - in loading position")
 
     def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        assert self.is_in_loading_position
         if home_z:
+            assert self.is_in_loading_position
 
             if home_z and home_y and home_x:
-
-                self.is_in_loading_position=False
-            
                 # move to (20 mm, 20 mm)
                 self.move_x(20.0)
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
@@ -253,13 +250,14 @@ class NavigationController(QObject):
                 self.set_y_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_POSITIVE)
                 self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
                 self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
-
                 print("homing - left loading position")
 
 			# move the objective back
             self.move_z(MACHINE_CONFIG.DEFAULT_Z_POS_MM)
 			# wait for the operation to finish
             self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z return timeout, the program will exit')
+
+            self.is_in_loading_position=False
 
             print("homing - objective raised")
 
