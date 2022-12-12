@@ -11,9 +11,19 @@ BTN_LOADING_POSITION_IDLE_LOADED="leave loading position"
 BTN_LOADING_POSITION_RUNNING="moving..."
 
 class NavigationWidget(QFrame):
-    def __init__(self, navigationController, widget_configuration:str = 'full', *args, **kwargs):
+    @property
+    def navigationController(self):
+        return self.hcs_controller.navigationController
+
+    def __init__(self, 
+        hcs_controller, 
+        widget_configuration:str = 'full', 
+        *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
-        self.navigationController = navigationController
+
+        self.hcs_controller=hcs_controller
+
         self.widget_configuration = widget_configuration
         self.add_components()
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
@@ -101,18 +111,21 @@ class NavigationWidget(QFrame):
         self.btn_zero_Z.clicked.connect(self.zero_z)
 
     def set_movement_ability(self,movement_allowed:bool,apply_to_loading_position_button:bool=False):
-        self.btn_moveX_forward.setDisabled(not movement_allowed)
-        self.btn_moveX_backward.setDisabled(not movement_allowed)
-        self.btn_moveY_forward.setDisabled(not movement_allowed)
-        self.btn_moveY_backward.setDisabled(not movement_allowed)
-        self.btn_moveZ_forward.setDisabled(not movement_allowed)
-        self.btn_moveZ_backward.setDisabled(not movement_allowed)
-        self.btn_home_X.setDisabled(not movement_allowed)
-        self.btn_home_Y.setDisabled(not movement_allowed)
-        self.btn_home_Z.setDisabled(not movement_allowed)
-        self.btn_zero_X.setDisabled(not movement_allowed)
-        self.btn_zero_Y.setDisabled(not movement_allowed)
-        self.btn_zero_Z.setDisabled(not movement_allowed)
+        for item in [
+            self.btn_moveX_forward,
+            self.btn_moveX_backward,
+            self.btn_moveY_forward,
+            self.btn_moveY_backward,
+            self.btn_moveZ_forward,
+            self.btn_moveZ_backward,
+            self.btn_home_X,
+            self.btn_home_Y,
+            self.btn_home_Z,
+            self.btn_zero_X,
+            self.btn_zero_Y,
+            self.btn_zero_Z,
+        ]:
+            item.setDisabled(not movement_allowed)
 
         if apply_to_loading_position_button:
             self.btn_goToLoadingPosition.setDisabled(not movement_allowed)
@@ -125,27 +138,27 @@ class NavigationWidget(QFrame):
         QApplication.processEvents()
 
         if self.navigationController.is_in_loading_position:
-            self.navigationController.loading_position_leave()
+            self.hcs_controller.loading_position_leave()
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_UNLOADED)
             self.set_movement_ability(movement_allowed=True)
         else:
-            self.navigationController.loading_position_enter()
+            self.hcs_controller.loading_position_enter()
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_LOADED)
 
         self.btn_goToLoadingPosition.setDisabled(False)
         
     def move_x_forward(self):
-        self.navigationController.move_x(self.entry_dX.value())
+        self.hcs_controller.move_x(self.entry_dX.value())
     def move_x_backward(self):
-        self.navigationController.move_x(-self.entry_dX.value())
+        self.hcs_controller.move_x(-self.entry_dX.value())
     def move_y_forward(self):
-        self.navigationController.move_y(self.entry_dY.value())
+        self.hcs_controller.move_y(self.entry_dY.value())
     def move_y_backward(self):
-        self.navigationController.move_y(-self.entry_dY.value())
+        self.hcs_controller.move_y(-self.entry_dY.value())
     def move_z_forward(self):
-        self.navigationController.move_z(self.entry_dZ.value()/1000)
+        self.hcs_controller.move_z(self.entry_dZ.value()/1000)
     def move_z_backward(self):
-        self.navigationController.move_z(-self.entry_dZ.value()/1000) 
+        self.hcs_controller.move_z(-self.entry_dZ.value()/1000) 
 
     def set_deltaX(self,value):
         mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_X_MM/(self.navigationController.x_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_X) # to implement a get_x_microstepping() in multipointController
@@ -170,7 +183,7 @@ class NavigationWidget(QFrame):
         msg.setDefaultButton(QMessageBox.Cancel)
         retval = msg.exec_()
         if QMessageBox.Ok == retval:
-            self.navigationController.home_x()
+            self.hcs_controller.home_x()
 
     def home_y(self):
         msg = QMessageBox()
@@ -182,7 +195,7 @@ class NavigationWidget(QFrame):
         msg.setDefaultButton(QMessageBox.Cancel)
         retval = msg.exec_()
         if QMessageBox.Ok == retval:
-            self.navigationController.home_y()
+            self.hcs_controller.home_y()
 
     def home_z(self):
         msg = QMessageBox()
@@ -194,16 +207,16 @@ class NavigationWidget(QFrame):
         msg.setDefaultButton(QMessageBox.Cancel)
         retval = msg.exec_()
         if QMessageBox.Ok == retval:
-            self.navigationController.home_z()
+            self.hcs_controller.home_z()
 
     def zero_x(self):
-        self.navigationController.zero_x()
+        self.hcs_controller.zero_x()
 
     def zero_y(self):
-        self.navigationController.zero_y()
+        self.hcs_controller.zero_y()
 
     def zero_z(self):
-        self.navigationController.zero_z()
+        self.hcs_controller.zero_z()
 
 import pyqtgraph as pg
 import numpy as np

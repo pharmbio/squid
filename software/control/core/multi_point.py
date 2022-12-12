@@ -74,6 +74,11 @@ class MultiPointWorker(QObject):
         self.experiment_ID = self.multiPointController.experiment_ID
         self.base_path = self.multiPointController.base_path
         self.selected_configurations = self.multiPointController.selected_configurations
+        self.grid_mask=self.multiPointController.grid_mask
+
+        if not self.grid_mask is None:
+            assert len(self.grid_mask)==self.NY
+            assert len(self.grid_mask[0])==self.NX
 
         self.reflection_af_initialized = self.multiPointController.laserAutofocusController.is_initialized and not self.multiPointController.laserAutofocusController.x_reference is None
 
@@ -256,12 +261,6 @@ class MultiPointWorker(QObject):
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
 
-        if self.NX > 1:
-            # move x
-            if j < self.NX - 1:
-                self.navigationController.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
-                self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
-
         return ret_coords
 
     def run_single_time_point(self):
@@ -286,7 +285,10 @@ class MultiPointWorker(QObject):
         # create a dataframe to save coordinates
         coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
 
-        self.num_positions_per_well=self.NX*self.NY*self.NZ
+        if not self.grid_mask is None:
+            self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
+        else:
+            self.num_positions_per_well=self.NX*self.NY*self.NZ
 
         # each region is a well
         n_regions = len(self.scan_coordinates_name)
@@ -324,32 +326,44 @@ class MultiPointWorker(QObject):
                 # along x
                 for j in range(self.NX):
 
-                    try:
-                        j_actual = j if self.x_scan_direction==1 else self.NX-1-j
-                        site_index = 1 + j_actual + i * self.NX
-                        coordinate_name = f'{base_coordinate_name}_{site_index}_dx{j_actual}_dy{i}' # _dz{k} added later
+                    j_actual = j if self.x_scan_direction==1 else self.NX-1-j
+                    site_index = 1 + j_actual + i * self.NX
+                    coordinate_name = f'{base_coordinate_name}_{site_index}_dx{j_actual}_dy{i}' # _dz{k} added later
 
-                        imaged_coords_dict_list=self.image_well_at_position(
-                            x=j,y=i,
-                            coordinate_name=coordinate_name,
-                        )
+                    image_position=True
 
-                        coordinates_pd = pd.concat([
-                            coordinates_pd,
-                            pd.DataFrame(imaged_coords_dict_list)
-                        ])
-                    except AbortAcquisitionException:
-                        self.liveController.turn_off_illumination()
-                        self.navigationController.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
-                        self.navigationController.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
-                        self.navigationController.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
+                    if not self.grid_mask is None:
+                        image_position=self.grid_mask[i][j_actual]
 
-                        coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
-                        self.navigationController.enable_joystick_button_action = True
+                    if image_position:
+                        try:
+                            imaged_coords_dict_list=self.image_well_at_position(
+                                x=j,y=i,
+                                coordinate_name=coordinate_name,
+                            )
 
-                        return
+                            coordinates_pd = pd.concat([
+                                coordinates_pd,
+                                pd.DataFrame(imaged_coords_dict_list)
+                            ])
+                        except AbortAcquisitionException:
+                            self.liveController.turn_off_illumination()
+                            self.navigationController.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
+                            self.navigationController.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
+                            self.navigationController.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
+
+                            coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
+                            self.navigationController.enable_joystick_button_action = True
+
+                            return
 
                     self.signal_new_acquisition.emit('x')
+
+                    if self.NX > 1:
+                        # move x
+                        if j < self.NX - 1:
+                            self.navigationController.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
+                            self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
 
                 # instead of move back, reverse scan direction (12/29/2021)
                 self.x_scan_direction = -self.x_scan_direction
@@ -567,7 +581,9 @@ class MultiPointController(QObject):
     def run_experiment(self,
         well_selection:Tuple[List[str],List[Tuple[float,float]]],
         set_num_acquisitions_callback:Optional[Callable[[int],None]],
-        on_new_acquisition:Optional[Callable[[str],None]]
+        on_new_acquisition:Optional[Callable[[str],None]],
+
+        grid_mask:Optional[Any]=None,
     )->Optional[QThread]:
         while not self.thread is None:
             print("thread is sleeping in control.core.multi_point (this should not actually happen)")
@@ -576,13 +592,17 @@ class MultiPointController(QObject):
         image_positions=well_selection
 
         num_wells=len(image_positions[0])
-        num_images_per_well=self.NX*self.NY*self.NZ*self.Nt
+        if grid_mask is None:
+            num_images_per_well=self.NX*self.NY*self.NZ*self.Nt
+        else:
+            num_images_per_well=numpy.sum(grid_mask)*self.NZ*self.Nt
         num_channels=len(self.selected_configurations)
 
         self.abort_acqusition_requested = False
         self.liveController_was_live_before_multipoint = False
         self.camera_callback_was_enabled_before_multipoint = False
         self.configuration_before_running_multipoint = self.liveController.currentConfiguration
+        self.grid_mask=grid_mask
 
         if num_wells==0:
             print("no wells selected - not acquiring anything")

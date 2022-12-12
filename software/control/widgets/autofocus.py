@@ -12,9 +12,13 @@ DEFAULT_NZ=10
 DEFAULT_DELTAZ=1.524
 
 class AutoFocusWidget(QFrame):
-    def __init__(self, autofocusController, main=None, *args, **kwargs):
+    @property
+    def autofocusController(self):
+        return self.hcs_controller.autofocusController
+        
+    def __init__(self, hcs_controller, main=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.autofocusController = autofocusController
+        self.hcs_controller=hcs_controller
 
         self.add_components()
 

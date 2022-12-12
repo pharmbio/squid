@@ -29,17 +29,22 @@ dz_tooltip="acquire z-stack of images (Nz images with dz µm in between acquisit
 dt_tooltip="acquire time-series of 'Nt' images, with 'dt' seconds in between acquisitions (dt does not matter if Nt is 1)\ncan be combined with dx/Nx and dy/Ny and dz/Nz for a total of Nx*Ny*Nz*Nt images"
 
 class MultiPointWidget(QFrame):
+    @property
+    def multipointController(self)->MultiPointController:
+        return self.hcs_controller.multipointController
+    @property
+    def configurationManager(self)->ConfigurationManager:
+        return self.hcs_controller.configurationManager
+
     def __init__(self,
-        multipointController:MultiPointController,
-        configurationManager:ConfigurationManager,
+        hcs_controller,
         start_experiment:Callable[[str,List[str]],Optional[Signal]],
         abort_experiment:Callable[[],None]
     ):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
         super().__init__()
         
-        self.multipointController = multipointController
-        self.configurationManager = configurationManager
+        self.hcs_controller = hcs_controller
         self.start_experiment=start_experiment
         self.abort_experiment=abort_experiment
 
@@ -75,42 +80,50 @@ class MultiPointWidget(QFrame):
                 self.image_compress_widget
             ).layout
 
-            self.image_format_widget=QComboBox()
-            self.image_format_widget.setToolTip(IMAGE_FORMAT_TOOLTIP)
-            self.image_format_widget.addItems(["BMP","TIF"])
-            self.image_format_widget.currentIndexChanged.connect(self.set_image_format)
-            self.image_format_widget.setCurrentIndex(list(ImageFormat).index(Acquisition.IMAGE_FORMAT))
+            self.image_format_widget=Dropdown(
+                items=["BMP","TIF"],
+                current_index=list(ImageFormat).index(Acquisition.IMAGE_FORMAT),
+                tooltip=IMAGE_FORMAT_TOOLTIP,
+                on_currentIndexChanged=self.set_image_format
+            ).widget
 
         if True: # add imaging grid configuration options
             self.entry_deltaX = SpinBoxDouble(minimum=0.0,maximum=5.0,step=0.1,default=self.multipointController.deltaX,num_decimals=3,keyboard_tracking=False).widget
             self.entry_deltaX.valueChanged.connect(self.set_deltaX)
 
-            self.entry_NX = SpinBoxInteger(minimum=1,maximum=10,step=1,keyboard_tracking=False).widget
-            self.entry_NX.valueChanged.connect(self.set_NX)
-            self.entry_NX.valueChanged.connect(lambda v:self.grid_changed("x",v))
+            self.entry_NX = SpinBoxInteger(minimum=1,maximum=10,step=1,keyboard_tracking=False,on_valueChanged=[
+                self.set_NX,
+                lambda v:self.grid_changed("x",v)
+            ]).widget
             self.set_NX(self.multipointController.NX)
 
-            self.entry_deltaY = SpinBoxDouble(minimum=0.0,step=0.1,num_decimals=3,keyboard_tracking=False).widget
-            self.entry_deltaY.valueChanged.connect(self.set_deltaY)
+            self.entry_deltaY = SpinBoxDouble(minimum=0.0,step=0.1,num_decimals=3,keyboard_tracking=False,
+                on_valueChanged=self.set_deltaY
+            ).widget
             self.entry_deltaY.setValue(self.multipointController.deltaY)
             
-            self.entry_NY = SpinBoxInteger(minimum=1,maximum=10,step=1,keyboard_tracking=False).widget
-            self.entry_NY.valueChanged.connect(self.set_NY)
-            self.entry_NY.valueChanged.connect(lambda v:self.grid_changed("y",v))
+            self.entry_NY = SpinBoxInteger(minimum=1,maximum=10,step=1,keyboard_tracking=False,on_valueChanged=[
+                self.set_NY,
+                lambda v:self.grid_changed("y",v)
+            ]).widget
             self.set_NY(self.multipointController.NY)
 
-            self.entry_deltaZ = SpinBoxDouble(minimum=0.0,step=0.2,default=self.multipointController.deltaZ,num_decimals=3,keyboard_tracking=False).widget
-            self.entry_deltaZ.valueChanged.connect(self.set_deltaZ)
+            self.entry_deltaZ = SpinBoxDouble(minimum=0.0,step=0.2,default=self.multipointController.deltaZ,num_decimals=3,keyboard_tracking=False,
+                on_valueChanged=self.set_deltaZ
+            ).widget
             
-            self.entry_NZ = SpinBoxInteger(minimum=1,step=1,keyboard_tracking=False).widget
-            self.entry_NZ.valueChanged.connect(self.set_NZ)
+            self.entry_NZ = SpinBoxInteger(minimum=1,step=1,keyboard_tracking=False,
+                on_valueChanged=self.set_NZ
+            ).widget
             self.set_NZ(self.multipointController.NZ)
             
-            self.entry_dt = SpinBoxDouble(minimum=0.0,step=1.0,default=self.multipointController.deltat,num_decimals=3,keyboard_tracking=False).widget
-            self.entry_dt.valueChanged.connect(self.multipointController.set_deltat)
+            self.entry_dt = SpinBoxDouble(minimum=0.0,step=1.0,default=self.multipointController.deltat,num_decimals=3,keyboard_tracking=False,
+                on_valueChanged=self.multipointController.set_deltat
+            ).widget
 
-            self.entry_Nt = SpinBoxInteger(minimum=1,step=1,keyboard_tracking=False).widget
-            self.entry_Nt.valueChanged.connect(self.set_Nt)
+            self.entry_Nt = SpinBoxInteger(minimum=1,step=1,keyboard_tracking=False,
+                on_valueChanged=self.set_Nt
+            ).widget
             self.set_Nt(self.multipointController.Nt)
 
         self.list_configurations = QListWidget()
@@ -126,23 +139,22 @@ class MultiPointWidget(QFrame):
             self.checkbox_withAutofocus.setChecked(MACHINE_DISPLAY_CONFIG.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
             self.checkbox_withAutofocus.stateChanged.connect(self.set_software_af_flag)
 
-            af_channel_dropdown=QComboBox()
-            af_channel_dropdown.setToolTip(AF_CHANNEL_TOOLTIP)
             channel_names=[microscope_configuration.name for microscope_configuration in self.configurationManager.configurations]
-            af_channel_dropdown.addItems(channel_names)
-            af_channel_dropdown.setCurrentIndex(channel_names.index(self.multipointController.autofocus_channel_name))
-            af_channel_dropdown.currentIndexChanged.connect(lambda index:setattr(MUTABLE_MACHINE_CONFIG,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index]))
-            self.af_channel_dropdown=af_channel_dropdown
+            self.af_channel_dropdown=Dropdown(
+                items=channel_names,
+                current_index=channel_names.index(self.multipointController.autofocus_channel_name),
+                tooltip=AF_CHANNEL_TOOLTIP,
+                on_currentIndexChanged=lambda index:setattr(MUTABLE_MACHINE_CONFIG,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index])
+            ).widget
 
             self.set_software_af_flag(MACHINE_DISPLAY_CONFIG.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
             self.checkbox_laserAutofocs = QCheckBox('Laser AF')
             self.checkbox_laserAutofocs.setChecked(MACHINE_DISPLAY_CONFIG.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
             self.checkbox_laserAutofocs.stateChanged.connect(self.multipointController.set_laser_af_flag)
-            self.multipointController.set_laser_af_flag(MACHINE_DISPLAY_CONFIG.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.hcs_controller.set_laser_af_flag(MACHINE_DISPLAY_CONFIG.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
-            self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,checkable=True,checked=False).widget
-            self.btn_startAcquisition.clicked.connect(self.toggle_acquisition)
+            self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,checkable=True,checked=False,on_clicked=self.toggle_acquisition).widget
 
             grid_multipoint_acquisition_config=Grid(
                 [self.checkbox_withAutofocus],
@@ -402,9 +414,6 @@ class MultiPointWidget(QFrame):
             return
 
         if pressed:
-            self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
-            QApplication.processEvents() # make sure that the text change is visible
-
             # @@@ to do: add a widgetManger to enable and disable widget 
             # @@@ to do: emit signal to widgetManager to disable other widgets
             self.setEnabled_all(False)
@@ -416,10 +425,20 @@ class MultiPointWidget(QFrame):
 
             experiment_data_target_folder:str=self.lineEdit_experimentID.text()
 
-            self.start_experiment(
+            experiment_finished_signal=self.start_experiment(
                 experiment_data_target_folder,
                 imaging_channel_list
-            ).connect(self.acquisition_is_finished)
+            )
+
+            if experiment_finished_signal is None:
+                self.setEnabled_all(True)
+                QApplication.processEvents() # make sure that the GUI is up to date
+                return
+
+            self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
+            QApplication.processEvents() # make sure that the text change is visible
+
+            experiment_finished_signal.connect(self.acquisition_is_finished)
         else:
             self.abort_experiment()
             self.acquisition_is_finished()
@@ -433,19 +452,23 @@ class MultiPointWidget(QFrame):
 
     @TypecheckFunction
     def setEnabled_all(self,enabled:bool,exclude_btn_startAcquisition:bool=True):
-        self.btn_setSavingDir.setEnabled(enabled)
-        self.lineEdit_savingDir.setEnabled(enabled)
-        self.lineEdit_experimentID.setEnabled(enabled)
-        self.entry_deltaX.setEnabled(enabled)
-        self.entry_NX.setEnabled(enabled)
-        self.entry_deltaY.setEnabled(enabled)
-        self.entry_NY.setEnabled(enabled)
-        self.entry_deltaZ.setEnabled(enabled)
-        self.entry_NZ.setEnabled(enabled)
-        self.entry_dt.setEnabled(enabled)
-        self.entry_Nt.setEnabled(enabled)
-        self.list_configurations.setEnabled(enabled)
-        self.checkbox_withAutofocus.setEnabled(enabled)
+        for item in [
+            self.btn_setSavingDir,
+            self.lineEdit_savingDir,
+            self.lineEdit_experimentID,
+            self.entry_deltaX,
+            self.entry_NX,
+            self.entry_deltaY,
+            self.entry_NY,
+            self.entry_deltaZ,
+            self.entry_NZ,
+            self.entry_dt,
+            self.entry_Nt,
+            self.list_configurations,
+            self.checkbox_withAutofocus,
+        ]:
+            item.setEnabled(enabled)
+            
         if exclude_btn_startAcquisition is not True:
             self.btn_startAcquisition.setEnabled(enabled)
 

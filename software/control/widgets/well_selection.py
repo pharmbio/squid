@@ -27,8 +27,23 @@ class WellSelectionWidget(QTableWidget):
 
     def itemselectionchanged(self):
         self.currently_selected_well_indices = []
+
+        position_index={}
         for index in self.selectedIndexes():
-            self.currently_selected_well_indices.append((index.row(),index.column()))
+            row=index.row()
+            column=index.column()
+
+            if row in position_index:
+                position_index[row].append(column)
+            else:
+                position_index[row]=[column]
+
+        direction_left_to_right=True
+        for row in sorted(position_index.keys()):
+            for c in sorted(position_index[row],reverse=not direction_left_to_right):
+                self.currently_selected_well_indices.append((row,c))
+
+            direction_left_to_right=not direction_left_to_right
 
     @TypecheckFunction
     def widget_well_indices_as_physical_positions(self)->Tuple[List[str],List[Tuple[float,float]]]:

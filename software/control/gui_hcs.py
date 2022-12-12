@@ -114,7 +114,7 @@ class OctopiGUI(QMainWindow):
 
         af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
 
-        return self.hcs_controller.acquire(
+        acquisition_thread=self.hcs_controller.acquire(
             well_list,
             imaging_channel_list,
             experiment_data_target_folder,
@@ -127,7 +127,14 @@ class OctopiGUI(QMainWindow):
             af_channel=af_channel,
             set_num_acquisitions_callback=self.set_num_acquisitions,
             on_new_acquisition=self.on_step_completed,
-        ).finished
+
+            grid_mask=self.multiPointWidget.well_grid_items_selected
+        )
+        
+        if acquisition_thread is None:
+            return None
+
+        return acquisition_thread.finished
 
     def set_num_acquisitions(self,num:int):
         self.acquisition_progress=0
@@ -188,9 +195,9 @@ class OctopiGUI(QMainWindow):
         self.imageDisplay           = widgets.ImageDisplay()
         self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
         self.wellSelectionWidget    = widgets.WellSelectionWidget(MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT)
-        self.navigationWidget       = widgets.NavigationWidget(self.navigationController,widget_configuration=default_well_plate)
-        self.autofocusWidget        = widgets.AutoFocusWidget(self.autofocusController)
-        self.multiPointWidget       = widgets.MultiPointWidget(self.multipointController,self.configurationManager,self.start_experiment,self.abort_experiment)
+        self.navigationWidget       = widgets.NavigationWidget(self.hcs_controller,widget_configuration=default_well_plate)
+        self.autofocusWidget        = widgets.AutoFocusWidget(self.hcs_controller)
+        self.multiPointWidget       = widgets.MultiPointWidget(self.hcs_controller,self.start_experiment,self.abort_experiment)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
         self.imaging_mode_config_managers={}
@@ -256,24 +263,52 @@ class OctopiGUI(QMainWindow):
 
             self.imaging_mode_config_managers[config.id]=config_manager
 
+        self.add_image_inspection()
+
         self.named_widgets.live == ObjectManager()
         self.imagingModes=VBox(*flatten([
+            # snap and channel config section
+            self.named_widgets.snap_all_button == Button("snap all",tooltip="take a snapshot in all channels and display in multi-point acquisition panel",on_clicked=self.snap_all),
+            Label(""),
+            imaging_modes_widget_list,
+
+            # live viewing and config save/load section
+            Label(""),
             HBox(
                 self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
                 self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
-                Label("FPS",tooltip=FPS_TOOLTIP),
+                Label("max. FPS",tooltip=FPS_TOOLTIP),
                 self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
             ),
-            self.named_widgets.snap_all_button == Button("snap all",tooltip="take a snapshot in all channels and display in multi-point acquisition panel",on_clicked=self.snap_all),
-            imaging_modes_widget_list,
+            Label(""),
             HBox(
                 self.named_widgets.save_config_button == Button("save config to file",tooltip="save settings related to all imaging modes/channels in a new file (this will open a window where you can specify the location to save the config file)",on_clicked=self.save_illumination_config),
                 self.named_widgets.load_config_button == Button("load config from file",tooltip="load settings related to all imaging modes/channels from a file (this will open a window where you will specify the file to load)",on_clicked=self.load_illumination_config),
             ),
             HBox(
-                Label("configuration file:",tooltip="configuration file that was loaded last. If no file has been manually loaded, this will show the path to the default configuration file where the currently displayed settings are always saved. If a file has been manually loaded at some point, the last file that was loaded will be displayed. An asterisk (*) will be displayed after the filename if the settings have been changed since a file has been loaded (these settings are always saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.)"),
+                Label("config. file:",tooltip="configuration file that was loaded last. If no file has been manually loaded, this will show the path to the default configuration file where the currently displayed settings are always saved. If a file has been manually loaded at some point, the last file that was loaded will be displayed. An asterisk (*) will be displayed after the filename if the settings have been changed since a file has been loaded (these settings are always saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.)"),
                 self.named_widgets.last_configuration_file_path == Label("").widget,
             ),
+
+            # numerical investigation section
+            Label(""),
+            Dock(self.histogramWidget,"Histogram").widget,
+            self.backgroundSliderContainer,
+            Label(""),
+            self.imageEnhanceWidget,
+        ])).widget
+
+        self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
+
+        self.laserAutofocusControlWidget=Dock(
+            widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
+            title="Laser AF",minimize_height=True
+        ).widget
+
+        self.liveWidget=VBox(
+            self.navigationWidget,
+            Dock(self.autofocusWidget,"Software AF",True).widget,
+            self.laserAutofocusControlWidget,
             #self.named_widgets.special_widget == BlankWidget(
             #    height=300,width=300,
             #    #background_image_path="./images/384_well_plate_1509x1010.png",
@@ -287,24 +322,6 @@ class OctopiGUI(QMainWindow):
             #        for i in range(24) for j in range(16)
             #    ]
             #),
-        ])).widget
-
-        self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
-
-        self.laserAutofocusControlWidget=Dock(
-            widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
-            title="Laser AF",minimize_height=True
-        ).widget
-
-        self.add_image_inspection()
-
-        self.liveWidget=VBox(
-            self.navigationWidget,
-            Dock(self.autofocusWidget,"Software AF",True).widget,
-            self.laserAutofocusControlWidget,
-            Dock(self.histogramWidget,"Histogram").widget,
-            self.backgroundSliderContainer,
-            self.imageEnhanceWidget
         ).widget
 
         self.recordTabWidget = TabBar(

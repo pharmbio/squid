@@ -84,9 +84,139 @@ class HCSController(QObject):
 
         self.home_on_startup=home
         if home:
-            self.navigationController.home(home_x=MACHINE_CONFIG.HOMING_ENABLED_X,home_y=MACHINE_CONFIG.HOMING_ENABLED_Y,home_z=MACHINE_CONFIG.HOMING_ENABLED_Z)
+            self.home(home_x=MACHINE_CONFIG.HOMING_ENABLED_X,home_y=MACHINE_CONFIG.HOMING_ENABLED_Y,home_z=MACHINE_CONFIG.HOMING_ENABLED_Z)
 
         self.num_running_experiments=0
+
+    # borrowed multipointController functions
+    @property
+    def set_NX(self):
+        return self.multipointController.set_NX
+    @property
+    def set_NY(self):
+        return self.multipointController.set_NY
+    @property
+    def set_NZ(self):
+        return self.multipointController.set_NZ
+    @property
+    def set_Nt(self):
+        return self.multipointController.set_Nt
+    @property
+    def set_deltaX(self):
+        return self.multipointController.set_deltaX
+    @property
+    def set_deltaY(self):
+        return self.multipointController.set_deltaY
+    @property
+    def set_deltaZ(self):
+        return self.multipointController.set_deltaZ
+    @property
+    def set_deltat(self):
+        return self.multipointController.set_deltat
+    @property
+    def set_selected_configurations(self):
+        return self.multipointController.set_selected_configurations
+    @property
+    def set_software_af_flag(self):
+        return self.multipointController.set_software_af_flag
+    @property
+    def set_laser_af_flag(self):
+        return self.multipointController.set_laser_af_flag
+
+    #borrowed navigationController functions
+    @property
+    def move_x(self):
+        return self.navigationController.move_x
+    @property
+    def move_y(self):
+        return self.navigationController.move_y
+    @property
+    def move_z(self):
+        return self.navigationController.move_z
+    @property
+    def move_x_to(self):
+        return self.navigationController.move_x_to
+    @property
+    def move_y_to(self):
+        return self.navigationController.move_y_to
+    @property
+    def move_z_to(self):
+        return self.navigationController.move_z_to
+    @property
+    def move_x_usteps(self):
+        return self.navigationController.move_x_usteps
+    @property
+    def move_y_usteps(self):
+        return self.navigationController.move_y_usteps
+    @property
+    def move_z_usteps(self):
+        return self.navigationController.move_z_usteps
+    @property
+    def update_pos(self):
+        return self.navigationController.update_pos
+    @property
+    def home_x(self):
+        return self.navigationController.home_x
+    @property
+    def home_y(self):
+        return self.navigationController.home_y
+    @property
+    def home_z(self):
+        return self.navigationController.home_z
+    @property
+    def home_theta(self):
+        return self.navigationController.home_theta
+    @property
+    def home_xy(self):
+        return self.navigationController.home_xy
+    @property
+    def zero_x(self):
+        return self.navigationController.zero_x
+    @property
+    def zero_y(self):
+        return self.navigationController.zero_y
+    @property
+    def zero_z(self):
+        return self.navigationController.zero_z
+    @property
+    def zero_theta(self):
+        return self.navigationController.zero_theta
+    @property
+    def loading_position_enter(self):
+        return self.navigationController.loading_position_enter
+    @property
+    def loading_position_leave(self):
+        return self.navigationController.loading_position_leave
+    @property
+    def home(self):
+        return self.navigationController.home
+    @property
+    def move_to(self):
+        return self.navigationController.move_to
+
+    #borrowed microcontroller functions
+    @property
+    def turn_on_illumination(self):
+        return self.microcontroller.turn_on_illumination
+    @property
+    def turn_off_illumination(self):
+        return self.microcontroller.turn_off_illumination
+    @property
+    def send_hardware_trigger(self):
+        return self.microcontroller.send_hardware_trigger
+    @property
+    def wait_till_operation_is_completed(self):
+        return self.microcontroller.wait_till_operation_is_completed
+    @property
+    def turn_on_AF_laser(self):
+        return self.microcontroller.turn_on_AF_laser
+    @property
+    def turn_off_AF_laser(self):
+        return self.microcontroller.turn_off_AF_laser
+        
+    #borrowed imageSaver functions
+    #borrowed autofocusController functions
+    #borrowed laserAutofocusController functions
 
     #@TypecheckFunction
     def acquire(self,
@@ -110,6 +240,8 @@ class HCSController(QObject):
 
         camera_pixel_format_override=None,
         trigger_override=None,
+
+        grid_mask:Optional[Any]=None,
     )->Optional[QThread]:
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
         # set wells to be imaged <- acquire.well_list argument
@@ -157,14 +289,14 @@ class HCSController(QObject):
             self.multipointController.set_software_af_flag(True)
 
         # set grid data per well
-        self.multipointController.set_NX(grid_data['x']['N'])
-        self.multipointController.set_NY(grid_data['y']['N'])
-        self.multipointController.set_NZ(grid_data['z']['N'])
-        self.multipointController.set_Nt(grid_data['t']['N'])
-        self.multipointController.set_deltaX(grid_data['x']['d'])
-        self.multipointController.set_deltaY(grid_data['y']['d'])
-        self.multipointController.set_deltaZ(grid_data['z']['d'])
-        self.multipointController.set_deltat(grid_data['t']['d'])
+        self.set_NX(grid_data['x']['N'])
+        self.set_NY(grid_data['y']['N'])
+        self.set_NZ(grid_data['z']['N'])
+        self.set_Nt(grid_data['t']['N'])
+        self.set_deltaX(grid_data['x']['d'])
+        self.set_deltaY(grid_data['y']['d'])
+        self.set_deltaZ(grid_data['z']['d'])
+        self.set_deltat(grid_data['t']['d'])
 
         for i,(well_row,well_column) in enumerate(well_list):
             well_x_mm,well_y_mm=well_list_physical_pos[i]
@@ -173,14 +305,19 @@ class HCSController(QObject):
                     raise ValueError(f"at least one grid item is outside the bounds of the well! well size is {wellplate_format.well_size_mm}mm")
 
         # set list of imaging channels
-        self.multipointController.set_selected_configurations(channels)
+        self.set_selected_configurations(channels)
 
         # set image saving location
         self.multipointController.set_base_path(path="/home/pharmbio/Downloads")
         self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
-        return self.multipointController.run_experiment((well_list_names,well_list_physical_pos),set_num_acquisitions_callback,on_new_acquisition)
+        return self.multipointController.run_experiment(
+            well_selection=(well_list_names,well_list_physical_pos),
+            set_num_acquisitions_callback=set_num_acquisitions_callback,
+            on_new_acquisition=on_new_acquisition,
+            grid_mask=grid_mask
+        )
 
     @TypecheckFunction
     def fov_exceeds_well_boundary(self,well_row:int,well_column:int,x_mm:float,y_mm:float)->bool:
@@ -203,15 +340,15 @@ class HCSController(QObject):
     @TypecheckFunction
     def close(self):
         # make sure the lasers are turned off!
-        self.microcontroller.turn_off_illumination()
+        self.turn_off_illumination()
 
         if self.home_on_startup:
             # move the objective to a defined position upon exit
-            self.navigationController.move_x(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_x needs to be called before move_x_to if the stage has been moved by the joystick
-            self.navigationController.move_x_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
+            self.move_x(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_x needs to be called before move_x_to if the stage has been moved by the joystick
+            self.move_x_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
 
-            self.navigationController.move_y(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_y needs to be called before move_y_to if the stage has been moved by the joystick
-            self.navigationController.move_y_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
+            self.move_y(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_y needs to be called before move_y_to if the stage has been moved by the joystick
+            self.move_y_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
 
         self.liveController.stop_live()
         self.camera.close()
@@ -220,36 +357,5 @@ class HCSController(QObject):
         self.microcontroller.close()
 
         QApplication.quit()
-
-    # some utility functions
-
-    def focus_software():
-        pass
-    def focus_laser():
-        pass
-        
-    def move_x_by():
-        pass
-    def move_x_to():
-        pass
-    def move_y_by():
-        pass
-    def move_y_to():
-        pass
-    def move_z_by():
-        pass
-    def move_z_to():
-        pass
-
-    def image_channel(channel,exposure_time_ms:float,trigger:TriggerMode,analog_gain:float=0.0,intensity:float=100.0)->numpy.ndarray:
-        pass
-
-    def loading_position_enter():
-        pass
-    def loading_position_leave():
-        pass
-
-    def measure_displacement()->float:
-        pass
 
     
