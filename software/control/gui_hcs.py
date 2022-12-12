@@ -203,11 +203,14 @@ class OctopiGUI(QMainWindow):
         self.imaging_mode_config_managers={}
 
         imaging_modes_widget_list=[]
-        for config in self.configurationManager.configurations:
+        extra_items=[]
+        for config_num,config in enumerate(self.configurationManager.configurations):
             config_manager=ObjectManager()
 
+            extra_items.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
+            extra_items.append(GridItem(config_manager.snap == Button("snap",on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
             top_row=[
-                Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,
+                *([None]*4),
                 Label("illumination:").widget,
                 config_manager.illumination_strength == SpinBoxDouble(
                     minimum=0.1,maximum=100.0,step=0.1,
@@ -218,11 +221,8 @@ class OctopiGUI(QMainWindow):
                         lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                     ]
                 ).widget,
-                config_manager.snap == Button("snap",on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget
             ]
-            imaging_modes_widget_list.append(
-                HBox(*top_row)
-            )
+            imaging_modes_widget_list.append(top_row)
 
             bottom_row=[
                 Label("exposure time:").widget,
@@ -257,20 +257,22 @@ class OctopiGUI(QMainWindow):
                     ]
                 ).widget,
             ]
-            imaging_modes_widget_list.append(
-                HBox(*bottom_row)
-            )
+            imaging_modes_widget_list.append(bottom_row)
 
             self.imaging_mode_config_managers[config.id]=config_manager
 
         self.add_image_inspection()
 
         self.named_widgets.live == ObjectManager()
-        self.imagingModes=VBox(*flatten([
+        self.imagingModes=VBox(
             # snap and channel config section
             self.named_widgets.snap_all_button == Button("snap all",tooltip="take a snapshot in all channels and display in multi-point acquisition panel",on_clicked=self.snap_all),
+
             Label(""),
-            imaging_modes_widget_list,
+            Grid(*flatten([
+                imaging_modes_widget_list,
+                extra_items
+            ])),
 
             # live viewing and config save/load section
             Label(""),
@@ -296,7 +298,7 @@ class OctopiGUI(QMainWindow):
             self.backgroundSliderContainer,
             Label(""),
             self.imageEnhanceWidget,
-        ])).widget
+        ).widget
 
         self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
 

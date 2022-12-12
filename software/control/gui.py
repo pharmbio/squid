@@ -72,19 +72,19 @@ def try_add_member(adder,addee,*args,**kwargs):
             adder.addLayout(addee,*args,**kwargs)
 
 class GridItem:
-    def __init__(self,widget,a,b,c,d):
+    def __init__(self,widget,row,column,rowSpan,colSpan):
         self.widget=widget
-        self.a=a
-        self.b=b
-        self.c=c
-        self.d=d
+        self.row=row
+        self.column=column
+        self.rowSpan=rowSpan
+        self.colSpan=colSpan
 
 class Grid(HasLayout,HasWidget):
     def __init__(self,*args,**kwargs):
         self.layout=QGridLayout()
         for outer_index,outer_arg in enumerate(args):
             if isinstance(outer_arg,GridItem):
-                self.layout.addWidget(outer_arg.widget,outer_arg.a,outer_arg.b,outer_arg.c,outer_arg.d)
+                self.layout.addWidget(outer_arg.widget,outer_arg.row,outer_arg.column,outer_arg.rowSpan,outer_arg.colSpan)
                 continue
 
             try:
