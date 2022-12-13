@@ -246,7 +246,6 @@ class MachineDisplayConfiguration:
     DEFAULT_SAVING_PATH:str = str(Path.home()/"Downloads")
     DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
     MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
-    MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = True
 
     def from_json(json_data:dict):
         return MachineDisplayConfiguration(**json_data)

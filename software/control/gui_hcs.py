@@ -128,7 +128,8 @@ class OctopiGUI(QMainWindow):
             set_num_acquisitions_callback=self.set_num_acquisitions,
             on_new_acquisition=self.on_step_completed,
 
-            grid_mask=self.multiPointWidget.well_grid_items_selected
+            grid_mask=self.multiPointWidget.well_grid_items_selected,
+            headless=False, # allow display of gui components like warning messages
         )
         
         if acquisition_thread is None:
@@ -264,9 +265,11 @@ class OctopiGUI(QMainWindow):
         self.add_image_inspection()
 
         self.laserAutofocusControlWidget=Dock(
-            widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
+            self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
             title="Laser AF",minimize_height=True
         ).widget
+
+        self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocs.setDisabled(False))
 
         self.named_widgets.live == ObjectManager()
         self.imagingModes=VBox(
@@ -537,7 +540,7 @@ class OctopiGUI(QMainWindow):
     def save_illumination_config(self,_button_state:bool):
         """ save illumination configuration to a file (GUI callback) """
 
-        save_path=FileDialog(mode='save',directory=MACHINE_CONFIG.DEFAULT_PATH,caption="Save current illumination config where?").run()
+        save_path=FileDialog(mode='save',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Save current illumination config where?").run()
 
         if save_path!="":
             if not save_path.endswith(".json"):
@@ -554,7 +557,7 @@ class OctopiGUI(QMainWindow):
             print("! warning: cannot load illumination settings while live !")
             return
         
-        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DEFAULT_PATH,caption="Load which illumination config?",filter_type="JSON (*.json)").run()
+        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Load which illumination config?",filter_type="JSON (*.json)").run()
 
         if load_path!="":
             print(f"loading config from {load_path}")

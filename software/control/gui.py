@@ -326,17 +326,17 @@ class Dropdown(HasWidget):
 class FileDialog:
     @TypecheckFunction
     def __init__(self,
-        mode:ClosedSet[str]('save','open'),
+        mode:ClosedSet[str]('save','open','open_dir'),
 
         directory:Optional[str]=None,
         caption:Optional[str]=None,
         filter_type:Optional[str]=None,
     ):
-        self.window=QFileDialog()
+        self.window=QFileDialog(options=QFileDialog.DontUseNativeDialog)
         self.window.setWindowModality(Qt.ApplicationModal)
         self.mode=mode
 
-        self.kwargs={'options':QFileDialog.DontUseNativeDialog}
+        self.kwargs={}#'options':QFileDialog.DontUseNativeDialog}
         if not directory is None:
             self.kwargs['directory']=directory
         if not caption is None:
@@ -350,6 +350,8 @@ class FileDialog:
             return self.window.getSaveFileName(**self.kwargs)[0]
         elif self.mode=='open':
             return self.window.getOpenFileName(**self.kwargs)[0]
+        elif self.mode=='open_dir':
+            return self.window.getExistingDirectory(**self.kwargs)
         else:
             assert False
 
@@ -361,19 +363,19 @@ class MessageBox:
 
         text:Optional[str]=None,
     ):
-        self.window=QMessageBox(title=title,text=text or "")
-
+        self.title=title
         self.mode=mode
+        self.text=text
 
     def run(self):
         if self.mode=='information':
-            self.window.information()
-        if self.mode=='critical':
-            self.window.critical()
-        if self.mode=='warning':
-            self.window.warning()
-        if self.mode=='question':
-            self.window.question()
+            QMessageBox.information(None,self.title,self.text)
+        elif self.mode=='critical':
+            QMessageBox.critical(None,self.title,self.text)
+        elif self.mode=='warning':
+            QMessageBox.warning(None,self.title,self.text)
+        elif self.mode=='question':
+            QMessageBox.question(None,self.title,self.text)
         else:
             assert False
 

@@ -242,6 +242,8 @@ class HCSController(QObject):
         trigger_override=None,
 
         grid_mask:Optional[Any]=None,
+
+        headless:bool=True,
     )->Optional[QThread]:
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
         # set wells to be imaged <- acquire.well_list argument
@@ -308,7 +310,7 @@ class HCSController(QObject):
         self.set_selected_configurations(channels)
 
         # set image saving location
-        self.multipointController.set_base_path(path=MACHINE_CONFIG.DEFAULT_PATH)
+        self.multipointController.set_base_path(path=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
         self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
@@ -316,7 +318,8 @@ class HCSController(QObject):
             well_selection=(well_list_names,well_list_physical_pos),
             set_num_acquisitions_callback=set_num_acquisitions_callback,
             on_new_acquisition=on_new_acquisition,
-            grid_mask=grid_mask
+            grid_mask=grid_mask,
+            headless=headless,
         )
 
     @TypecheckFunction

@@ -25,6 +25,8 @@ from tqdm import tqdm
 
 from pathlib import Path
 
+from control.gui import *
+
 class AbortAcquisitionException(Exception):
     def __init__(self):
         super().__init__()
@@ -88,39 +90,43 @@ class MultiPointWorker(QObject):
         self.scan_coordinates_name,self.scan_coordinates_mm = scan_coordinates
 
     def run(self):
-        while self.time_point < self.Nt:
-            # continous acquisition
-            if self.dt == 0.0:
-                self.run_single_time_point()
+        try:
+            while self.time_point < self.Nt:
+                # continous acquisition
+                if self.dt == 0.0:
+                    self.run_single_time_point()
 
-                if self.multiPointController.abort_acqusition_requested:
-                    break
+                    if self.multiPointController.abort_acqusition_requested:
+                        raise AbortAcquisitionException()
 
-                self.time_point = self.time_point + 1
+                    self.time_point = self.time_point + 1
 
-            # timed acquisition
-            else:
-                self.run_single_time_point()
+                # timed acquisition
+                else:
+                    self.run_single_time_point()
 
-                if self.multiPointController.abort_acqusition_requested:
-                    break
+                    if self.multiPointController.abort_acqusition_requested:
+                        raise AbortAcquisitionException()
 
-                if self.Nt==1:
-                    break
+                    if self.Nt==1:
+                        break
 
-                self.time_point = self.time_point + 1
-                # check if the aquisition has taken longer than dt or integer multiples of dt, if so skip the next time point(s)
-                while time.time() > self.timestamp_acquisition_started + self.time_point*self.dt:
-                    print('skip time point ' + str(self.time_point+1))
-                    self.time_point = self.time_point+1
+                    self.time_point = self.time_point + 1
+                    # check if the aquisition has taken longer than dt or integer multiples of dt, if so skip the next time point(s)
+                    while time.time() > self.timestamp_acquisition_started + self.time_point*self.dt:
+                        print('skip time point ' + str(self.time_point+1))
+                        self.time_point = self.time_point+1
 
-                if self.time_point == self.Nt:
-                    break # no waiting after taking the last time point
+                    if self.time_point == self.Nt:
+                        break # no waiting after taking the last time point
 
-                # wait until it's time to do the next acquisition
-                while time.time() < self.timestamp_acquisition_started + self.time_point*self.dt:
-                    time.sleep(0.05)
-
+                    # wait until it's time to do the next acquisition
+                    while time.time() < self.timestamp_acquisition_started + self.time_point*self.dt:
+                        time.sleep(0.05)
+                        
+        except AbortAcquisitionException:
+            pass
+            
         self.finished.emit()
 
         print("finished multipoint acquisition")
@@ -513,7 +519,7 @@ class MultiPointController(QObject):
         if type(flag)==bool:
             self.do_autofocus=flag
         else:
-            self.do_autofocus = bool(flag)            
+            self.do_autofocus = bool(flag)
     @TypecheckFunction
     def set_laser_af_flag(self,flag:Union[int,bool]):
         if type(flag)==bool:
@@ -577,13 +583,14 @@ class MultiPointController(QObject):
         for configuration_name in selected_configurations_name:
             self.selected_configurations.append(next((config for config in self.configurationManager.configurations if config.name == configuration_name)))
         
-    #@TypecheckFunction
+    @TypecheckFunction
     def run_experiment(self,
         well_selection:Tuple[List[str],List[Tuple[float,float]]],
         set_num_acquisitions_callback:Optional[Callable[[int],None]],
         on_new_acquisition:Optional[Callable[[str],None]],
 
         grid_mask:Optional[Any]=None,
+        headless:bool=True
     )->Optional[QThread]:
         while not self.thread is None:
             print("thread is sleeping in control.core.multi_point (this should not actually happen)")
@@ -605,13 +612,25 @@ class MultiPointController(QObject):
         self.grid_mask=grid_mask
 
         if num_wells==0:
-            print("no wells selected - not acquiring anything")
-            self._on_acquisition_completed()
-        elif num_images_per_well==0:
-            print("no images per well - not acquiring anything")
+            warning_text="No wells have been selected, so nothing to acquire. Consider selecting some wells before starting the multi point acquisition."
+            if headless:
+                print(f"! warning: {warning_text} !")
+            else:
+                MessageBox(title="No wells selected",text=warning_text,mode="warning").run()
             self._on_acquisition_completed()
         elif num_channels==0:
-            print("no channels selected - not acquiring anything")
+            warning_text="No channels have been selected, so nothing to acquire. Consider selecting some channels before starting the multi point acquisition."
+            if headless:
+                print(f"! warning: {warning_text} !")
+            else:
+                MessageBox(title="No channels selected",text=warning_text,mode="warning").run()
+            self._on_acquisition_completed()
+        elif num_images_per_well==0:
+            warning_text="Somehow no images would be acquired if acquisition were to start. Maybe all positions were de-selected in the grid mask?"
+            if headless:
+                print(f"! warning: {warning_text} !")
+            else:
+                MessageBox(title="No images to acquire?",text=warning_text,mode="warning").run()
             self._on_acquisition_completed()
         else:
             total_num_acquisitions=num_wells*num_images_per_well*num_channels

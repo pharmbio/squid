@@ -144,11 +144,12 @@ class MultiPointWidget(QFrame):
             self.set_software_af_flag(MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
             self.checkbox_laserAutofocs = QCheckBox('Laser AF')
-            self.checkbox_laserAutofocs.setChecked(MACHINE_CONFIG.DISPLAY.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
-            self.checkbox_laserAutofocs.stateChanged.connect(self.multipointController.set_laser_af_flag)
-            self.hcs_controller.set_laser_af_flag(MACHINE_CONFIG.DISPLAY.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.checkbox_laserAutofocs.setChecked(False)
+            self.checkbox_laserAutofocs.setDisabled(True)
+            self.checkbox_laserAutofocs.stateChanged.connect(self.hcs_controller.set_laser_af_flag)
+            self.hcs_controller.set_laser_af_flag(False)
 
-            self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,checkable=True,checked=False,on_clicked=self.toggle_acquisition).widget
+            self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,on_clicked=self.toggle_acquisition).widget
 
             grid_multipoint_acquisition_config=Grid(
                 [self.checkbox_withAutofocus],
@@ -171,18 +172,6 @@ class MultiPointWidget(QFrame):
             self.image_format_widget,
         ])
 
-        qtlabel_dx=Label('dx (mm)',tooltip=dx_tooltip).widget
-        qtlabel_Nx=Label('Nx',tooltip=dx_tooltip).widget
- 
-        qtlabel_dy=Label('dy (mm)',tooltip=dy_tooltip).widget
-        qtlabel_Ny=Label('Ny',tooltip=dy_tooltip).widget
- 
-        qtlabel_dz=Label('dz (um)',tooltip=dz_tooltip).widget
-        qtlabel_Nz=Label('Nz',tooltip=dz_tooltip).widget
- 
-        qtlabel_dt=Label('dt (s)',tooltip=dt_tooltip).widget
-        qtlabel_Nt=Label('Nt',tooltip=dt_tooltip).widget
-
         self.well_grid_selector=None
         self.grid_changed("x",self.multipointController.NX)
         self.grid_changed("y",self.multipointController.NY)
@@ -196,10 +185,10 @@ class MultiPointWidget(QFrame):
         self.progress_bar.setValue(0)
 
         grid_line2 = Grid(
-            [ qtlabel_Nx, self.entry_NX, qtlabel_dx, self.entry_deltaX,],
-            [ qtlabel_Ny, self.entry_NY, qtlabel_dy, self.entry_deltaY,],
-            [ qtlabel_Nz, self.entry_NZ, qtlabel_dz, self.entry_deltaZ,],
-            [ qtlabel_Nt, self.entry_Nt, qtlabel_dt, self.entry_dt, ],
+            [ Label('Nx',tooltip=dx_tooltip), self.entry_NX, Label('dx (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
+            [ Label('Ny',tooltip=dy_tooltip), self.entry_NY, Label('dy (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
+            [ Label('Nz',tooltip=dz_tooltip), self.entry_NZ, Label('dz (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
+            [ Label('Nt',tooltip=dt_tooltip), self.entry_Nt, Label('dt (s)', tooltip=dt_tooltip), self.entry_dt, ],
 
             GridItem(self.well_grid_selector,0,4,4,1)
         )
@@ -214,6 +203,8 @@ class MultiPointWidget(QFrame):
             [self.progress_bar],
         )
         self.setLayout(self.grid.layout)
+
+        self.acquisition_is_running=False
 
     @TypecheckFunction
     def set_image_format(self,index:int):
@@ -389,27 +380,22 @@ class MultiPointWidget(QFrame):
 
     @TypecheckFunction
     def set_saving_dir(self,_state:Any=None):
-        dialog = QFileDialog(options=QFileDialog.DontUseNativeDialog)
-        dialog.setWindowModality(Qt.ApplicationModal)
-        save_dir_base = dialog.getExistingDirectory(None, "Select Folder")
+        save_dir_base = FileDialog(mode="open_dir",caption="Select base directory").run()
         if save_dir_base!="":
             self.multipointController.set_base_path(save_dir_base)
             self.lineEdit_savingDir.setText(save_dir_base)
             self.base_path_is_set = True
 
     @TypecheckFunction
-    def toggle_acquisition(self,pressed:bool):
-        self.btn_startAcquisition.setChecked(False)
-
+    def toggle_acquisition(self,_pressed:bool):
         if self.base_path_is_set == False:
-            msg = QMessageBox()
-            msg.setText("Please choose base saving directory first")
-            msg.exec_()
+            MessageBox(title="No base saving directory!",text="You need to choose a base saving directory before you can start the multi point acquisition.",mode="warning").run()
             return
 
-        if pressed:
-            # @@@ to do: add a widgetManger to enable and disable widget 
-            # @@@ to do: emit signal to widgetManager to disable other widgets
+        if not self.acquisition_is_running:
+
+            self.acquisition_is_running=True
+            
             self.setEnabled_all(False)
 
             # get list of selected channels
@@ -419,30 +405,38 @@ class MultiPointWidget(QFrame):
 
             experiment_data_target_folder:str=self.lineEdit_experimentID.text()
 
-            experiment_finished_signal=self.start_experiment(
+            self.experiment_finished_signal=self.start_experiment(
                 experiment_data_target_folder,
                 imaging_channel_list
             )
 
-            if experiment_finished_signal is None:
-                self.setEnabled_all(True)
-                QApplication.processEvents() # make sure that the GUI is up to date
+            if self.experiment_finished_signal is None:
+                self.acquisition_is_finished()
                 return
 
             self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
             QApplication.processEvents() # make sure that the text change is visible
 
-            experiment_finished_signal.connect(self.acquisition_is_finished)
+            self.experiment_finished_signal.connect(self.acquisition_is_finished)
         else:
+            self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
             self.abort_experiment()
-            self.acquisition_is_finished()
+            self.acquisition_is_finished(aborted=True)
 
     @TypecheckFunction
-    def acquisition_is_finished(self):
+    def acquisition_is_finished(self,aborted:bool=False):
+        self.acquisition_is_running=False
         self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_IDLE_TEXT)
         QApplication.processEvents() # make sure that the text change is visible
+
+        self.experiment_finished_signal=None
         
         self.setEnabled_all(True)
+
+        if aborted:
+            MessageBox(title="Acquisition terminated",text="Acquisition was terminated. It may take a few seconds until the microscope has finished the last step is was working on.",mode="information").run()
+        else:
+            MessageBox(title="Acquisition finished",text="Acquisition is finished. See progress bar for details.",mode="information").run()
 
     @TypecheckFunction
     def setEnabled_all(self,enabled:bool,exclude_btn_startAcquisition:bool=True):
