@@ -189,12 +189,12 @@ class OctopiGUI(QMainWindow):
         self.imageDisplayWindow = widgets.ImageDisplayWindow(draw_crosshairs=True)
         self.imageArrayDisplayWindow = widgets.ImageArrayDisplayWindow(self.configurationManager,window_title="HCS microscope control")
 
-        default_well_plate=WELLPLATE_NAMES[MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT]
+        default_well_plate=WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
         # load widgets
         self.imageDisplay           = widgets.ImageDisplay()
         self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
-        self.wellSelectionWidget    = widgets.WellSelectionWidget(MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT)
+        self.wellSelectionWidget    = widgets.WellSelectionWidget(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
         self.navigationWidget       = widgets.NavigationWidget(self.hcs_controller,gui=self,widget_configuration=default_well_plate)
         self.autofocusWidget        = widgets.AutoFocusWidget(self.hcs_controller,gui=self)
         self.multiPointWidget       = widgets.MultiPointWidget(self.hcs_controller,self.start_experiment,self.abort_experiment)
@@ -339,7 +339,7 @@ class OctopiGUI(QMainWindow):
         wellplate_selector=Dropdown(
             items=wellplate_types_str,
             current_index=wellplate_types_str.index(default_well_plate),
-            on_currentIndexChanged=lambda wellplate_type_index:setattr(MUTABLE_MACHINE_CONFIG,"WELLPLATE_FORMAT",tuple(WELLPLATE_FORMATS.keys())[wellplate_type_index])
+            on_currentIndexChanged=lambda wellplate_type_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"WELLPLATE_FORMAT",tuple(WELLPLATE_FORMATS.keys())[wellplate_type_index])
         ).widget
         # disable 6 and 24 well wellplates, because images of these plates are missing
         for wpt in [0,2]:
@@ -788,7 +788,7 @@ class OctopiGUI(QMainWindow):
         self.wellSelectionWidget.itemselectionchanged()
         preview_fov_list=[]
         for well_row,well_column in self.wellSelectionWidget.currently_selected_well_indices:
-            x_well,y_well=WELLPLATE_FORMATS[MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT].convert_well_index(well_row,well_column)
+            x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].convert_well_index(well_row,well_column)
             for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(x_well,y_well):
                 LIGHT_GREY=(160,)*3
                 if self.hcs_controller.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):

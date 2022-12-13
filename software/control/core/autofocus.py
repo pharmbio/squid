@@ -81,7 +81,7 @@ class AutofocusWorker(QObject):
 
             QApplication.processEvents()
 
-            focus_measure = utils.calculate_focus_measure(image,MUTABLE_MACHINE_CONFIG.FOCUS_MEASURE_OPERATOR)
+            focus_measure = utils.calculate_focus_measure(image,MACHINE_CONFIG.MUTABLE_STATE.FOCUS_MEASURE_OPERATOR)
             focus_measure_vs_z[i] = focus_measure
             focus_measure_max = max(focus_measure, focus_measure_max)
             if focus_measure < focus_measure_max*MACHINE_CONFIG.AF.STOP_THRESHOLD:

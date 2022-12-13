@@ -213,7 +213,7 @@ class NavigationViewer(QFrame):
 
         self.preview_fovs=[]
 
-        MUTABLE_MACHINE_CONFIG.wellplate_format_change.connect(self.set_wellplate_type)
+        MACHINE_CONFIG.MUTABLE_STATE.wellplate_format_change.connect(self.set_wellplate_type)
 
     def set_wellplate_type(self,wellplate_type:Union[str,int]):
         if type(wellplate_type)==int:

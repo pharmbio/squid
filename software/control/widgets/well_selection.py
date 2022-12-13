@@ -23,7 +23,7 @@ class WellSelectionWidget(QTableWidget):
         self.was_initialized=True
 
         self.itemSelectionChanged.connect(self.itemselectionchanged)
-        MUTABLE_MACHINE_CONFIG.wellplate_format_change.connect(self.set_wellplate_type)
+        MACHINE_CONFIG.MUTABLE_STATE.wellplate_format_change.connect(self.set_wellplate_type)
 
     def itemselectionchanged(self):
         self.currently_selected_well_indices = []

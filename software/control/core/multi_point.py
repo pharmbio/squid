@@ -128,7 +128,7 @@ class MultiPointWorker(QObject):
     def perform_software_autofocus(self):
         """ run software autofocus to focus on current fov """
 
-        configuration_name_AF = MUTABLE_MACHINE_CONFIG.MULTIPOINT_AUTOFOCUS_CHANNEL
+        configuration_name_AF = MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL
         config_AF = next((config for config in self.configurationManager.configurations if config.name == configuration_name_AF))
         self.signal_current_configuration.emit(config_AF)
         self.autofocusController.autofocus()
@@ -160,11 +160,11 @@ class MultiPointWorker(QObject):
             
         if self.camera.is_color:
             if 'BF LED matrix' in config.name:
-                if MUTABLE_MACHINE_CONFIG.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+                if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
                     image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                elif MUTABLE_MACHINE_CONFIG.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
+                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
                     image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
-                elif MUTABLE_MACHINE_CONFIG.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
+                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
                     image = image[:,:,1]
             else:
                 image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
@@ -460,7 +460,7 @@ class MultiPointController(QObject):
 
     @property
     def autofocus_channel_name(self)->str:
-        return MUTABLE_MACHINE_CONFIG.MULTIPOINT_AUTOFOCUS_CHANNEL
+        return MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL
 
     @property
     def deltaX_usteps(self)->int:

@@ -207,6 +207,50 @@ class BrightfieldSavingMode(str,Enum):
 #### machine specific configurations - to be overridden ###
 ###########################################################
 
+@TypecheckClass(check_assignment=True)
+class MutableMachineConfiguration(QObject):
+    # things that can change in hardware (manual changes)
+    DEFAULT_OBJECTIVE:str = '10x (Mitutoyo)'
+    WELLPLATE_FORMAT:ClosedSet[int](6,12,24,96,384) = 96
+
+    # things that can change in software
+    DEFAULT_TRIGGER_MODE:TriggerMode = TriggerMode.SOFTWARE
+    FOCUS_MEASURE_OPERATOR:FocusMeasureOperators = FocusMeasureOperators.LAPE
+    MULTIPOINT_AUTOFOCUS_CHANNEL:str = 'Fluorescence 561 nm Ex'
+    MULTIPOINT_BF_SAVING_OPTION:BrightfieldSavingMode = BrightfieldSavingMode.RAW
+
+    objective_change:Signal=Signal(str)
+    wellplate_format_change:Signal=Signal(int)
+    trigger_mode_change:Signal=Signal(TriggerMode)
+    focuse_measure_operator_change:Signal=Signal(FocusMeasureOperators)
+    autofocus_channel_change:Signal=Signal(str)
+    brightfield_saving_mode_change:Signal=Signal(BrightfieldSavingMode)
+
+    def __setattr__(self,name,value):
+        {
+            "DEFAULT_OBJECTIVE":self.objective_change,
+            "WELLPLATE_FORMAT":self.wellplate_format_change,
+            "DEFAULT_TRIGGER_MODE":self.trigger_mode_change,
+            "FOCUS_MEASURE_OPERATOR":self.focuse_measure_operator_change,
+            "MULTIPOINT_AUTOFOCUS_CHANNEL":self.autofocus_channel_change,
+            "MULTIPOINT_BF_SAVING_OPTION":self.brightfield_saving_mode_change,
+        }[name].emit(value)
+        super().__setattr__(name,value)
+
+    def from_json(json_data:dict):
+        return MutableMachineConfiguration(**json_data)
+
+@TypecheckClass
+class MachineDisplayConfiguration:
+    """ display settings """
+    DEFAULT_SAVING_PATH:str = str(Path.home()/"Downloads")
+    DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
+    MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
+    MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = True
+
+    def from_json(json_data:dict):
+        return MachineDisplayConfiguration(**json_data)
+
 @TypecheckClass
 class MachineConfiguration:
     # hardware specific stuff
@@ -402,76 +446,25 @@ class MachineConfiguration:
 
     DEFAULT_TRIGGER_FPS:float=5.0
 
-    DEFAULT_PATH:str="/home/pharmbio/Downloads",
+    MUTABLE_STATE:MutableMachineConfiguration
+    DISPLAY:MachineDisplayConfiguration
 
-    def from_json(filename:str):
+    def from_file(filename:str):
         try:
             with open(filename,"r",encoding="utf-8") as json_file:
                 kwargs=json.decoder.JSONDecoder().decode(json_file.read())
 
         except FileNotFoundError:
             kwargs={}
+
+        if 'MUTABLE_STATE' in kwargs:
+            mutable_state=MutableMachineConfiguration.from_json(kwargs['MUTABLE_STATE'])
+            kwargs['MUTABLE_STATE']=mutable_state
+        if 'DISPLAY' in kwargs:
+            display=MachineDisplayConfiguration.from_json(kwargs['DISPLAY'])
+            kwargs['DISPLAY']=display
 
         return MachineConfiguration(**kwargs)
-
-
-@TypecheckClass(check_assignment=True)
-class MutableMachineConfiguration(QObject):
-    # things that can change in hardware (manual changes)
-    DEFAULT_OBJECTIVE:str = '10x (Mitutoyo)'
-    WELLPLATE_FORMAT:ClosedSet[int](6,12,24,96,384) = 96
-
-    # things that can change in software
-    DEFAULT_TRIGGER_MODE:TriggerMode = TriggerMode.SOFTWARE
-    FOCUS_MEASURE_OPERATOR:FocusMeasureOperators = FocusMeasureOperators.LAPE
-    MULTIPOINT_AUTOFOCUS_CHANNEL:str = 'Fluorescence 561 nm Ex'
-    MULTIPOINT_BF_SAVING_OPTION:BrightfieldSavingMode = BrightfieldSavingMode.RAW
-
-    objective_change:Signal=Signal(str)
-    wellplate_format_change:Signal=Signal(int)
-    trigger_mode_change:Signal=Signal(TriggerMode)
-    focuse_measure_operator_change:Signal=Signal(FocusMeasureOperators)
-    autofocus_channel_change:Signal=Signal(str)
-    brightfield_saving_mode_change:Signal=Signal(BrightfieldSavingMode)
-
-    def __setattr__(self,name,value):
-        {
-            "DEFAULT_OBJECTIVE":self.objective_change,
-            "WELLPLATE_FORMAT":self.wellplate_format_change,
-            "DEFAULT_TRIGGER_MODE":self.trigger_mode_change,
-            "FOCUS_MEASURE_OPERATOR":self.focuse_measure_operator_change,
-            "MULTIPOINT_AUTOFOCUS_CHANNEL":self.autofocus_channel_change,
-            "MULTIPOINT_BF_SAVING_OPTION":self.brightfield_saving_mode_change,
-        }[name].emit(value)
-        super().__setattr__(name,value)
-
-    def from_json(filename:str):
-        try:
-            with open(filename,"r",encoding="utf-8") as json_file:
-                kwargs=json.decoder.JSONDecoder().decode(json_file.read())
-
-        except FileNotFoundError:
-            kwargs={}
-
-        return MutableMachineConfiguration(**kwargs)
-
-@TypecheckClass
-class MachineDisplayConfiguration:
-    """ display settings """
-    DEFAULT_SAVING_PATH:str = str(Path.home()/"Downloads")
-    DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
-    MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
-    MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = True
-
-    def from_json(filename:str):
-        try:
-            with open(filename,"r",encoding="utf-8") as json_file:
-                kwargs=json.decoder.JSONDecoder().decode(json_file.read())
-
-        except FileNotFoundError:
-            kwargs={}
-
-        return MachineDisplayConfiguration(**kwargs)
 
 
 @dataclass(frozen=True)
@@ -569,8 +562,4 @@ WELLPLATE_NAMES:Dict[int,str]={
     for i in WELLPLATE_FORMATS.keys()
 }
 
-MACHINE_CONFIG=MachineConfiguration.from_json("machine_config.json")
-
-MACHINE_DISPLAY_CONFIG=MachineDisplayConfiguration.from_json("display_config.json")
-
-MUTABLE_MACHINE_CONFIG=MutableMachineConfiguration.from_json("default_mutable_machine_config.json")
+MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")

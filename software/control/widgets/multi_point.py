@@ -59,8 +59,8 @@ class MultiPointWidget(QFrame):
             self.lineEdit_savingDir.setReadOnly(True)
             self.lineEdit_savingDir.setText('Choose a base saving directory')
 
-            self.lineEdit_savingDir.setText(MACHINE_DISPLAY_CONFIG.DEFAULT_SAVING_PATH)
-            self.multipointController.set_base_path(MACHINE_DISPLAY_CONFIG.DEFAULT_SAVING_PATH)
+            self.lineEdit_savingDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
+            self.multipointController.set_base_path(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
             self.base_path_is_set = True
 
             self.lineEdit_experimentID = QLineEdit()
@@ -130,7 +130,7 @@ class MultiPointWidget(QFrame):
         if True: # add autofocus related stuff
             self.checkbox_withAutofocus = QCheckBox('Software AF')
             self.checkbox_withAutofocus.setToolTip(SOFTWARE_AUTOFOCUS_TOOLTIP)
-            self.checkbox_withAutofocus.setChecked(MACHINE_DISPLAY_CONFIG.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.checkbox_withAutofocus.setChecked(MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
             self.checkbox_withAutofocus.stateChanged.connect(self.set_software_af_flag)
 
             channel_names=[microscope_configuration.name for microscope_configuration in self.configurationManager.configurations]
@@ -138,15 +138,15 @@ class MultiPointWidget(QFrame):
                 items=channel_names,
                 current_index=channel_names.index(self.multipointController.autofocus_channel_name),
                 tooltip=AF_CHANNEL_TOOLTIP,
-                on_currentIndexChanged=lambda index:setattr(MUTABLE_MACHINE_CONFIG,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index])
+                on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index])
             ).widget
 
-            self.set_software_af_flag(MACHINE_DISPLAY_CONFIG.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.set_software_af_flag(MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
             self.checkbox_laserAutofocs = QCheckBox('Laser AF')
-            self.checkbox_laserAutofocs.setChecked(MACHINE_DISPLAY_CONFIG.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.checkbox_laserAutofocs.setChecked(MACHINE_CONFIG.DISPLAY.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
             self.checkbox_laserAutofocs.stateChanged.connect(self.multipointController.set_laser_af_flag)
-            self.hcs_controller.set_laser_af_flag(MACHINE_DISPLAY_CONFIG.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
+            self.hcs_controller.set_laser_af_flag(MACHINE_CONFIG.DISPLAY.MULTIPOINT_LASER_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
             self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,checkable=True,checked=False,on_clicked=self.toggle_acquisition).widget
 

@@ -10,5 +10,14 @@
   
   "X_MM_384_WELLPLATE_UPPERLEFT" : 12.97,
   "Y_MM_384_WELLPLATE_UPPERLEFT" : 11.51,
-  "DEFAULT_Z_POS_MM" : 5.230
+  "DEFAULT_Z_POS_MM" : 5.230,
+
+  "MUTABLE_STATE":{
+    "MULTIPOINT_AUTOFOCUS_CHANNEL":"Fluorescence 561 nm Ex",
+    "WELLPLATE_FORMAT":384,
+    "DEFAULT_OBJECTIVE":"10x (Mitutoyo)"
+  },
+  "DISPLAY":{
+    "DEFAULT_SAVING_PATH":"/home/pharmbio/Downloads"
+  }
 }

@@ -250,7 +250,7 @@ class HCSController(QObject):
         # set selection and order of channels to be imaged <- acquire.channels argument
 
         # calculate physical imaging positions on wellplate given plate type and well selection
-        wellplate_format=WELLPLATE_FORMATS[plate_type if not plate_type is None else MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT]
+        wellplate_format=WELLPLATE_FORMATS[plate_type if not plate_type is None else MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
         # validate well positions (should be on the plate, given selected wellplate type)
         if wellplate_format.number_of_skip>0:
@@ -284,8 +284,8 @@ class HCSController(QObject):
             self.multipointController.set_software_af_flag(False)
         else:
             assert af_channel in [c.name for c in self.configurationManager.configurations], f"{af_channel} is not a valid (AF) channel"
-            if af_channel!=MUTABLE_MACHINE_CONFIG.MULTIPOINT_AUTOFOCUS_CHANNEL:
-                MUTABLE_MACHINE_CONFIG.MULTIPOINT_AUTOFOCUS_CHANNEL=af_channel
+            if af_channel!=MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL:
+                MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL=af_channel
             self.multipointController.set_software_af_flag(True)
 
         # set grid data per well
@@ -321,7 +321,11 @@ class HCSController(QObject):
 
     @TypecheckFunction
     def fov_exceeds_well_boundary(self,well_row:int,well_column:int,x_mm:float,y_mm:float)->bool:
-        wellplate_format=WELLPLATE_FORMATS[MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT]
+        """
+        check if a position on the plate exceeds the boundaries of a well
+        (plate position in mm relative to plate origin. well position as row and column index, where row A and column 1 have index 0)
+        """
+        wellplate_format=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
         well_center_x_mm,well_center_y_mm=wellplate_format.convert_well_index(well_row,well_column)
 
