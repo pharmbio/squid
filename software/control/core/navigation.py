@@ -91,7 +91,7 @@ class NavigationController(QObject):
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
-            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
+            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)        
         self.microcontroller.move_z_usteps(int(z_mm/self.screw_z_micro))
 
     @TypecheckFunction

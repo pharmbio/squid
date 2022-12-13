@@ -402,6 +402,8 @@ class MachineConfiguration:
 
     DEFAULT_TRIGGER_FPS:float=5.0
 
+    DEFAULT_PATH:str="/home/pharmbio/Downloads",
+
     def from_json(filename:str):
         try:
             with open(filename,"r",encoding="utf-8") as json_file:

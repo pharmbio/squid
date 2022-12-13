@@ -7,7 +7,7 @@ from qtpy.QtWidgets import QApplication
 
 from control._def import *
 
-import time
+import time, math
 import numpy as np
 import scipy
 import scipy.signal
@@ -124,6 +124,9 @@ class LaserAutofocusController(QObject):
 
     def move_to_target(self,target_um:float,currently_repeating:bool=False):
         current_displacement_um = self.measure_displacement()
+
+        if math.isnan(current_displacement_um):
+            raise ValueError("displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrongs. Make sure that the laser AF laser is not currently used for live imaging.")
 
         um_to_move = target_um - current_displacement_um
         if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:

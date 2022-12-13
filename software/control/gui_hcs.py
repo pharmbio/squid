@@ -195,20 +195,20 @@ class OctopiGUI(QMainWindow):
         self.imageDisplay           = widgets.ImageDisplay()
         self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
         self.wellSelectionWidget    = widgets.WellSelectionWidget(MUTABLE_MACHINE_CONFIG.WELLPLATE_FORMAT)
-        self.navigationWidget       = widgets.NavigationWidget(self.hcs_controller,widget_configuration=default_well_plate)
-        self.autofocusWidget        = widgets.AutoFocusWidget(self.hcs_controller)
+        self.navigationWidget       = widgets.NavigationWidget(self.hcs_controller,gui=self,widget_configuration=default_well_plate)
+        self.autofocusWidget        = widgets.AutoFocusWidget(self.hcs_controller,gui=self)
         self.multiPointWidget       = widgets.MultiPointWidget(self.hcs_controller,self.start_experiment,self.abort_experiment)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
         self.imaging_mode_config_managers={}
 
         imaging_modes_widget_list=[]
-        extra_items=[]
+        imaging_modes_wide_widgets=[]
         for config_num,config in enumerate(self.configurationManager.configurations):
             config_manager=ObjectManager()
 
-            extra_items.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
-            extra_items.append(GridItem(config_manager.snap == Button("snap",on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
+            imaging_modes_wide_widgets.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
+            imaging_modes_wide_widgets.append(GridItem(config_manager.snap == Button("snap",on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
             top_row=[
                 *([None]*4),
                 Label("illumination:").widget,
@@ -263,6 +263,11 @@ class OctopiGUI(QMainWindow):
 
         self.add_image_inspection()
 
+        self.laserAutofocusControlWidget=Dock(
+            widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
+            title="Laser AF",minimize_height=True
+        ).widget
+
         self.named_widgets.live == ObjectManager()
         self.imagingModes=VBox(
             # snap and channel config section
@@ -271,7 +276,7 @@ class OctopiGUI(QMainWindow):
             Label(""),
             Grid(*flatten([
                 imaging_modes_widget_list,
-                extra_items
+                imaging_modes_wide_widgets
             ])),
 
             # live viewing and config save/load section
@@ -296,21 +301,17 @@ class OctopiGUI(QMainWindow):
             Label(""),
             Dock(self.histogramWidget,"Histogram").widget,
             self.backgroundSliderContainer,
-            Label(""),
             self.imageEnhanceWidget,
+
+            Label(""),
+            self.laserAutofocusControlWidget,
         ).widget
 
         self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
 
-        self.laserAutofocusControlWidget=Dock(
-            widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
-            title="Laser AF",minimize_height=True
-        ).widget
-
         self.liveWidget=VBox(
-            self.navigationWidget,
+            Dock(self.navigationWidget,"Navigation",True).widget,
             Dock(self.autofocusWidget,"Software AF",True).widget,
-            self.laserAutofocusControlWidget,
             #self.named_widgets.special_widget == BlankWidget(
             #    height=300,width=300,
             #    #background_image_path="./images/384_well_plate_1509x1010.png",
@@ -441,6 +442,7 @@ class OctopiGUI(QMainWindow):
         self.setMinimumSize(width_min,height_min)
 
     def well_click_callback(self,event,i,j):
+        """ TODO : implement custom well selection widget """
         self.named_widgets.wells[i*16+j].setStyleSheet("QWidget {background-color: blue;}")
 
     @property
@@ -469,7 +471,14 @@ class OctopiGUI(QMainWindow):
 
         return ret
 
-    def set_all_interactibles_enabled(self,enable:bool,exceptions:Optional[list]=None):
+    def set_all_interactibles_enabled(self,enable:bool,exceptions:list=[]):
+        """
+        set interactible state for all interactible widgets in the whole gui.
+        allows certain widgets to be excluded from applying the new interactible state ('exceptions' argument).
+
+        can be used e.g. to disable all widgets that interact with the hardware while imaging is in progress to avoid conflicts.
+        """
+
         for widget in self.all_interactible_widgets:
             if not widget in exceptions:
                 if isinstance(widget,QWidget):
@@ -478,6 +487,11 @@ class OctopiGUI(QMainWindow):
                     widget.widget.setEnabled(enable)
 
     def toggle_live(self,button_pressed:bool):
+        """
+        take images at regular time intervals in the selected channel.
+
+        can be used e.g. to view the impact of a new z position on image focus.
+        """
         if button_pressed:
             self.live_stop_requested=False
 
@@ -523,7 +537,7 @@ class OctopiGUI(QMainWindow):
     def save_illumination_config(self,_button_state:bool):
         """ save illumination configuration to a file (GUI callback) """
 
-        save_path=FileDialog(mode='save',directory="/home/pharmbio/Downloads",caption="Save current illumination config where?").run()
+        save_path=FileDialog(mode='save',directory=MACHINE_CONFIG.DEFAULT_PATH,caption="Save current illumination config where?").run()
 
         if save_path!="":
             if not save_path.endswith(".json"):
@@ -540,7 +554,7 @@ class OctopiGUI(QMainWindow):
             print("! warning: cannot load illumination settings while live !")
             return
         
-        load_path=FileDialog(mode='open',directory="/home/pharmbio/Downloads",caption="Load which illumination config?",filter_type="JSON (*.json)").run()
+        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DEFAULT_PATH,caption="Load which illumination config?",filter_type="JSON (*.json)").run()
 
         if load_path!="":
             print(f"loading config from {load_path}")

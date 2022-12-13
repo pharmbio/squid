@@ -53,8 +53,6 @@ class LiveControlWidget(QFrame):
         self.add_components()
         self.liveController.set_microscope_mode(self.currentConfiguration)
 
-        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
-
         self.is_switching_mode = False # flag used to prevent from settings being set by twice - from both mode change slot and value change slot; another way is to use blockSignals(True)
 
     def add_components(self):

@@ -17,46 +17,37 @@ class NavigationWidget(QFrame):
 
     def __init__(self, 
         hcs_controller, 
-        widget_configuration:str = 'full', 
-        *args, **kwargs
+        gui,
+        widget_configuration:str,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
 
         self.hcs_controller=hcs_controller
+        self.gui=gui
 
         self.widget_configuration = widget_configuration
-        self.add_components()
-        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
 
-    def add_components(self):
         self.label_Xpos = QLabel()
         self.label_Xpos.setNum(0)
         self.label_Xpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dX = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=0.0,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_dX = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False).widget
         self.btn_moveX_forward = Button('Forward',default=False).widget
         self.btn_moveX_backward = Button('Backward',default=False).widget
-
-        self.btn_home_X = Button('Home X',default=False,enabled=MACHINE_CONFIG.HOMING_ENABLED_X).widget
-        self.btn_zero_X = Button('Zero X',default=False).widget
         
         self.label_Ypos = QLabel()
         self.label_Ypos.setNum(0)
         self.label_Ypos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dY = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=0.0,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_dY = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False).widget
         self.btn_moveY_forward = Button('Forward',default=False).widget
         self.btn_moveY_backward = Button('Backward',default=False).widget
-
-        self.btn_home_Y = Button('Home Y',default=False,enabled=MACHINE_CONFIG.HOMING_ENABLED_Y).widget
-        self.btn_zero_Y = Button('Zero Y',default=False).widget
 
         self.label_Zpos = QLabel()
         self.label_Zpos.setNum(0)
         self.label_Zpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dZ = SpinBoxDouble(minimum=0.0,maximum=1000.0,step=0.2,default=0.0,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_dZ = SpinBoxDouble(minimum=0.0,maximum=1000.0,step=0.2,default=10.0,num_decimals=3,keyboard_tracking=False).widget
         self.btn_moveZ_forward = Button('Forward',default=False).widget
         self.btn_moveZ_backward = Button('Backward',default=False).widget
 
-        self.btn_home_Z = Button('Home Z',default=False,enabled=MACHINE_CONFIG.HOMING_ENABLED_Z).widget
         self.btn_zero_Z = Button('Zero Z',default=False).widget
 
         self.btn_goToLoadingPosition=Button(BTN_LOADING_POSITION_IDLE_UNLOADED).widget
@@ -67,19 +58,13 @@ class NavigationWidget(QFrame):
         grid_line2 = Grid([ QLabel('Z (um)'), self.label_Zpos, self.entry_dZ, self.btn_moveZ_forward, self.btn_moveZ_backward, ]).layout
         
         grid_line3 = QGridLayout()
-        if self.widget_configuration == 'full':
-            grid_line3.addWidget(self.btn_zero_X, 0,3)
-            grid_line3.addWidget(self.btn_zero_Y, 0,4)
-            grid_line3.addWidget(self.btn_zero_Z, 0,5)
-            grid_line3.addWidget(self.btn_home_X, 0,0)
-            grid_line3.addWidget(self.btn_home_Y, 0,1)
-            grid_line3.addWidget(self.btn_home_Z, 0,2)
-        elif self.widget_configuration == WELLPLATE_NAMES[384]:
-            grid_line3.addWidget(self.btn_home_Z, 0,2,1,1)
+        if self.widget_configuration == WELLPLATE_NAMES[384]:
             grid_line3.addWidget(self.btn_zero_Z, 0,3,1,1)
         elif self.widget_configuration == WELLPLATE_NAMES[96]:
-            grid_line3.addWidget(self.btn_home_Z, 0,2,1,1)
             grid_line3.addWidget(self.btn_zero_Z, 0,3,1,1)
+        else:
+            err_msg=f"{self.widget_configuration} is not a supported NavigationViewer configuration"
+            raise Exception(err_msg)
 
         grid_line4=Grid([ self.btn_goToLoadingPosition ]).layout
 
@@ -103,11 +88,6 @@ class NavigationWidget(QFrame):
         self.btn_moveZ_forward.clicked.connect(self.move_z_forward)
         self.btn_moveZ_backward.clicked.connect(self.move_z_backward)
 
-        self.btn_home_X.clicked.connect(self.home_x)
-        self.btn_home_Y.clicked.connect(self.home_y)
-        self.btn_home_Z.clicked.connect(self.home_z)
-        self.btn_zero_X.clicked.connect(self.zero_x)
-        self.btn_zero_Y.clicked.connect(self.zero_y)
         self.btn_zero_Z.clicked.connect(self.zero_z)
 
     def set_movement_ability(self,movement_allowed:bool,apply_to_loading_position_button:bool=False):
@@ -118,11 +98,6 @@ class NavigationWidget(QFrame):
             self.btn_moveY_backward,
             self.btn_moveZ_forward,
             self.btn_moveZ_backward,
-            self.btn_home_X,
-            self.btn_home_Y,
-            self.btn_home_Z,
-            self.btn_zero_X,
-            self.btn_zero_Y,
             self.btn_zero_Z,
         ]:
             item.setDisabled(not movement_allowed)
@@ -172,48 +147,6 @@ class NavigationWidget(QFrame):
         mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
         deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
         self.entry_dZ.setValue(deltaZ)
-
-    def home_x(self):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-        msg.setText("Confirm your action")
-        msg.setInformativeText("Click OK to run homing")
-        msg.setWindowTitle("Confirmation")
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel) # type: ignore
-        msg.setDefaultButton(QMessageBox.Cancel)
-        retval = msg.exec_()
-        if QMessageBox.Ok == retval:
-            self.hcs_controller.home_x()
-
-    def home_y(self):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-        msg.setText("Confirm your action")
-        msg.setInformativeText("Click OK to run homing")
-        msg.setWindowTitle("Confirmation")
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel) # type: ignore
-        msg.setDefaultButton(QMessageBox.Cancel)
-        retval = msg.exec_()
-        if QMessageBox.Ok == retval:
-            self.hcs_controller.home_y()
-
-    def home_z(self):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-        msg.setText("Confirm your action")
-        msg.setInformativeText("Click OK to run homing")
-        msg.setWindowTitle("Confirmation")
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel) # type: ignore
-        msg.setDefaultButton(QMessageBox.Cancel)
-        retval = msg.exec_()
-        if QMessageBox.Ok == retval:
-            self.hcs_controller.home_z()
-
-    def zero_x(self):
-        self.hcs_controller.zero_x()
-
-    def zero_y(self):
-        self.hcs_controller.zero_y()
 
     def zero_z(self):
         self.hcs_controller.zero_z()

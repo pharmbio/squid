@@ -22,16 +22,10 @@ class LaserAutofocusControlWidget(QFrame):
         super().__init__(*args, **kwargs)
         self.laserAutofocusController = laserAutofocusController
 
-        self.add_components()
-
-        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
-
-    def add_components(self):
         self.btn_initialize = Button(INITIALIZE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_INITIALIZE_TOOLTIP,on_clicked=self.initialize).widget
         self.btn_set_reference = Button(SET_REFERENCE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_SET_REFERENCE_TOOLTIP,on_clicked=self.set_reference).widget
 
         self.label_displacement = QLabel()
-        self.label_displacement.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.laserAutofocusController.signal_displacement_um.connect(self.label_displacement.setNum)
 
         self.btn_measure_displacement = Button(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_MEASURE_DISPLACEMENT_TOOLTIP,on_clicked=self.measure_displacement).widget

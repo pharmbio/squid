@@ -308,7 +308,7 @@ class HCSController(QObject):
         self.set_selected_configurations(channels)
 
         # set image saving location
-        self.multipointController.set_base_path(path="/home/pharmbio/Downloads")
+        self.multipointController.set_base_path(path=MACHINE_CONFIG.DEFAULT_PATH)
         self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)

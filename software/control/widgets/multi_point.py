@@ -50,12 +50,6 @@ class MultiPointWidget(QFrame):
 
         self.base_path_is_set = False
 
-        self.add_components()
-        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
-
-    @TypecheckFunction
-    def add_components(self):
-
         if True: # add image saving options (path where to save)
             self.btn_setSavingDir = Button('Browse',default=False).widget
             self.btn_setSavingDir.setIcon(QIcon('icon/folder.png'))
