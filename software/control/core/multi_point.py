@@ -221,7 +221,10 @@ class MultiPointWorker(QObject):
             if self.num_positions_per_well>1:
                 _=next(self.well_tqdm_iter,0)
 
-            file_ID = f'{coordinate_name}_dz{k}'
+            if self.NZ > 1:
+                file_ID = f'{coordinate_name}_z{k}'
+            else:
+                file_ID = f'{coordinate_name}'
             # metadata = dict(x = self.navigationController.x_pos_mm, y = self.navigationController.y_pos_mm, z = self.navigationController.z_pos_mm)
             # metadata = json.dumps(metadata)
 
@@ -334,7 +337,7 @@ class MultiPointWorker(QObject):
 
                     j_actual = j if self.x_scan_direction==1 else self.NX-1-j
                     site_index = 1 + j_actual + i * self.NX
-                    coordinate_name = f'{base_coordinate_name}_{site_index}_dx{j_actual}_dy{i}' # _dz{k} added later
+                    coordinate_name = f'{base_coordinate_name}_s{site_index}_x{j_actual}_y{i}' # _z{k} added later (if needed)
 
                     image_position=True
 
