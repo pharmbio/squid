@@ -269,4 +269,5 @@ class ImageArrayDisplayWindow(QMainWindow):
     def display_image(self,image,channel_index:int):
         #print(f"{self.graphics_widgets[0].view.getState()['viewRange']=}")
 
-        self.graphics_widgets[self.channel_mappings[channel_index]].img.setImage(image,autoLevels=False)
+        # display image, flipped across x (to counteract the displaying of the image as flipped across x)
+        self.graphics_widgets[self.channel_mappings[channel_index]].img.setImage(image[::-1,:],autoLevels=False)

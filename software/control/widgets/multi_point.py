@@ -18,15 +18,46 @@ from control.gui import *
 BUTTON_START_ACQUISITION_IDLE_TEXT="Start Acquisition"
 BUTTON_START_ACQUISITION_RUNNING_TEXT="Abort Acquisition"
 
-AF_CHANNEL_TOOLTIP="set channel that will be used for autofocus measurements"
 IMAGE_FORMAT_TOOLTIP="change file format for images acquired with the multi point acquisition function"
-compression_tooltip="enable image file compression (not supported for bmp)"
-SOFTWARE_AUTOFOCUS_TOOLTIP="enable autofocus for multipoint acquisition\nfor each well the autofocus will be calculated in the channel selected below"
+COMPRESSION_TOOLTIP="Enable (lossless) image file compression (only supported by TIF)"
+SOFTWARE_AUTOFOCUS_TOOLTIP="""
+Enable software autofocus for multipoint acquisition
+
+Once per well (?), software autofocus will be performed, i.e. a z-stack is imaged, a focus measure calculated for each image in the stack, then the objective will move to the z-position at which the most in-focus picture was taken.
+Note that the focus once per well may not be enough for certain well plate types to have in-focus images outside of the image taken at the position where the autofocus procedure was performed.
+
+Note: Use laser or software autofocus exclusively! (or neither)
+"""
+AF_CHANNEL_TOOLTIP="Set imaging channel that will be used to calculate a focus measure for the z-stack. See software autofocus checkbox tooltip for details."
+LASER_AUTOFOCUS_TOOLTIP="""
+Enable laser autofocus for multipoint acquisition.
+
+For each imaged position the offset from a reference plane will be measured, then the objective moved so that it is in the focus plane for the current position.
+
+For each of the 5 channels there can be a channel-specific offset from the reference plane to account for differences in (average) organelle height over the bottom of the well plate.
+This value can be positive or negative, so you are free to choose any channel as reference.
+
+A channel specific offset other than zero will increase the overall imaging time.
+Offset values below 0.3 will be considered zero.
+
+If this checkbox is disabled (i.e. cannot be clicked/checked), the laser autofocus has not been properly initialized (needs to be done manually before starting multi-point acquisition).
+
+To initialize the laser autofocus:
+1. Bring the reference channel in any well into focus.
+2. In the 'Laser Autofocus' panel below, press the 'Initialize' Button. (see this buttons tooltip for more info)
+3. Click 'Set as reference plane'. (see this buttons tooltip for more info)
+4. Click 'Measure Displacement'. The number should be close to zero if the objective (and stage) has not been moved after the last reference plane was set.
+
+Note: Use laser or software autofocus exclusively! (or neither)
+"""
 
 dx_tooltip="acquire grid of images (Nx images with dx mm in between acquisitions; dx does not matter if Nx is 1)\ncan be combined with dy/Ny and dz/Nz and dt/Nt for a total of Nx * Ny * Nz * Nt images"
 dy_tooltip="acquire grid of images (Ny images with dy mm in between acquisitions; dy does not matter if Ny is 1)\ncan be combined with dx/Nx and dz/Nz and dt/Nt for a total of Nx*Ny*Nz*Nt images"
 dz_tooltip="acquire z-stack of images (Nz images with dz µm in between acquisitions; dz does not matter if Nz is 1)\ncan be combined with dx/Nx and dy/Ny and dt/Nt for a total of Nx*Ny*Nz*Nt images"
 dt_tooltip="acquire time-series of 'Nt' images, with 'dt' seconds in between acquisitions (dt does not matter if Nt is 1)\ncan be combined with dx/Nx and dy/Ny and dz/Nz for a total of Nx*Ny*Nz*Nt images"
+
+UNSELECTED_GRID_POSITION_COLOR="lightgrey"
+SELECTED_GRID_POSITION_COLOR="lightblue"
 
 class MultiPointWidget(QFrame):
     @property
@@ -65,14 +96,11 @@ class MultiPointWidget(QFrame):
 
             self.lineEdit_experimentID = QLineEdit()
 
-            self.image_compress_widget=QCheckBox()
-            self.image_compress_widget.stateChanged.connect(self.set_image_compression)
-            self.image_compress_widget.setToolTip(compression_tooltip)
-
-            self.image_compress_widget_container=HBox(
-                Label("compression",tooltip=compression_tooltip),
-                self.image_compress_widget
-            ).layout
+            self.image_compress_widget=Checkbox(
+                label="compression",
+                tooltip=COMPRESSION_TOOLTIP,
+                on_stateChanged=self.set_image_compression
+            ).widget
 
             self.image_format_widget=Dropdown(
                 items=["BMP","TIF"],
@@ -146,6 +174,7 @@ class MultiPointWidget(QFrame):
             self.checkbox_laserAutofocs = QCheckBox('Laser AF')
             self.checkbox_laserAutofocs.setChecked(False)
             self.checkbox_laserAutofocs.setDisabled(True)
+            self.checkbox_laserAutofocs.setToolTip(LASER_AUTOFOCUS_TOOLTIP)
             self.checkbox_laserAutofocs.stateChanged.connect(self.hcs_controller.set_laser_af_flag)
             self.hcs_controller.set_laser_af_flag(False)
 
@@ -168,7 +197,7 @@ class MultiPointWidget(QFrame):
         grid_line1 = Grid([
             QLabel('Experiment ID'),
             self.lineEdit_experimentID,
-            self.image_compress_widget_container,
+            self.image_compress_widget,
             self.image_format_widget,
         ])
 
@@ -330,13 +359,12 @@ class MultiPointWidget(QFrame):
     def toggle_well_grid_selection(self,event_data,row:int,column:int):
         grid_item=self.well_grid_items[row][column]
         if self.well_grid_items_selected[row][column]:
-            grid_item.background_color="red"
-            grid_item.generate_stylesheet()
+            grid_item.background_color=UNSELECTED_GRID_POSITION_COLOR
             self.well_grid_items_selected[row][column]=False
         else:
-            grid_item.background_color="green"
-            grid_item.generate_stylesheet()
+            grid_item.background_color=SELECTED_GRID_POSITION_COLOR
             self.well_grid_items_selected[row][column]=True
+        grid_item.generate_stylesheet()
 
     def channel_list_rows_moved(self,_parent:QModelIndex,row_range_moved_start:int,row_range_moved_end:int,_destination:QModelIndex,row_index_drop_release:int):
         # saved items about to be moved

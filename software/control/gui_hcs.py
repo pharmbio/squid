@@ -27,19 +27,39 @@ import os
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
 LIVE_BUTTON_RUNNING_TEXT="Stop Live"
-
 LIVE_BUTTON_TOOLTIP="""start/stop live image view
 
 displays each image that is recorded by the camera
 
 useful for manual investigation of a plate and/or imaging settings. Note that this can lead to strong photobleaching. Consider using the snapshot button instead (labelled 'snap')"""
+
+BTN_SNAP_LABEL="snap"
 BTN_SNAP_TOOLTIP="take single image (minimizes bleaching for manual testing)"
+BTN_SNAP_ALL_LABEL="snap all"
+BTN_SNAP_ALL_TOOLTIP="Take image in all channels and display them in the multi-point acqusition panel."
 
-exposure_time_tooltip="exposure time is the time the camera sensor records an image. Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light)"
-analog_gain_tooltip="analog gain increases the camera sensor sensitiviy. Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise."
-channel_offset_tooltip="channel specific z offset used in multipoint acquisition to focus properly in channels that are not in focus at the same time the nucleus is (given the nucleus is the channel that is used for focusing)"
+EXPOSURE_TIME_TOOLTIP="exposure time is the time the camera sensor records an image. Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light)"
+ANALOG_GAIN_TOOLTIP="analog gain increases the camera sensor sensitiviy. Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise."
+CHANNEL_OFFSET_TOOLTIP="channel specific z offset used in multipoint acquisition to focus properly in channels that are not in focus at the same time the nucleus is (given the nucleus is the channel that is used for focusing)"
+ILLUMINATION_TOOLTIP="""
+Illumination %.
 
-CAMERA_PIXEL_FORMAT_TOOLTIP="camera pixel format\n\nMONO8 means monochrome (grey-scale) 8bit\nMONO12 means monochrome 12bit\n\nmore bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size"
+Fraction of laser power used for illumination of the sample.
+
+Similar effect as exposure time, e.g. the signal is about the same at 50% illumination as it is at half the exposure time.
+If the signal shall be reduced, prefer reducing the exposure time rather than the illumination to reduce imaging time.
+
+Range is 0.1 - 100.0 %.
+"""
+
+CAMERA_PIXEL_FORMAT_TOOLTIP="""
+Camera pixel format
+
+MONO8 means monochrome (grey-scale) 8bit
+MONO12 means monochrome 12bit
+
+more bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size
+"""
 
 FPS_TOOLTIP="Frames per second that are recorded while live"
 
@@ -106,76 +126,6 @@ class OctopiGUI(QMainWindow):
     def laserAutofocusController(self)->core.LaserAutofocusController:
         return self.hcs_controller.laserAutofocusController
 
-    # @TypecheckFunction # dont check because signal cannot yet be checked properly
-    def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str])->Optional[Signal]:
-        self.navigationViewer.register_preview_fovs()
-
-        well_list=self.wellSelectionWidget.currently_selected_well_indices
-
-        af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
-
-        acquisition_thread=self.hcs_controller.acquire(
-            well_list,
-            imaging_channel_list,
-            experiment_data_target_folder,
-            grid_data={
-                'x':{'d':self.multipointController.deltaX,'N':self.multipointController.NX},
-                'y':{'d':self.multipointController.deltaY,'N':self.multipointController.NY},
-                'z':{'d':self.multipointController.deltaZ,'N':self.multipointController.NZ},
-                't':{'d':self.multipointController.deltat,'N':self.multipointController.Nt},
-            },
-            af_channel=af_channel,
-            set_num_acquisitions_callback=self.set_num_acquisitions,
-            on_new_acquisition=self.on_step_completed,
-
-            grid_mask=self.multiPointWidget.well_grid_items_selected,
-            headless=False, # allow display of gui components like warning messages
-        )
-        
-        if acquisition_thread is None:
-            return None
-
-        return acquisition_thread.finished
-
-    def set_num_acquisitions(self,num:int):
-        self.acquisition_progress=0
-        self.total_num_acquisitions=num
-        self.acquisition_start_time=time.monotonic()
-        self.multiPointWidget.progress_bar.setValue(0)
-        self.multiPointWidget.progress_bar.setMinimum(0)
-        self.multiPointWidget.progress_bar.setMaximum(num)
-
-    def on_step_completed(self,step:str):
-        if step=="x": # x (in well)
-            pass
-        elif step=="y": # y (in well)
-            pass
-        elif step=="z": # z (in well)
-            pass
-        elif step=="t": # time
-            pass
-        elif step=="c": # channel
-            # this is the innermost callback
-            # for each one of these, one image is actually taken
-
-            self.acquisition_progress+=1
-            self.multiPointWidget.progress_bar.setValue(self.acquisition_progress)
-
-            time_elapsed_since_start=time.monotonic()-self.acquisition_start_time
-            approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
-
-            elapsed_time_str=seconds_to_long_time(time_elapsed_since_start)
-            if self.acquisition_progress==self.total_num_acquisitions:
-                self.multiPointWidget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
-            else:
-                approx_time_left_str=seconds_to_long_time(approx_time_left)
-                done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
-                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
-                self.multiPointWidget.progress_bar.setFormat(progress_bar_text)
-
-    def abort_experiment(self):
-        self.multipointController.request_abort_aquisition()
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -209,13 +159,14 @@ class OctopiGUI(QMainWindow):
             config_manager=ObjectManager()
 
             imaging_modes_wide_widgets.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
-            imaging_modes_wide_widgets.append(GridItem(config_manager.snap == Button("snap",on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
+            imaging_modes_wide_widgets.append(GridItem(config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
             top_row=[
                 *([None]*4),
-                Label("illumination:").widget,
+                Label("illumination:",tooltip=ILLUMINATION_TOOLTIP).widget,
                 config_manager.illumination_strength == SpinBoxDouble(
                     minimum=0.1,maximum=100.0,step=0.1,
                     default=config.illumination_intensity,
+                    tooltip=ILLUMINATION_TOOLTIP,
                     on_valueChanged=[
                         config.set_illumination_intensity,
                         self.configurationManager.save_configurations,
@@ -226,31 +177,34 @@ class OctopiGUI(QMainWindow):
             imaging_modes_widget_list.append(top_row)
 
             bottom_row=[
-                Label("exposure time:").widget,
+                Label("exposure time:",tooltip=EXPOSURE_TIME_TOOLTIP).widget,
                 config_manager.exposure_time == SpinBoxDouble(
                     minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
                     maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
-                    default=config.exposure_time,tooltip=exposure_time_tooltip,
+                    default=config.exposure_time,
+                    tooltip=EXPOSURE_TIME_TOOLTIP,
                     on_valueChanged=[
                         config.set_exposure_time,
                         self.configurationManager.save_configurations,
                         lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                     ]
                 ).widget,
-                Label("gain:").widget,
+                Label("gain:",tooltip=ANALOG_GAIN_TOOLTIP).widget,
                 config_manager.analog_gain == SpinBoxDouble(
                     minimum=0.0,maximum=24.0,step=0.1,
-                    default=config.analog_gain,tooltip=analog_gain_tooltip,
+                    default=config.analog_gain,
+                    tooltip=ANALOG_GAIN_TOOLTIP,
                     on_valueChanged=[
                         config.set_analog_gain,
                         self.configurationManager.save_configurations,
                         lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                     ]
                 ).widget,
-                Label("offset:").widget,
+                Label("offset:",tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
                 config_manager.z_offset == SpinBoxDouble(
                     minimum=-30.0,maximum=30.0,step=0.1,
-                    default=config.channel_z_offset,tooltip=channel_offset_tooltip,
+                    default=config.channel_z_offset,
+                    tooltip=CHANNEL_OFFSET_TOOLTIP,
                     on_valueChanged=[
                         config.set_offset,
                         self.configurationManager.save_configurations,
@@ -274,7 +228,10 @@ class OctopiGUI(QMainWindow):
         self.named_widgets.live == ObjectManager()
         self.imagingModes=VBox(
             # snap and channel config section
-            self.named_widgets.snap_all_button == Button("snap all",tooltip="take a snapshot in all channels and display in multi-point acquisition panel",on_clicked=self.snap_all),
+            HBox(
+                self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_all),
+                self.named_widgets.snap_all_with_offset_checkbox == Checkbox("incl. offset",tooltip="move to channel-specific offset from reference plane on snap"),
+            ),
 
             Label(""),
             Grid(*flatten([
@@ -282,14 +239,7 @@ class OctopiGUI(QMainWindow):
                 imaging_modes_wide_widgets
             ])),
 
-            # live viewing and config save/load section
-            Label(""),
-            HBox(
-                self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
-                self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
-                Label("max. FPS",tooltip=FPS_TOOLTIP),
-                self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
-            ),
+            # config save/load section
             Label(""),
             HBox(
                 self.named_widgets.save_config_button == Button("save config to file",tooltip="save settings related to all imaging modes/channels in a new file (this will open a window where you can specify the location to save the config file)",on_clicked=self.save_illumination_config),
@@ -305,6 +255,15 @@ class OctopiGUI(QMainWindow):
             Dock(self.histogramWidget,"Histogram").widget,
             self.backgroundSliderContainer,
             self.imageEnhanceWidget,
+
+            # focus related stuff section
+            Label(""),
+            HBox(
+                self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
+                self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
+                Label("max. FPS",tooltip=FPS_TOOLTIP),
+                self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
+            ),
 
             Label(""),
             self.laserAutofocusControlWidget,
@@ -444,6 +403,76 @@ class OctopiGUI(QMainWindow):
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
 
+    # @TypecheckFunction # dont check because signal cannot yet be checked properly
+    def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str])->Optional[Signal]:
+        self.navigationViewer.register_preview_fovs()
+
+        well_list=self.wellSelectionWidget.currently_selected_well_indices
+
+        af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
+
+        acquisition_thread=self.hcs_controller.acquire(
+            well_list,
+            imaging_channel_list,
+            experiment_data_target_folder,
+            grid_data={
+                'x':{'d':self.multipointController.deltaX,'N':self.multipointController.NX},
+                'y':{'d':self.multipointController.deltaY,'N':self.multipointController.NY},
+                'z':{'d':self.multipointController.deltaZ,'N':self.multipointController.NZ},
+                't':{'d':self.multipointController.deltat,'N':self.multipointController.Nt},
+            },
+            af_channel=af_channel,
+            set_num_acquisitions_callback=self.set_num_acquisitions,
+            on_new_acquisition=self.on_step_completed,
+
+            grid_mask=self.multiPointWidget.well_grid_items_selected,
+            headless=False, # allow display of gui components like warning messages
+        )
+        
+        if acquisition_thread is None:
+            return None
+
+        return acquisition_thread.finished
+
+    def set_num_acquisitions(self,num:int):
+        self.acquisition_progress=0
+        self.total_num_acquisitions=num
+        self.acquisition_start_time=time.monotonic()
+        self.multiPointWidget.progress_bar.setValue(0)
+        self.multiPointWidget.progress_bar.setMinimum(0)
+        self.multiPointWidget.progress_bar.setMaximum(num)
+
+    def on_step_completed(self,step:str):
+        if step=="x": # x (in well)
+            pass
+        elif step=="y": # y (in well)
+            pass
+        elif step=="z": # z (in well)
+            pass
+        elif step=="t": # time
+            pass
+        elif step=="c": # channel
+            # this is the innermost callback
+            # for each one of these, one image is actually taken
+
+            self.acquisition_progress+=1
+            self.multiPointWidget.progress_bar.setValue(self.acquisition_progress)
+
+            time_elapsed_since_start=time.monotonic()-self.acquisition_start_time
+            approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
+
+            elapsed_time_str=seconds_to_long_time(time_elapsed_since_start)
+            if self.acquisition_progress==self.total_num_acquisitions:
+                self.multiPointWidget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
+            else:
+                approx_time_left_str=seconds_to_long_time(approx_time_left)
+                done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
+                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
+                self.multiPointWidget.progress_bar.setFormat(progress_bar_text)
+
+    def abort_experiment(self):
+        self.multipointController.request_abort_aquisition()
+
     def well_click_callback(self,event,i,j):
         """ TODO : implement custom well selection widget """
         self.named_widgets.wells[i*16+j].setStyleSheet("QWidget {background-color: blue;}")
@@ -571,7 +600,7 @@ class OctopiGUI(QMainWindow):
 
             self.set_illumination_config_path_display(new_path=load_path,set_config_changed=False)
 
-    def snap_single(self,_button_state,config,display_in_image_array_display:bool=False,preserve_existing_histogram:bool=False):
+    def snap_single(self,_button_state,config,display_in_image_array_display:bool=True,preserve_existing_histogram:bool=False):
         image=self.liveController.snap(config)
         QApplication.processEvents()
         histogram_color=CHANNEL_COLORS[config.illumination_source]
@@ -621,21 +650,18 @@ class OctopiGUI(QMainWindow):
         ).layout
         self.imageContrastAdjust.value=1.0
 
-        self.histogramLogScaleCheckbox=QCheckBox()
         self.histogram_log_scale=histogram_log_display_default
-        self.histogramLogScaleCheckbox.setCheckState(self.histogram_log_scale*2) # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
-        self.histogramLogScaleCheckbox.stateChanged.connect(self.setHistogramLogScale)
-        self.histogramLogScaleCheckbox.setToolTip("calculate histogram with log scale?")
-
-        self.histogramLogScaleContainer=HBox(
-            QLabel("log"),
-            self.histogramLogScaleCheckbox
-        ).layout
+        self.histogramLogScaleCheckbox=Checkbox(
+            label="Histogram Log scale",
+            checked=self.histogram_log_scale*2, # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
+            tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
+            on_stateChanged=self.setHistogramLogScale,
+        )
 
         self.imageEnhanceWidget=HBox(
             self.imageBrightnessAdjust,
             self.imageContrastAdjust,
-            self.histogramLogScaleContainer,
+            self.histogramLogScaleCheckbox,
         ).layout
         self.last_raw_image=None
         self.last_image_data=None

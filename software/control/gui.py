@@ -58,7 +58,53 @@ def as_widget(layout)->QWidget:
 class HasLayout():
     pass
 class HasWidget():
-    pass
+    def __init__(self,
+        enabled:Optional[bool]=None,
+
+        *args,
+        **kwargs,
+    ):
+        if not enabled is None:
+            self.widget.setEnabled(enabled)
+
+        super().__init__(*args,**kwargs)
+        
+class HasToolTip(HasWidget):
+    def __init__(self,
+        tooltip:Optional[str]=None,
+
+        *args,
+        **kwargs,
+    ):
+        if not tooltip is None:
+            self.widget.setToolTip(tooltip)
+
+        super().__init__(*args,**kwargs)
+
+class HasCallbacks(HasWidget):
+    def __init__(self,*args,**kwargs):
+        unused_kwargs={}
+        for key,value in kwargs.items():
+            if key.startswith("on_"):
+                signal_name=key[3:]
+                assert len(signal_name)>0
+
+                try:
+                    if isinstance(value,list):
+                        for callback in value:
+                            getattr(self.widget,signal_name).connect(callback)
+                    else:
+                        getattr(self.widget,signal_name).connect(value)
+
+                    # continue only if setting callback was successfull
+                    continue
+                except:
+                    pass
+            
+            # if setting callback was unsuccessfull (for whatever reason), forward argument to other constructors
+            unused_kwargs[key]=value
+
+        super().__init__(*args,**unused_kwargs)
 
 def try_add_member(adder,addee,*args,**kwargs):
     if isinstance(addee,HasLayout):
@@ -124,7 +170,7 @@ class VBox(HasLayout,HasWidget):
     def widget(self):
         return as_widget(self.layout)
 
-class SpinBoxDouble(HasWidget):
+class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
         minimum:Optional[float]=None,
         maximum:Optional[float]=None,
@@ -132,8 +178,8 @@ class SpinBoxDouble(HasWidget):
         step:Optional[float]=None,
         num_decimals=None,
         keyboard_tracking=None,
-        tooltip:Optional[str]=None,
-
+        
+        *args,
         **kwargs,
     ):
         self.widget=QDoubleSpinBox()
@@ -150,21 +196,10 @@ class SpinBoxDouble(HasWidget):
             self.widget.setDecimals(num_decimals)
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
-        if not tooltip is None:
-            self.widget.setToolTip(tooltip)
 
-        for key,value in kwargs.items():
-            if key.startswith("on_"):
-                signal_name=key[3:]
-                assert len(signal_name)>0
+        super().__init__(*args,**kwargs)
 
-                if isinstance(value,list):
-                    for callback in value:
-                        getattr(self.widget,signal_name).connect(callback)
-                else:
-                    getattr(self.widget,signal_name).connect(value)
-
-class SpinBoxInteger(HasWidget):
+class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
         minimum:Optional[int]=None,
         maximum:Optional[int]=None,
@@ -172,8 +207,8 @@ class SpinBoxInteger(HasWidget):
         step:Optional[int]=None,
         num_decimals=None,
         keyboard_tracking=None,
-        tooltip:Optional[str]=None,
 
+        *args,
         **kwargs,
     ):
         self.widget=QSpinBox()
@@ -190,30 +225,20 @@ class SpinBoxInteger(HasWidget):
             self.widget.setDecimals(num_decimals)
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
-        if not tooltip is None:
-            self.widget.setToolTip(tooltip)
 
-        for key,value in kwargs.items():
-            if key.startswith("on_"):
-                signal_name=key[3:]
-                assert len(signal_name)>0
+        super().__init__(*args,**kwargs)
 
-                if isinstance(value,list):
-                    for callback in value:
-                        getattr(self.widget,signal_name).connect(callback)
-                else:
-                    getattr(self.widget,signal_name).connect(value)
-
-class Label(HasWidget):
+class Label(HasToolTip,HasWidget):
     def __init__(self,
         text:str,
-        tooltip:Optional[str]=None,
         text_color:Optional[str]=None,
-        background_color:Optional[str]=None
+        background_color:Optional[str]=None,
+
+        *args,
+        **kwargs,
     ):
         self.widget=QLabel(text)
-        if not tooltip is None:
-            self.widget.setToolTip(tooltip)
+        
         stylesheet=""
         if not text_color is None:
             stylesheet+=f"color : {text_color} ; "
@@ -223,40 +248,61 @@ class Label(HasWidget):
             final_stylesheet=f"QLabel {{ { stylesheet } }}"
             self.widget.setStyleSheet(final_stylesheet)
 
+        super().__init__(*args,**kwargs)
 
-class Button(HasWidget):
+
+class Button(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
         text:str,
         default:Optional[bool]=None,
-        enabled:Optional[bool]=None,
         checkable:Optional[bool]=None,
         checked:Optional[bool]=None,
-        tooltip:Optional[str]=None,
 
+        *args,
         **kwargs,
     ):
         self.widget=QPushButton(text)
+
         if not default is None:
             self.widget.setDefault(default)
-        if not enabled is None:
-            self.widget.setEnabled(enabled)
         if not checkable is None:
             self.widget.setCheckable(checkable)
         if not checked is None:
             self.widget.setChecked(checked)
-        if not tooltip is None:
-            self.widget.setToolTip(tooltip)
 
-        for key,value in kwargs.items():
-            if key.startswith("on_"):
-                signal_name=key[3:]
-                assert len(signal_name)>0
+        super().__init__(*args,**kwargs)            
 
-                if isinstance(value,list):
-                    for callback in value:
-                        getattr(self.widget,signal_name).connect(callback)
-                else:
-                    getattr(self.widget,signal_name).connect(value)
+class Dropdown(HasCallbacks,HasToolTip,HasWidget):
+    def __init__(self,
+        items:List[Any],
+        current_index:int,
+
+        *args,
+        **kwargs,
+    ):
+        self.widget=QComboBox()
+        self.widget.addItems(items)
+        self.widget.setCurrentIndex(current_index)
+
+        super().__init__(*args,**kwargs)
+                    
+class Checkbox(HasCallbacks,HasToolTip,HasWidget):
+    def __init__(self,
+        label:str,
+
+        checked:Optional[bool]=None,
+        
+        *args,
+        **kwargs,
+    ):
+        self.widget=QCheckBox(label)
+
+        if not checked is None:
+            self.widget.setCheckState(checked)
+
+        super().__init__(*args,**kwargs)
+
+# special widgets
 
 class Tab(HasWidget):
     def __init__(self,widget,title:Optional[str]=None):
@@ -297,31 +343,7 @@ class DockArea(HasWidget):
         if minimize_height:
             self.widget.setFixedHeight(self.widget.minimumSizeHint().height())
 
-class Dropdown(HasWidget):
-    def __init__(self,
-        items:List[Any],
-        current_index:int,
-        tooltip:Optional[str]=None,
-
-        **kwargs,
-    ):
-        self.widget=QComboBox()
-        self.widget.addItems(items)
-        self.widget.setCurrentIndex(current_index)
-
-        if not tooltip is None:
-            self.widget.setToolTip(tooltip)
-
-        for key,value in kwargs.items():
-            if key.startswith("on_"):
-                signal_name=key[3:]
-                assert len(signal_name)>0
-
-                if isinstance(value,list):
-                    for callback in value:
-                        getattr(self.widget,signal_name).connect(callback)
-                else:
-                    getattr(self.widget,signal_name).connect(value)
+# more like windows rather than widgets
 
 class FileDialog:
     @TypecheckFunction
