@@ -8,6 +8,7 @@ from qtpy.QtWidgets import QApplication
 
 # app specific libraries
 import control.gui_hcs as gui
+import control.core as core
 
 if __name__ == "__main__":
     app = QApplication([])
@@ -17,7 +18,7 @@ if __name__ == "__main__":
         win = gui.OctopiGUI()
         win.show()
     else:
-        c=gui.HCSController()
+        c=core.Core()
         c.acquire(
             well_list=[(1,1)], # (0,0) is A1
             channels=["Fluorescence 561 nm Ex"],

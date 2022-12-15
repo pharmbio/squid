@@ -17,8 +17,7 @@ import numpy
 from typing import Optional, List, Union, Tuple, Callable
 
 import control.camera as camera
-from control.core import Configuration, NavigationController, LiveController, AutoFocusController, ConfigurationManager, ImageSaver #, LaserAutofocusController
-#import control.widgets as widgets # not possible because circular import
+from control.core import StreamingCamera, Configuration, NavigationController, LiveController, AutoFocusController, ConfigurationManager, ImageSaver #, LaserAutofocusController
 from control.typechecker import TypecheckFunction
 
 from tqdm import tqdm
@@ -52,7 +51,7 @@ class MultiPointWorker(QObject):
         # copy all (relevant) fields to unlock multipointcontroller on thread start
         self.camera = self.multiPointController.camera
         self.microcontroller = self.multiPointController.microcontroller
-        self.navigationController = self.multiPointController.navigationController
+        self.navigation = self.multiPointController.navigation
         self.liveController = self.multiPointController.liveController
         self.autofocusController = self.multiPointController.autofocusController
         self.laserAutofocusController = self.multiPointController.laserAutofocusController
@@ -156,7 +155,7 @@ class MultiPointWorker(QObject):
         if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
             #print(f"moving to relative offset {target_um}µm")
             self.movement_deviation_from_focusplane=target_um
-            self.navigationController.move_z(um_to_move/1000,wait_for_completion={},wait_for_stabilization=True)
+            self.navigation.move_z(um_to_move/1000,wait_for_completion={},wait_for_stabilization=True)
 
         image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
 
@@ -211,10 +210,10 @@ class MultiPointWorker(QObject):
             # move to bottom of the z stack
             if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
                 base_z=-self.deltaZ_usteps*round((self.NZ-1)/2)
-                self.navigationController.move_z_usteps(base_z,wait_for_completion={},wait_for_stabilization=True)
+                self.navigation.move_z_usteps(base_z,wait_for_completion={},wait_for_stabilization=True)
             # maneuver for achiving uniform step size and repeatability when using open-loop control
-            self.navigationController.move_z_usteps(-160,wait_for_completion={})
-            self.navigationController.move_z_usteps(160,wait_for_completion={},wait_for_stabilization=True)
+            self.navigation.move_z_usteps(-160,wait_for_completion={})
+            self.navigation.move_z_usteps(160,wait_for_completion={},wait_for_stabilization=True)
 
         # z-stack
         for k in range(self.NZ):
@@ -225,7 +224,7 @@ class MultiPointWorker(QObject):
                 file_ID = f'{coordinate_name}_z{k}'
             else:
                 file_ID = f'{coordinate_name}'
-            # metadata = dict(x = self.navigationController.x_pos_mm, y = self.navigationController.y_pos_mm, z = self.navigationController.z_pos_mm)
+            # metadata = dict(x = self.navigation.x_pos_mm, y = self.navigation.y_pos_mm, z = self.navigation.z_pos_mm)
             # metadata = json.dumps(metadata)
 
             self.movement_deviation_from_focusplane=0.0
@@ -238,13 +237,13 @@ class MultiPointWorker(QObject):
             # add the coordinate of the current location
             ret_coords.append({
                 'i':i,'j':j,'k':k,
-                'x (mm)':self.navigationController.x_pos_mm,
-                'y (mm)':self.navigationController.y_pos_mm,
-                'z (um)':self.navigationController.z_pos_mm*1000
+                'x (mm)':self.navigation.x_pos_mm,
+                'y (mm)':self.navigation.y_pos_mm,
+                'z (um)':self.navigation.z_pos_mm*1000
             })
 
             # register the current fov in the navigationViewer 
-            self.signal_register_current_fov.emit(self.navigationController.x_pos_mm,self.navigationController.y_pos_mm)
+            self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
 
             # check if the acquisition should be aborted
             if self.multiPointController.abort_acqusition_requested:
@@ -253,7 +252,7 @@ class MultiPointWorker(QObject):
             if self.NZ > 1:
                 # move z
                 if k < self.NZ - 1:
-                    self.navigationController.move_z_usteps(self.deltaZ_usteps,wait_for_completion={},wait_for_stabilization=True)
+                    self.navigation.move_z_usteps(self.deltaZ_usteps,wait_for_completion={},wait_for_stabilization=True)
                     self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
 
             self.signal_new_acquisition.emit('z')
@@ -265,7 +264,7 @@ class MultiPointWorker(QObject):
                 latest_offset+=self.deltaZ_usteps*round((self.NZ-1)/2)
 
             self.on_abort_dz_usteps += latest_offset
-            self.navigationController.move_z_usteps(latest_offset,wait_for_completion={})
+            self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
@@ -273,141 +272,142 @@ class MultiPointWorker(QObject):
         return ret_coords
 
     def run_single_time_point(self):
+        with StreamingCamera(self.camera):
 
-        # disable joystick button action
-        self.navigationController.enable_joystick_button_action = False
+            # disable joystick button action
+            self.navigation.enable_joystick_button_action = False
 
-        self.FOV_counter = 0
+            self.FOV_counter = 0
 
-        print('multipoint acquisition - time point ' + str(self.time_point+1))
+            print('multipoint acquisition - time point ' + str(self.time_point+1))
 
-        if self.Nt > 1:
-            # for each time point, create a new folder
-            current_path = os.path.join(self.base_path,self.experiment_ID,str(self.time_point))
-            self.current_path=current_path
-            os.mkdir(current_path)
-        else:
-            # only one time point, save it directly in the experiment folder
-            current_path = os.path.join(self.base_path,self.experiment_ID)
-            self.current_path=current_path
+            if self.Nt > 1:
+                # for each time point, create a new folder
+                current_path = os.path.join(self.base_path,self.experiment_ID,str(self.time_point))
+                self.current_path=current_path
+                os.mkdir(current_path)
+            else:
+                # only one time point, save it directly in the experiment folder
+                current_path = os.path.join(self.base_path,self.experiment_ID)
+                self.current_path=current_path
 
-        # create a dataframe to save coordinates
-        coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
+            # create a dataframe to save coordinates
+            coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
 
-        if not self.grid_mask is None:
-            self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
-        else:
-            self.num_positions_per_well=self.NX*self.NY*self.NZ
+            if not self.grid_mask is None:
+                self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
+            else:
+                self.num_positions_per_well=self.NX*self.NY*self.NZ
 
-        # each region is a well
-        n_regions = len(self.scan_coordinates_name)
-        for coordinate_id in range(n_regions) if n_regions==1 else tqdm(range(n_regions),desc="well on plate",unit="well"):
-            coordinate_mm = self.scan_coordinates_mm[coordinate_id]
-            base_coordinate_name = self.scan_coordinates_name[coordinate_id]
+            # each region is a well
+            n_regions = len(self.scan_coordinates_name)
+            for coordinate_id in range(n_regions) if n_regions==1 else tqdm(range(n_regions),desc="well on plate",unit="well"):
+                coordinate_mm = self.scan_coordinates_mm[coordinate_id]
+                base_coordinate_name = self.scan_coordinates_name[coordinate_id]
 
-            base_x=coordinate_mm[0]-self.deltaX*(self.NX-1)/2
-            base_y=coordinate_mm[1]-self.deltaY*(self.NY-1)/2
+                base_x=coordinate_mm[0]-self.deltaX*(self.NX-1)/2
+                base_y=coordinate_mm[1]-self.deltaY*(self.NY-1)/2
 
-            # move to the specified coordinate
-            self.navigationController.move_x_to(base_x,wait_for_completion={},wait_for_stabilization=True)
-            self.navigationController.move_y_to(base_y,wait_for_completion={},wait_for_stabilization=True)
+                # move to the specified coordinate
+                self.navigation.move_x_to(base_x,wait_for_completion={},wait_for_stabilization=True)
+                self.navigation.move_y_to(base_y,wait_for_completion={},wait_for_stabilization=True)
 
-            self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
-            self.on_abort_dx_usteps = 0
-            self.on_abort_dy_usteps = 0
-            self.on_abort_dz_usteps = 0
-            z_pos = self.navigationController.z_pos
+                self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
+                self.on_abort_dx_usteps = 0
+                self.on_abort_dy_usteps = 0
+                self.on_abort_dz_usteps = 0
+                z_pos = self.navigation.z_pos
 
-            # z stacking config
-            if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM TOP':
-                self.deltaZ_usteps = -abs(self.deltaZ_usteps)
+                # z stacking config
+                if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM TOP':
+                    self.deltaZ_usteps = -abs(self.deltaZ_usteps)
 
-            if self.num_positions_per_well>1:
-                # show progress when iterating over all well positions (do not differentiatte between xyz in this progress bar, it's too quick for that)
-                well_tqdm=tqdm(range(self.num_positions_per_well),desc="pos in well", unit="pos",leave=False)
-                self.well_tqdm_iter=iter(well_tqdm)
+                if self.num_positions_per_well>1:
+                    # show progress when iterating over all well positions (do not differentiatte between xyz in this progress bar, it's too quick for that)
+                    well_tqdm=tqdm(range(self.num_positions_per_well),desc="pos in well", unit="pos",leave=False)
+                    self.well_tqdm_iter=iter(well_tqdm)
 
-            # along y
-            for i in range(self.NY):
+                # along y
+                for i in range(self.NY):
 
-                self.FOV_counter = 0 # so that AF at the beginning of each new row
+                    self.FOV_counter = 0 # so that AF at the beginning of each new row
 
-                # along x
-                for j in range(self.NX):
+                    # along x
+                    for j in range(self.NX):
 
-                    j_actual = j if self.x_scan_direction==1 else self.NX-1-j
-                    site_index = 1 + j_actual + i * self.NX
-                    coordinate_name = f'{base_coordinate_name}_s{site_index}_x{j_actual}_y{i}' # _z{k} added later (if needed)
+                        j_actual = j if self.x_scan_direction==1 else self.NX-1-j
+                        site_index = 1 + j_actual + i * self.NX
+                        coordinate_name = f'{base_coordinate_name}_s{site_index}_x{j_actual}_y{i}' # _z{k} added later (if needed)
 
-                    image_position=True
+                        image_position=True
 
-                    if not self.grid_mask is None:
-                        image_position=self.grid_mask[i][j_actual]
+                        if not self.grid_mask is None:
+                            image_position=self.grid_mask[i][j_actual]
 
-                    if image_position:
-                        try:
-                            imaged_coords_dict_list=self.image_well_at_position(
-                                x=j,y=i,
-                                coordinate_name=coordinate_name,
-                            )
+                        if image_position:
+                            try:
+                                imaged_coords_dict_list=self.image_well_at_position(
+                                    x=j,y=i,
+                                    coordinate_name=coordinate_name,
+                                )
 
-                            coordinates_pd = pd.concat([
-                                coordinates_pd,
-                                pd.DataFrame(imaged_coords_dict_list)
-                            ])
-                        except AbortAcquisitionException:
-                            self.liveController.turn_off_illumination()
-                            self.navigationController.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
-                            self.navigationController.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
-                            self.navigationController.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
+                                coordinates_pd = pd.concat([
+                                    coordinates_pd,
+                                    pd.DataFrame(imaged_coords_dict_list)
+                                ])
+                            except AbortAcquisitionException:
+                                self.liveController.turn_off_illumination()
+                                self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
+                                self.navigation.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
+                                self.navigation.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
 
-                            coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
-                            self.navigationController.enable_joystick_button_action = True
+                                coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
+                                self.navigation.enable_joystick_button_action = True
 
-                            return
+                                return
 
-                    self.signal_new_acquisition.emit('x')
+                        self.signal_new_acquisition.emit('x')
 
-                    if self.NX > 1:
-                        # move x
-                        if j < self.NX - 1:
-                            self.navigationController.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
-                            self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
+                        if self.NX > 1:
+                            # move x
+                            if j < self.NX - 1:
+                                self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
+                                self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
 
-                # instead of move back, reverse scan direction (12/29/2021)
-                self.x_scan_direction = -self.x_scan_direction
+                    # instead of move back, reverse scan direction (12/29/2021)
+                    self.x_scan_direction = -self.x_scan_direction
 
-                if self.NY > 1:
-                    # move y
-                    if i < self.NY - 1:
-                        self.navigationController.move_y_usteps(self.deltaY_usteps,wait_for_completion={},wait_for_stabilization=True)
-                        self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
+                    if self.NY > 1:
+                        # move y
+                        if i < self.NY - 1:
+                            self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={},wait_for_stabilization=True)
+                            self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
 
-                self.signal_new_acquisition.emit('y')
+                    self.signal_new_acquisition.emit('y')
 
-            # exhaust tqdm iterator
-            if self.num_positions_per_well>1:
-                _=next(self.well_tqdm_iter,0)
+                # exhaust tqdm iterator
+                if self.num_positions_per_well>1:
+                    _=next(self.well_tqdm_iter,0)
 
-            if n_regions == 1:
-                # only move to the start position if there's only one region in the scan
-                if self.NY > 1:
-                    # move y back
-                    self.navigationController.move_y_usteps(-self.deltaY_usteps*(self.NY-1),wait_for_completion={},wait_for_stabilization=True)
-                    self.on_abort_dy_usteps = self.on_abort_dy_usteps - self.deltaY_usteps*(self.NY-1)
+                if n_regions == 1:
+                    # only move to the start position if there's only one region in the scan
+                    if self.NY > 1:
+                        # move y back
+                        self.navigation.move_y_usteps(-self.deltaY_usteps*(self.NY-1),wait_for_completion={},wait_for_stabilization=True)
+                        self.on_abort_dy_usteps = self.on_abort_dy_usteps - self.deltaY_usteps*(self.NY-1)
 
-                # move x back at the end of the scan
-                if self.x_scan_direction == -1:
-                    self.navigationController.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
+                    # move x back at the end of the scan
+                    if self.x_scan_direction == -1:
+                        self.navigation.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
 
-                # move z back
-                self.navigationController.microcontroller.move_z_to_usteps(z_pos)
-                self.navigationController.microcontroller.wait_till_operation_is_completed()
+                    # move z back
+                    self.navigation.microcontroller.move_z_to_usteps(z_pos)
+                    self.navigation.microcontroller.wait_till_operation_is_completed()
 
-        coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
-        self.navigationController.enable_joystick_button_action = True
+            coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
+            self.navigation.enable_joystick_button_action = True
 
-        self.signal_new_acquisition.emit('t')
+            self.signal_new_acquisition.emit('t')
 
 class MultiPointController(QObject):
 
@@ -433,7 +433,7 @@ class MultiPointController(QObject):
 
         self.camera = camera
         self.microcontroller = navigationController.microcontroller # to move to gui for transparency
-        self.navigationController = navigationController
+        self.navigation = navigationController
         self.liveController = liveController
         self.autofocusController = autofocusController
         self.laserAutofocusController = laserAutofocusController

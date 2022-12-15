@@ -67,7 +67,7 @@ class Camera(object):
         self.GAIN_MIN = 0
         self.GAIN_STEP = 1
         self.EXPOSURE_TIME_MS_MIN = 0.01
-        self.EXPOSURE_TIME_MS_MAX = 4000
+        self.EXPOSURE_TIME_MS_MAX = 968 # technically 1000, but hardware trigger adds some overhead that adds 31.5 ms on top, and the sum of these two values mut not exceed 1s, so we cap it intentionally to work with either trigger mode
 
         self.ROI_offset_x = CAMERA.ROI_OFFSET_X_DEFAULT
         self.ROI_offset_y = CAMERA.ROI_OFFSET_X_DEFAULT
@@ -90,6 +90,8 @@ class Camera(object):
         # mainly for discarding the last frame received after stop_live() is called, where illumination is being turned off during exposure
 
         self.used_for_laser_autofocus:bool=used_for_laser_autofocus
+
+        self.in_a_state_to_be_used_directly=False
 
     @TypecheckFunction
     def open(self,index:int=0):
@@ -202,10 +204,20 @@ class Camera(object):
     def update_camera_exposure_time(self):
         assert not self.camera is None
         use_strobe = (self.trigger_mode == TriggerMode.HARDWARE) # true if using hardware trigger
-        if use_strobe == False or self.is_global_shutter:
-            self.camera.ExposureTime.set(self.exposure_time * 1000)
+
+        min_exposure_time=self.camera.ExposureTime.get_range()['min']
+        max_exposure_time=self.camera.ExposureTime.get_range()['max']
+
+        camera_exposure_time=self.exposure_time * 1000
+
+        if not (use_strobe == False or self.is_global_shutter):
+            camera_exposure_time += self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
+
+        if camera_exposure_time < min_exposure_time:
+            print(f"camera exposure time is {camera_exposure_time} but must be at least {min_exposure_time}")
+        elif camera_exposure_time > max_exposure_time:
+            print(f"camera exposure time is {camera_exposure_time} but must not be above {max_exposure_time}")
         else:
-            camera_exposure_time = self.exposure_delay_us + self.exposure_time*1000 + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
             self.camera.ExposureTime.set(camera_exposure_time)
 
     @TypecheckFunction
@@ -252,15 +264,19 @@ class Camera(object):
 
     @TypecheckFunction
     def start_streaming(self):
-        assert not self.camera is None
-        self.camera.stream_on()
-        self.is_streaming = True
+        if not self.is_streaming:
+            assert not self.camera is None
+            self.camera.stream_on()
+            self.is_streaming = True
 
     @TypecheckFunction
     def stop_streaming(self):
-        assert not self.camera is None
-        self.camera.stream_off()
-        self.is_streaming = False
+        """ this takes 350ms!!!! avoid calling this function if at all possible! """
+
+        if self.is_streaming:
+            assert not self.camera is None
+            self.camera.stream_off()
+            self.is_streaming = False
 
     @TypecheckFunction
     def set_pixel_format(self,pixel_format:str):

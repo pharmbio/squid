@@ -9,9 +9,9 @@ import control.widgets as widgets
 from control.camera import Camera
 import control.core as core
 import control.microcontroller as microcontroller
-from control.hcs import HCSController
+#from control.hcs import HCSController
 from control._def import *
-import control.core_displacement_measurement as core_displacement_measurement
+from control.core.displacement_measurement import DisplacementMeasurementController
 from control.gui import *
 
 import pyqtgraph as pg
@@ -82,54 +82,54 @@ class OctopiGUI(QMainWindow):
 
     @property
     def configurationManager(self)->core.ConfigurationManager:
-        return self.hcs_controller.configurationManager
+        return self.core.configurationManager
     @property
     def streamHandler(self)->core.StreamHandler:
-        return self.hcs_controller.streamHandler
+        return self.core.streamHandler
     @property
     def liveController(self)->core.LiveController:
-        return self.hcs_controller.liveController
+        return self.core.liveController
     @property
-    def navigationController(self)->core.NavigationController:
-        return self.hcs_controller.navigationController
+    def navigation(self)->core.NavigationController:
+        return self.core.navigation
     @property
     def autofocusController(self)->core.AutoFocusController:
-        return self.hcs_controller.autofocusController
+        return self.core.autofocusController
     @property
     def multipointController(self)->core.MultiPointController:
-        return self.hcs_controller.multipointController
+        return self.core.multipointController
     @property
     def imageSaver(self)->core.ImageSaver:
-        return self.hcs_controller.imageSaver
+        return self.core.imageSaver
     @property
     def camera(self)->Camera:
-        return self.hcs_controller.camera
+        return self.core.camera
     @property
     def focus_camera(self)->Camera:
-        return self.hcs_controller.focus_camera
+        return self.core.focus_camera.camera
     @property
     def microcontroller(self)->microcontroller.Microcontroller:
-        return self.hcs_controller.microcontroller
+        return self.core.microcontroller
     @property
     def configurationManager_focus_camera(self)->core.ConfigurationManager:
-        return self.hcs_controller.configurationManager_focus_camera
+        return self.core.configurationManager_focus_camera
     @property
     def streamHandler_focus_camera(self)->core.StreamHandler:
-        return self.hcs_controller.streamHandler_focus_camera
+        return self.core.streamHandler_focus_camera
     @property
     def liveController_focus_camera(self)->core.LiveController:
-        return self.hcs_controller.liveController_focus_camera
+        return self.core.liveController_focus_camera
     @property
-    def displacementMeasurementController(self)->core_displacement_measurement.DisplacementMeasurementController:
-        return self.hcs_controller.displacementMeasurementController
+    def displacementMeasurementController(self)->DisplacementMeasurementController:
+        return self.core.displacementMeasurementController
     @property
     def laserAutofocusController(self)->core.LaserAutofocusController:
-        return self.hcs_controller.laserAutofocusController
+        return self.core.laserAutofocusController
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.hcs_controller=HCSController(home=not bool(int(os.environ.get('skip_homing') or 0))) # var is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
+        self.core=core.Core(home=not bool(int(os.environ.get('skip_homing') or 0))) # var is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
 
         self.named_widgets=ObjectManager()
 
@@ -146,9 +146,9 @@ class OctopiGUI(QMainWindow):
         self.imageDisplay           = widgets.ImageDisplay()
         self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
         self.wellSelectionWidget    = widgets.WellSelectionWidget(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
-        self.navigationWidget       = widgets.NavigationWidget(self.hcs_controller,gui=self,widget_configuration=default_well_plate)
-        self.autofocusWidget        = widgets.AutoFocusWidget(self.hcs_controller,gui=self)
-        self.multiPointWidget       = widgets.MultiPointWidget(self.hcs_controller,self.start_experiment,self.abort_experiment)
+        self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
+        self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
+        self.multiPointWidget       = widgets.MultiPointWidget(self.core,self.start_experiment,self.abort_experiment)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
         self.imaging_mode_config_managers={}
@@ -160,59 +160,59 @@ class OctopiGUI(QMainWindow):
 
             imaging_modes_wide_widgets.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
             imaging_modes_wide_widgets.append(GridItem(config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
-            top_row=[
-                *([None]*4),
-                Label("illumination:",tooltip=ILLUMINATION_TOOLTIP).widget,
-                config_manager.illumination_strength == SpinBoxDouble(
-                    minimum=0.1,maximum=100.0,step=0.1,
-                    default=config.illumination_intensity,
-                    tooltip=ILLUMINATION_TOOLTIP,
-                    on_valueChanged=[
-                        config.set_illumination_intensity,
-                        self.configurationManager.save_configurations,
-                        lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                    ]
-                ).widget,
-            ]
-            imaging_modes_widget_list.append(top_row)
 
-            bottom_row=[
-                Label("exposure time:",tooltip=EXPOSURE_TIME_TOOLTIP).widget,
-                config_manager.exposure_time == SpinBoxDouble(
-                    minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
-                    maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
-                    default=config.exposure_time,
-                    tooltip=EXPOSURE_TIME_TOOLTIP,
-                    on_valueChanged=[
-                        config.set_exposure_time,
-                        self.configurationManager.save_configurations,
-                        lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                    ]
-                ).widget,
-                Label("gain:",tooltip=ANALOG_GAIN_TOOLTIP).widget,
-                config_manager.analog_gain == SpinBoxDouble(
-                    minimum=0.0,maximum=24.0,step=0.1,
-                    default=config.analog_gain,
-                    tooltip=ANALOG_GAIN_TOOLTIP,
-                    on_valueChanged=[
-                        config.set_analog_gain,
-                        self.configurationManager.save_configurations,
-                        lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                    ]
-                ).widget,
-                Label("offset:",tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
-                config_manager.z_offset == SpinBoxDouble(
-                    minimum=-30.0,maximum=30.0,step=0.1,
-                    default=config.channel_z_offset,
-                    tooltip=CHANNEL_OFFSET_TOOLTIP,
-                    on_valueChanged=[
-                        config.set_offset,
-                        self.configurationManager.save_configurations,
-                        lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                    ]
-                ).widget,
-            ]
-            imaging_modes_widget_list.append(bottom_row)
+            imaging_modes_widget_list.extend([
+                [
+                    *([None]*4),
+                    Label("illumination:",tooltip=ILLUMINATION_TOOLTIP).widget,
+                    config_manager.illumination_strength == SpinBoxDouble(
+                        minimum=0.1,maximum=100.0,step=0.1,
+                        default=config.illumination_intensity,
+                        tooltip=ILLUMINATION_TOOLTIP,
+                        on_valueChanged=[
+                            config.set_illumination_intensity,
+                            self.configurationManager.save_configurations,
+                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
+                        ]
+                    ).widget,
+                ],
+                [   
+                    Label("exposure time:",tooltip=EXPOSURE_TIME_TOOLTIP).widget,
+                    config_manager.exposure_time == SpinBoxDouble(
+                        minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
+                        maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
+                        default=config.exposure_time,
+                        tooltip=EXPOSURE_TIME_TOOLTIP,
+                        on_valueChanged=[
+                            config.set_exposure_time,
+                            self.configurationManager.save_configurations,
+                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
+                        ]
+                    ).widget,
+                    Label("gain:",tooltip=ANALOG_GAIN_TOOLTIP).widget,
+                    config_manager.analog_gain == SpinBoxDouble(
+                        minimum=0.0,maximum=24.0,step=0.1,
+                        default=config.analog_gain,
+                        tooltip=ANALOG_GAIN_TOOLTIP,
+                        on_valueChanged=[
+                            config.set_analog_gain,
+                            self.configurationManager.save_configurations,
+                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
+                        ]
+                    ).widget,
+                    Label("offset:",tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
+                    config_manager.z_offset == SpinBoxDouble(
+                        minimum=-30.0,maximum=30.0,step=0.1,
+                        default=config.channel_z_offset,
+                        tooltip=CHANNEL_OFFSET_TOOLTIP,
+                        on_valueChanged=[
+                            config.set_offset,
+                            self.configurationManager.save_configurations,
+                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
+                        ]
+                    ).widget,
+                ]
+            ])
 
             self.imaging_mode_config_managers[config.id]=config_manager
 
@@ -319,7 +319,25 @@ class OctopiGUI(QMainWindow):
         # layout widgets
         
         # transfer the layout to the central widget
+        trigger_modes_list=[
+            TriggerMode.SOFTWARE,
+            TriggerMode.HARDWARE,
+        ]
         self.centralWidget:QWidget = VBox(
+            HBox(
+                self.named_widgets.trigger_mode_dropdown == Dropdown(
+                    items=trigger_modes_list,
+                    current_index=0,
+                    on_currentIndexChanged=lambda new_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_TRIGGER_MODE",trigger_modes_list[new_index])
+                ),
+                self.named_widgets.pixel_format == Dropdown(
+                    items=[
+                        "Mono8",
+                        "Mono12",
+                    ],
+                    current_index=0,
+                ),
+            ),
             self.recordTabWidget
         ).widget
         
@@ -357,11 +375,11 @@ class OctopiGUI(QMainWindow):
         self.streamHandler_focus_camera.image_to_display.connect(self.displacementMeasurementController.update_measurement)
 
         # make connections
-        self.navigationController.xPos.connect(lambda x:self.navigationWidget.label_Xpos.setText("{:.2f}".format(x)))
-        self.navigationController.yPos.connect(lambda x:self.navigationWidget.label_Ypos.setText("{:.2f}".format(x)))
-        self.navigationController.zPos.connect(lambda x:self.navigationWidget.label_Zpos.setText("{:.2f}".format(x)))
-        self.navigationController.signal_joystick_button_pressed.connect(self.autofocusController.autofocus)
-        self.navigationController.xyPos.connect(self.navigationViewer.update_current_location)
+        self.navigation.xPos.connect(lambda x:self.navigationWidget.label_Xpos.setText("{:.2f}".format(x)))
+        self.navigation.yPos.connect(lambda x:self.navigationWidget.label_Ypos.setText("{:.2f}".format(x)))
+        self.navigation.zPos.connect(lambda x:self.navigationWidget.label_Zpos.setText("{:.2f}".format(x)))
+        self.navigation.signal_joystick_button_pressed.connect(self.autofocusController.autofocus)
+        self.navigation.xyPos.connect(self.navigationViewer.update_current_location)
 
         self.imageDisplay.image_to_display.connect(self.processLiveImage) # internally calls self.imageDisplayWindow.display_image, among other things
 
@@ -371,7 +389,7 @@ class OctopiGUI(QMainWindow):
 
         self.multipointController.signal_register_current_fov.connect(self.navigationViewer.register_fov)
 
-        self.wellSelectionWidget.signal_wellSelectedPos.connect(self.navigationController.move_to)
+        self.wellSelectionWidget.signal_wellSelectedPos.connect(self.navigation.move_to)
 
         # if well selection changes, or dx/y or Nx/y change, redraw preview
         self.wellSelectionWidget.itemSelectionChanged.connect(self.on_well_selection_change)
@@ -411,7 +429,7 @@ class OctopiGUI(QMainWindow):
 
         af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
 
-        acquisition_thread=self.hcs_controller.acquire(
+        acquisition_thread=self.core.acquire(
             well_list,
             imaging_channel_list,
             experiment_data_target_folder,
@@ -536,22 +554,23 @@ class OctopiGUI(QMainWindow):
 
             self.set_all_interactibles_enabled(False,exceptions=[self.named_widgets.live.button])
 
-            last_imaging_time=0.0
-            while True:
-                current_time=time.monotonic()
-                if current_time-last_imaging_time > 1/fps:
-                    self.snap_single(_button_state=True,config=config,display_in_image_array_display=False,preserve_existing_histogram=False)
-                    last_imaging_time=current_time
+            with core.StreamingCamera(self.camera):
+                last_imaging_time=0.0
+                while True:
+                    current_time=time.monotonic()
+                    if current_time-last_imaging_time > 1/fps:
+                        self.snap_single(_button_state=True,config=config,display_in_image_array_display=False,preserve_existing_histogram=False)
+                        last_imaging_time=current_time
 
-                QApplication.processEvents()
+                    QApplication.processEvents()
 
-                if self.live_stop_requested:
-                    # leave live
-                    self.named_widgets.live.button.setText(LIVE_BUTTON_IDLE_TEXT)
-                    
-                    self.set_all_interactibles_enabled(True,exceptions=[self.named_widgets.live.button])
+                    if self.live_stop_requested:
+                        # leave live
+                        self.named_widgets.live.button.setText(LIVE_BUTTON_IDLE_TEXT)
+                        
+                        self.set_all_interactibles_enabled(True,exceptions=[self.named_widgets.live.button])
 
-                    break
+                        break
         else:
             self.live_stop_requested=True
 
@@ -600,7 +619,11 @@ class OctopiGUI(QMainWindow):
 
             self.set_illumination_config_path_display(new_path=load_path,set_config_changed=False)
 
-    def snap_single(self,_button_state,config,display_in_image_array_display:bool=True,preserve_existing_histogram:bool=False):
+    def snap_single(self,_button_state,
+        config:core.Configuration,
+        display_in_image_array_display:bool=True,
+        preserve_existing_histogram:bool=False,
+    ):
         image=self.liveController.snap(config)
         QApplication.processEvents()
         histogram_color=CHANNEL_COLORS[config.illumination_source]
@@ -612,8 +635,9 @@ class OctopiGUI(QMainWindow):
             QApplication.processEvents()
 
     def snap_all(self,_button_state):
-        for config in self.configurationManager.configurations:
-            self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True)
+        with core.StreamingCamera(self.camera):
+            for config in self.configurationManager.configurations:
+                self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True)
 
     def add_image_inspection(self,
         brightness_adjust_min:float=0.1,
@@ -820,7 +844,7 @@ class OctopiGUI(QMainWindow):
             x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].convert_well_index(well_row,well_column)
             for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(x_well,y_well):
                 LIGHT_GREY=(160,)*3
-                if self.hcs_controller.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
+                if self.core.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
                     grid_item_color=(255,50,140)
                 else:
                     grid_item_color=LIGHT_GREY
@@ -840,6 +864,6 @@ class OctopiGUI(QMainWindow):
         self.imageSaver.close()
         self.imageDisplay.close()
 
-        self.hcs_controller.close()
+        self.core.close()
         
         event.accept()

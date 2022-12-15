@@ -14,7 +14,7 @@ import scipy.signal
 
 import control.microcontroller as microcontroller
 import control.camera as camera
-from control.core import LiveController,NavigationController
+from control.core import LiveController,NavigationController,StreamingCamera
 
 import matplotlib.pyplot as plt
 
@@ -35,7 +35,7 @@ class LaserAutofocusController(QObject):
         self.microcontroller = microcontroller
         self.camera = camera
         self.liveController = liveController
-        self.navigationController = navigationController
+        self.navigation = navigationController
 
         self.is_initialized = False
         self.x_reference = None
@@ -73,35 +73,36 @@ class LaserAutofocusController(QObject):
         self.camera.set_exposure_time(MACHINE_CONFIG.FOCUS_CAMERA_EXPOSURE_TIME_MS)
         self.camera.set_analog_gain(MACHINE_CONFIG.FOCUS_CAMERA_ANALOG_GAIN)
 
-        # get laser spot location
-        x,y = self._get_laser_spot_centroid()
+        with StreamingCamera(self.camera):
+            # get laser spot location
+            x,y = self._get_laser_spot_centroid()
 
-        x_offset = x - MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2
-        y_offset = y - MACHINE_CONFIG.LASER_AF_CROP_HEIGHT/2
-        #print('laser spot location on the full sensor is (' + str(int(x)) + ',' + str(int(y)) + ')')
+            x_offset = x - MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2
+            y_offset = y - MACHINE_CONFIG.LASER_AF_CROP_HEIGHT/2
+            #print('laser spot location on the full sensor is (' + str(int(x)) + ',' + str(int(y)) + ')')
 
-        # set camera crop
-        self.initialize_manual(x_offset, y_offset, MACHINE_CONFIG.LASER_AF_CROP_WIDTH, MACHINE_CONFIG.LASER_AF_CROP_HEIGHT, 1.0, x)
+            # set camera crop
+            self.initialize_manual(x_offset, y_offset, MACHINE_CONFIG.LASER_AF_CROP_WIDTH, MACHINE_CONFIG.LASER_AF_CROP_HEIGHT, 1.0, x)
 
-        # move z
-        self.navigationController.move_z(-0.018,{})
-        self.navigationController.move_z(0.012,{},True)
+            # move z
+            self.navigation.move_z(-0.018,{})
+            self.navigation.move_z(0.012,{},True)
 
-        x0,y0 = self._get_laser_spot_centroid()
+            x0,y0 = self._get_laser_spot_centroid()
 
-        self.navigationController.move_z(0.006,{},True)
+            self.navigation.move_z(0.006,{},True)
 
-        x1,y1 = self._get_laser_spot_centroid()
+            x1,y1 = self._get_laser_spot_centroid()
 
-        # calculate the conversion factor
-        self.pixel_to_um = 6.0/(x1-x0)
-        #print(f'pixel to um conversion factor is {self.pixel_to_um:.3f} um/pixel')
-        # for simulation
-        if x1-x0 == 0:
-            self.pixel_to_um = 0.4
+            # calculate the conversion factor
+            self.pixel_to_um = 6.0/(x1-x0)
+            #print(f'pixel to um conversion factor is {self.pixel_to_um:.3f} um/pixel')
+            # for simulation
+            if x1-x0 == 0:
+                self.pixel_to_um = 0.4
 
-        # set reference
-        self.x_reference = x1
+            # set reference
+            self.x_reference = x1
 
         print("laser AF initialization done")
 
@@ -123,22 +124,23 @@ class LaserAutofocusController(QObject):
         return displacement_um
 
     def move_to_target(self,target_um:float,currently_repeating:bool=False):
-        current_displacement_um = self.measure_displacement()
+        with StreamingCamera(self.camera):
+            current_displacement_um = self.measure_displacement()
 
-        if math.isnan(current_displacement_um):
-            raise ValueError("displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrongs. Make sure that the laser AF laser is not currently used for live imaging.")
+            if math.isnan(current_displacement_um):
+                raise ValueError("displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrongs. Make sure that the laser AF laser is not currently used for live imaging.")
 
-        um_to_move = target_um - current_displacement_um
-        if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-            return
+            um_to_move = target_um - current_displacement_um
+            if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
+                return
 
-        # limit the range of movement
-        um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
+            # limit the range of movement
+            um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
 
-        self.navigationController.move_z(um_to_move/1000,wait_for_completion={})
+            self.navigation.move_z(um_to_move/1000,wait_for_completion={})
 
-        if not currently_repeating:
-            self.move_to_target(target_um,currently_repeating=True)
+            if not currently_repeating:
+                self.move_to_target(target_um,currently_repeating=True)
 
     def set_reference(self):
         assert self.is_initialized
@@ -165,39 +167,40 @@ class LaserAutofocusController(QObject):
         if num_images is None:
             num_images=MACHINE_CONFIG.LASER_AF_AVERAGING_N_PRECISE
 
-        for i in range(num_images):
-            DEBUG_THIS_STUFF=False
+        with StreamingCamera(self.camera):
+            for i in range(num_images):
+                DEBUG_THIS_STUFF=False
 
-            # try acquiring camera image until one arrives (can sometimes miss an image for some reason)
-            image=None
-            current_counter=0
-            take_image_start_time=time.time()
-            while image is None:
-                if DEBUG_THIS_STUFF:
-                    print(f"{current_counter=}")
-                    current_counter+=1
-        
-                image = self.liveController.snap(self.liveController.currentConfiguration)
+                # try acquiring camera image until one arrives (can sometimes miss an image for some reason)
+                image=None
+                current_counter=0
+                take_image_start_time=time.time()
+                while image is None:
+                    if DEBUG_THIS_STUFF:
+                        print(f"{current_counter=}")
+                        current_counter+=1
+            
+                    image = self.liveController.snap(self.liveController.currentConfiguration)
 
-            imaging_times.append(time.time()-take_image_start_time)
+                imaging_times.append(time.time()-take_image_start_time)
 
-            # optionally display the image
-            if MACHINE_CONFIG.LASER_AF_DISPLAY_SPOT_IMAGE:
-                self.image_to_display.emit(image)
+                # optionally display the image
+                if MACHINE_CONFIG.LASER_AF_DISPLAY_SPOT_IMAGE:
+                    self.image_to_display.emit(image)
 
-            # calculate centroid
-            x,y = self._calculate_centroid(image)
+                # calculate centroid
+                x,y = self._calculate_centroid(image)
 
-            if DEBUG_THIS_STUFF and False:
-                print(f"{x = } {(MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2) = }")
-                print(f"{y = } {(MACHINE_CONFIG.LASER_AF_CROP_HEIGHT/2) = }")
+                if DEBUG_THIS_STUFF and False:
+                    print(f"{x = } {(MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2) = }")
+                    print(f"{y = } {(MACHINE_CONFIG.LASER_AF_CROP_HEIGHT/2) = }")
 
-                plt.imshow(image,cmap="gist_gray")
-                plt.scatter([x],[y],marker="x",c="green")
-                plt.show()
+                    plt.imshow(image,cmap="gist_gray")
+                    plt.scatter([x],[y],marker="x",c="green")
+                    plt.show()
 
-            tmp_x += x
-            tmp_y += y
+                tmp_x += x
+                tmp_y += y
 
         if DEBUG_THIS_STUFF:
             imaging_times_str=", ".join([f"{i:.3f}" for i in imaging_times])

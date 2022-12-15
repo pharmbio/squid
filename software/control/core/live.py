@@ -10,7 +10,7 @@ from typing import Optional, List, Union, Tuple
 
 import control.microcontroller as microcontroller
 import control.camera as camera
-from control.core import ConfigurationManager, Configuration, StreamHandler
+from control.core import ConfigurationManager, Configuration, StreamHandler, StreamingCamera
 import control.utils as utils
 
 class LiveController(QObject):
@@ -32,7 +32,7 @@ class LiveController(QObject):
         camera:camera.Camera,
         microcontroller:microcontroller.Microcontroller,
         configurationManager:ConfigurationManager,
-        stream_handler:StreamHandler,
+        stream_handler:Optional[StreamHandler],
         control_illumination:bool=True,
         use_internal_timer_for_hardware_trigger:bool=True,
         for_displacement_measurement:bool=False
@@ -71,32 +71,28 @@ class LiveController(QObject):
         if for_displacement_measurement:
             self.currentConfiguration=self.configurationManager.configurations[0]
 
-    def snap(self,config:Configuration=None,crop:bool=True,override_crop_width:Optional[int]=None,override_crop_height:Optional[int]=None)->numpy.ndarray:
+    def snap(self,
+        config:Configuration=None,
+        crop:bool=True,
+        override_crop_width:Optional[int]=None,
+        override_crop_height:Optional[int]=None,
+    )->numpy.ndarray:
+        total_snap_timer=time.monotonic()
+        times=[]
         """
         if 'crop' is True, the image will be cropped to the streamhandlers requested height and width. 'override_crop_[height,width]' override the respective value
         """
-        if self.camera.callback_is_enabled:
-            callback_was_enabled=True
-            self.camera.disable_callback()
-        else:
-            callback_was_enabled=False
 
-        """ prepare camera and lights """
-        self.set_microscope_mode(config)
-        self.camera.start_streaming()
-        self.camera.is_live=True
+        with StreamingCamera(self.camera):
+            """ prepare camera and lights """
+            self.set_microscope_mode(config)
 
-        """ take image """
-        self.trigger_acquisition()
-        image = self.camera.read_frame()
-        self.end_acquisition()
+            """ take image """
+            self.trigger_acquisition()
+            image = self.camera.read_frame()
+            self.end_acquisition()
 
         """ de-prepare camera and lights """
-        self.camera.is_live=False
-        self.camera.stop_streaming()
-
-        if callback_was_enabled:
-            self.camera.enable_callback()
 
         crop_height=override_crop_height or self.stream_handler.crop_height
         crop_width=override_crop_width or self.stream_handler.crop_width
@@ -201,11 +197,14 @@ class LiveController(QObject):
 
         elif self.trigger_mode == TriggerMode.HARDWARE:
             self.microcontroller.send_hardware_trigger(control_illumination=True,illumination_on_time_us=self.camera.exposure_time*1000)
+            self.microcontroller.wait_till_operation_is_completed()
 
-        self.stream_handler.signal_new_frame_received.connect(self.end_acquisition)
+        if not self.stream_handler is None:
+            self.stream_handler.signal_new_frame_received.connect(self.end_acquisition)
 
     def end_acquisition(self):
-        self.stream_handler.signal_new_frame_received.disconnect(self.end_acquisition)
+        if not self.stream_handler is None:
+            self.stream_handler.signal_new_frame_received.disconnect(self.end_acquisition)
 
         #imaging_time=time.time()-self.time_image_requested
         #print(f"real imaging time: {imaging_time*1000:6.3f} ms") # this shows a 40ms delay vs exposure time. why?
@@ -239,7 +238,7 @@ class LiveController(QObject):
         self.timer_trigger.stop()
 
     # trigger mode and settings
-    def set_trigger_mode(self,mode:str):
+    def set_trigger_mode(self,mode:TriggerMode):
         if mode == TriggerMode.SOFTWARE:
             if self.is_live and ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
                 self._stop_triggered_acquisition()

@@ -13,16 +13,16 @@ BTN_LOADING_POSITION_RUNNING="moving..."
 class NavigationWidget(QFrame):
     @property
     def navigationController(self):
-        return self.hcs_controller.navigationController
+        return self.core.navigation
 
     def __init__(self, 
-        hcs_controller, 
+        core, 
         gui,
         widget_configuration:str,
     ):
         super().__init__()
 
-        self.hcs_controller=hcs_controller
+        self.core=core
         self.gui=gui
 
         self.widget_configuration = widget_configuration
@@ -112,44 +112,44 @@ class NavigationWidget(QFrame):
 
         QApplication.processEvents()
 
-        if self.navigationController.is_in_loading_position:
-            self.hcs_controller.loading_position_leave()
+        if self.navigation.is_in_loading_position:
+            self.core.loading_position_leave()
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_UNLOADED)
             self.set_movement_ability(movement_allowed=True)
         else:
-            self.hcs_controller.loading_position_enter()
+            self.core.loading_position_enter()
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_LOADED)
 
         self.btn_goToLoadingPosition.setDisabled(False)
         
     def move_x_forward(self):
-        self.hcs_controller.move_x(self.entry_dX.value())
+        self.core.navigation.move_x(self.entry_dX.value())
     def move_x_backward(self):
-        self.hcs_controller.move_x(-self.entry_dX.value())
+        self.core.navigation.move_x(-self.entry_dX.value())
     def move_y_forward(self):
-        self.hcs_controller.move_y(self.entry_dY.value())
+        self.core.navigation.move_y(self.entry_dY.value())
     def move_y_backward(self):
-        self.hcs_controller.move_y(-self.entry_dY.value())
+        self.core.navigation.move_y(-self.entry_dY.value())
     def move_z_forward(self):
-        self.hcs_controller.move_z(self.entry_dZ.value()/1000)
+        self.core.navigation.move_z(self.entry_dZ.value()/1000)
     def move_z_backward(self):
-        self.hcs_controller.move_z(-self.entry_dZ.value()/1000) 
+        self.core.navigation.move_z(-self.entry_dZ.value()/1000) 
 
     def set_deltaX(self,value):
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_x
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_x
         deltaX = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_dX.setValue(deltaX)
     def set_deltaY(self,value):
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_y
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_y
         deltaY = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_dY.setValue(deltaY)
     def set_deltaZ(self,value):
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_z
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_z
         deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
         self.entry_dZ.setValue(deltaZ)
 
     def zero_z(self):
-        self.hcs_controller.zero_z()
+        self.core.navigation.zero_z()
 
 import pyqtgraph as pg
 import numpy as np

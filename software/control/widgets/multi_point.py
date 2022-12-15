@@ -74,20 +74,20 @@ SELECTED_GRID_POSITION_COLOR="lightblue"
 class MultiPointWidget(QFrame):
     @property
     def multipointController(self)->MultiPointController:
-        return self.hcs_controller.multipointController
+        return self.core.multipointController
     @property
     def configurationManager(self)->ConfigurationManager:
-        return self.hcs_controller.configurationManager
+        return self.core.configurationManager
 
     def __init__(self,
-        hcs_controller,
+        core,
         start_experiment:Callable[[str,List[str]],Optional[Signal]],
         abort_experiment:Callable[[],None]
     ):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
         super().__init__()
         
-        self.hcs_controller = hcs_controller
+        self.core = core
         self.start_experiment=start_experiment
         self.abort_experiment=abort_experiment
 
@@ -190,9 +190,9 @@ class MultiPointWidget(QFrame):
                 checked=False,
                 enabled=False,
                 tooltip=LASER_AUTOFOCUS_TOOLTIP,
-                on_stateChanged=self.hcs_controller.set_laser_af_flag,
+                on_stateChanged=self.core.set_laser_af_flag,
             ).widget
-            self.hcs_controller.set_laser_af_flag(False)
+            self.core.set_laser_af_flag(False)
 
             self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,on_clicked=self.toggle_acquisition).widget
 
@@ -405,7 +405,7 @@ class MultiPointWidget(QFrame):
     def set_deltaX(self,value:float):
         """ value in mm"""
 
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_x
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_x
         deltaX = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_deltaX.setValue(deltaX)
         self.multipointController.set_deltaX(deltaX)
@@ -414,7 +414,7 @@ class MultiPointWidget(QFrame):
     def set_deltaY(self,value:float):
         """ value in mm"""
 
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_y
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_y
         deltaY = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_deltaY.setValue(deltaY)
         self.multipointController.set_deltaY(deltaY)
@@ -423,7 +423,7 @@ class MultiPointWidget(QFrame):
     def set_deltaZ(self,value:float):
         """ value in mm"""
 
-        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_z
+        mm_per_ustep = self.core.microcontroller.mm_per_ustep_z
         deltaZ = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_deltaZ.setValue(deltaZ*1000.0)
         self.multipointController.set_deltaZ(deltaZ)

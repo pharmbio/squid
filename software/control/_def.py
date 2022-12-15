@@ -52,11 +52,6 @@ class MicrocontrollerDef:
     CMD_LENGTH = 8
     N_BYTES_POS = 4
 
-class Microcontroller2Def:
-    MSG_LENGTH = 4
-    CMD_LENGTH = 8
-    N_BYTES_POS = 4
-
 class MCU_PINS:
     PWM1 = 5
     PWM2 = 4

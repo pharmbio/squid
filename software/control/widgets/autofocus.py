@@ -21,32 +21,37 @@ DEFAULT_DELTAZ=1.524
 class AutoFocusWidget(QFrame):
     @property
     def autofocusController(self):
-        return self.hcs_controller.autofocusController
+        return self.core.autofocusController
     @property
     def microcontroller(self):
-        return self.hcs_controller.microcontroller
+        return self.core.microcontroller
         
     def __init__(self, 
-        hcs_controller,
+        core,
         gui,
     ):
         super().__init__()
 
-        self.hcs_controller=hcs_controller
+        self.core=core
         self.gui=gui
 
         self.entry_delta = SpinBoxDouble(minimum=0.0,maximum=20.0,step=0.2,num_decimals=3,default=DEFAULT_DELTAZ,keyboard_tracking=False,on_valueChanged=self.set_deltaZ).widget
 
         self.entry_N = SpinBoxInteger(minimum=3,maximum=20,step=1,default=DEFAULT_NZ,keyboard_tracking=False,on_valueChanged=self.autofocusController.set_N).widget
 
-        self.btn_autofocus = Button('Run Software Autofocus',default=False,checkable=True,checked=False,tooltip=DZ_TOOLTIP,on_clicked=self.autofocus_start).widget
+        self.btn_autofocus = Button("Run",default=False,checkable=True,checked=False,tooltip=DZ_TOOLTIP,on_clicked=self.autofocus_start).widget
+
+        self.channel_dropdown=Dropdown(
+            items=[config.name for config in self.core.main_camera.configuration_manager.configurations],
+            current_index=0,
+        ).widget
 
         # layout
         qtlabel_dz=Label(DZ_LABEL,tooltip=DZ_TOOLTIP).widget
         qtlabel_Nz=Label(NZ_LABEL,tooltip=DZ_TOOLTIP).widget
         
         self.grid = Grid(
-            [ qtlabel_dz, self.entry_delta, qtlabel_Nz, self.entry_N, self.btn_autofocus ]
+            [ qtlabel_dz, self.entry_delta, qtlabel_Nz, self.entry_N, self.channel_dropdown, self.btn_autofocus ]
         ).layout
         self.setLayout(self.grid)
 
@@ -63,7 +68,7 @@ class AutoFocusWidget(QFrame):
         self.gui.set_all_interactibles_enabled(False)
         self.autofocusController.autofocusFinished.connect(self.autofocus_is_finished)
 
-        self.autofocusController.autofocus()
+        self.autofocusController.autofocus(self.core.main_camera.configuration_manager.configurations[self.channel_dropdown.currentIndex()])
 
     def autofocus_is_finished(self):
         self.autofocusController.autofocusFinished.disconnect(self.autofocus_is_finished)
