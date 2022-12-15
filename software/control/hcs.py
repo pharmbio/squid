@@ -228,7 +228,8 @@ class HCSController(QObject):
             'y':{'d':0.9,'N':1},
             'z':{'d':0.9,'N':1},
             't':{'d':0.9,'N':1},
-        }, # todo add mask
+        },
+
         af_channel:Optional[str]=None, # software AF
         plate_type:ClosedSet[Optional[int]](None,6,12,24,96,384)=None,
 
@@ -245,6 +246,7 @@ class HCSController(QObject):
 
         headless:bool=True,
     )->Optional[QThread]:
+
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
         # set wells to be imaged <- acquire.well_list argument
         # set grid per well to be imaged
@@ -252,7 +254,8 @@ class HCSController(QObject):
         # set selection and order of channels to be imaged <- acquire.channels argument
 
         # calculate physical imaging positions on wellplate given plate type and well selection
-        wellplate_format=WELLPLATE_FORMATS[plate_type if not plate_type is None else MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
+        plate_type=plate_type if not plate_type is None else MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
+        wellplate_format=WELLPLATE_FORMATS[plate_type]
 
         # validate well positions (should be on the plate, given selected wellplate type)
         if wellplate_format.number_of_skip>0:
@@ -277,6 +280,27 @@ class HCSController(QObject):
 
         well_list_names:List[str]=[wellplate_format.well_name(*c) for c in well_list]
         well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.convert_well_index(*c) for c in well_list]
+
+
+        acquisition_data={
+            "well_list":well_list_names,
+            "experiment_id":experiment_id,
+            "grid":{
+                'x':{'d(mm)':grid_data['x']['d'],'N':grid_data['x']['N']},
+                'y':{'d(mm)':grid_data['y']['d'],'N':grid_data['y']['N']},
+                'z':{'d(um)':grid_data['z']['d']*1000,'N':grid_data['z']['N']},
+                't':{'d(s)':grid_data['t']['d'],'N':grid_data['t']['N']},
+            },
+            "plate_type":str(plate_type),
+
+            "channels_order":channels,
+            "channel_config":self.configurationManager.configurations_list,
+
+            "software_af_on":not af_channel is None,
+            "software_af_channel":af_channel or "",
+
+            "laser_af_on":laser_af_on,
+        }
 
         # print well names as debug info
         #print("imaging wells: ",", ".join(well_list_names))
@@ -311,7 +335,7 @@ class HCSController(QObject):
 
         # set image saving location
         self.multipointController.set_base_path(path=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
-        self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
+        self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id,complete_experiment_data=acquisition_data) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
         return self.multipointController.run_experiment(

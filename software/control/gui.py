@@ -298,7 +298,7 @@ class Checkbox(HasCallbacks,HasToolTip,HasWidget):
         self.widget=QCheckBox(label)
 
         if not checked is None:
-            self.widget.setCheckState(checked)
+            self.widget.setChecked(checked)
 
         super().__init__(*args,**kwargs)
 

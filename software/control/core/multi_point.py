@@ -445,7 +445,7 @@ class MultiPointController(QObject):
         self.Nt:int = DefaultMultiPointGrid.DEFAULT_Nt
         self.deltaX:float = DefaultMultiPointGrid.DEFAULT_DX_MM
         self.deltaY:float = DefaultMultiPointGrid.DEFAULT_DY_MM
-        self.deltaZ:float = DefaultMultiPointGrid.DEFAULT_DZ_MM/1000
+        self.deltaZ:float = DefaultMultiPointGrid.DEFAULT_DZ_MM
         self.deltat:float = DefaultMultiPointGrid.DEFAULT_DT_S
 
         self.do_autofocus:bool = False
@@ -473,23 +473,13 @@ class MultiPointController(QObject):
 
     @property
     def deltaX_usteps(self)->int:
-        return round(self.deltaX/self.mm_per_ustep_X)
+        return round(self.deltaX/self.microcontroller.mm_per_ustep_x)
     @property
     def deltaY_usteps(self)->int:
-        return round(self.deltaY/self.mm_per_ustep_Y)
+        return round(self.deltaY/self.microcontroller.mm_per_ustep_y)
     @property
     def deltaZ_usteps(self)->int:
-        return round(self.deltaZ/self.mm_per_ustep_Z)
-
-    @property
-    def mm_per_ustep_X(self):
-        return MACHINE_CONFIG.SCREW_PITCH_X_MM/(self.navigationController.x_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_X)
-    @property
-    def mm_per_ustep_Y(self):
-        return MACHINE_CONFIG.SCREW_PITCH_Y_MM/(self.navigationController.y_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Y)
-    @property
-    def mm_per_ustep_Z(self):
-        return MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
+        return round(self.deltaZ/self.microcontroller.mm_per_ustep_z)
 
     @TypecheckFunction
     def set_NX(self,N:int):
@@ -505,17 +495,17 @@ class MultiPointController(QObject):
         self.Nt = N
 
     @TypecheckFunction
-    def set_deltaX(self,delta:float):
-        self.deltaX = delta
+    def set_deltaX(self,delta_mm:float):
+        self.deltaX = delta_mm
     @TypecheckFunction
-    def set_deltaY(self,delta:float):
-        self.deltaY = delta
+    def set_deltaY(self,delta_mm:float):
+        self.deltaY = delta_mm
     @TypecheckFunction
-    def set_deltaZ(self,delta_um:float):
-        self.deltaZ = delta_um/1000
+    def set_deltaZ(self,delta_mm:float):
+        self.deltaZ = delta_mm
     @TypecheckFunction
-    def set_deltat(self,delta:float):
-        self.deltat = delta
+    def set_deltat(self,delta_s:float):
+        self.deltat = delta_s
 
     @TypecheckFunction
     def set_software_af_flag(self,flag:Union[int,bool]):
@@ -539,13 +529,28 @@ class MultiPointController(QObject):
     def set_base_path(self,path:str):
         self.base_path = path
 
+    @property
+    def acquisition_parameters(self)->dict:
+        return {
+            'dx(mm)':             self.deltaX,
+            'Nx':                 self.NX,
+            'dy(mm)':             self.deltaY,
+            'Ny':                 self.NY,
+            'dz(um)':             self.deltaZ*1000,
+            'Nz':                 self.NZ,
+            'dt(s)':              self.deltat,
+            'Nt':                 self.Nt,
+            'with AF':            self.do_autofocus,
+            'with reflection AF': self.do_reflection_af,
+        }
+
     @TypecheckFunction
-    def prepare_folder_for_new_experiment(self,experiment_ID:str):
+    def prepare_folder_for_new_experiment(self,experiment_ID:str,complete_experiment_data:Optional[dict]=None):
         assert not self.base_path is None
         base_path = Path(self.base_path)
 
+        # try generating unique experiment ID (that includes current timestamp) until successfull
         while True:
-            # generate unique experiment ID based on the current datetime
             now = datetime.now()
             now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
             now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
@@ -563,22 +568,18 @@ class MultiPointController(QObject):
 
         self.recording_start_time = time.time()
 
+        # save different sets of config data to the experiment output directory
+
+        # config 1/3: imaging channel settings
         conf_json: Path = experiment_path / 'configurations.json'
+        # config 2/3: basic acquisition parameters (positions within grid, which autofocus used)
         self.configurationManager.write_configuration(str(conf_json)) # save the configuration for the experiment
-        acquisition_parameters = {
-            'dx(mm)':             self.deltaX,
-            'Nx':                 self.NX,
-            'dy(mm)':             self.deltaY,
-            'Ny':                 self.NY,
-            'dz(um)':             self.deltaZ*1000,
-            'Nz':                 self.NZ,
-            'dt(s)':              self.deltat,
-            'Nt':                 self.Nt,
-            'with AF':            self.do_autofocus,
-            'with reflection AF': self.do_reflection_af,
-        }
         acq_json: Path = experiment_path / 'acquisition_parameters.json'
-        acq_json.write_text(json.dumps(acquisition_parameters))
+        acq_json.write_text(json.dumps(self.acquisition_parameters))
+        # config 3/3: complete set of config used for the experiment (optional, externally provided)
+        if not complete_experiment_data is None:
+            complete_data_path = experiment_path / 'all_parameters.json'
+            complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
 
     @TypecheckFunction
     def set_selected_configurations(self, selected_configurations_name:List[str]):

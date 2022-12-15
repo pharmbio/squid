@@ -41,7 +41,7 @@ class DefaultMultiPointGrid:
 
     DEFAULT_DX_MM:float = 0.9
     DEFAULT_DY_MM:float = 0.9
-    DEFAULT_DZ_MM:float = 1.5e3
+    DEFAULT_DZ_MM:float = 1.5e-3
     DEFAULT_DT_S:float = 1.0
 
 class PosUpdate:
@@ -381,6 +381,11 @@ class MachineConfiguration:
             magnification=20,
             NA=0.45,
             tube_lens_f_mm=200
+        ),
+        '20x (Olympus)':ObjectiveData( # UPLFLN20X
+            magnification=20,
+            NA=0.50,
+            tube_lens_f_mm=180
         ),
         '40x':ObjectiveData(
             magnification=40,

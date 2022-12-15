@@ -22,6 +22,9 @@ class AutoFocusWidget(QFrame):
     @property
     def autofocusController(self):
         return self.hcs_controller.autofocusController
+    @property
+    def microcontroller(self):
+        return self.hcs_controller.microcontroller
         
     def __init__(self, 
         hcs_controller,
@@ -51,7 +54,7 @@ class AutoFocusWidget(QFrame):
         self.set_deltaZ(DEFAULT_DELTAZ)
 
     def set_deltaZ(self,value):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.autofocusController.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
+        mm_per_ustep = self.microcontroller.mm_per_ustep_z
         deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
         #self.entry_delta.setValue(deltaZ) # overwrite selected value with more precise valid value
         self.autofocusController.set_deltaZ(deltaZ)

@@ -61,7 +61,7 @@ MONO12 means monochrome 12bit
 more bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size
 """
 
-FPS_TOOLTIP="Frames per second that are recorded while live"
+FPS_TOOLTIP="Maximum number of frames per second that are recorded while live (capped by exposure time, e.g. 5 images with 300ms exposure time each dont fit into a single second)"
 
 CHANNEL_COLORS={
     15:"darkRed", # 730

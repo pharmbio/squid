@@ -51,10 +51,22 @@ To initialize the laser autofocus:
 Note: Use laser or software autofocus exclusively! (or neither)
 """
 
-dx_tooltip="acquire grid of images (Nx images with dx mm in between acquisitions; dx does not matter if Nx is 1)\ncan be combined with dy/Ny and dz/Nz and dt/Nt for a total of Nx * Ny * Nz * Nt images"
-dy_tooltip="acquire grid of images (Ny images with dy mm in between acquisitions; dy does not matter if Ny is 1)\ncan be combined with dx/Nx and dz/Nz and dt/Nt for a total of Nx*Ny*Nz*Nt images"
-dz_tooltip="acquire z-stack of images (Nz images with dz µm in between acquisitions; dz does not matter if Nz is 1)\ncan be combined with dx/Nx and dy/Ny and dt/Nt for a total of Nx*Ny*Nz*Nt images"
-dt_tooltip="acquire time-series of 'Nt' images, with 'dt' seconds in between acquisitions (dt does not matter if Nt is 1)\ncan be combined with dx/Nx and dy/Ny and dz/Nz for a total of Nx*Ny*Nz*Nt images"
+dx_tooltip="""
+acquire grid of images (Nx images with dx mm in between acquisitions; dx does not matter if Nx is 1)
+can be combined with dy/Ny and dz/Nz and dt/Nt for a total of Nx * Ny * Nz * Nt images
+"""
+dy_tooltip="""
+acquire grid of images (Ny images with dy mm in between acquisitions; dy does not matter if Ny is 1)
+can be combined with dx/Nx and dz/Nz and dt/Nt for a total of Nx*Ny*Nz*Nt images
+"""
+dz_tooltip="""
+acquire z-stack of images (Nz images with dz µm in between acquisitions; dz does not matter if Nz is 1)
+can be combined with dx/Nx and dy/Ny and dt/Nt for a total of Nx*Ny*Nz*Nt images
+"""
+dt_tooltip="""
+acquire time-series of 'Nt' images, with 'dt' seconds in between acquisitions (dt does not matter if Nt is 1)
+can be combined with dx/Nx and dy/Ny and dz/Nz for a total of Nx*Ny*Nz*Nt images
+"""
 
 UNSELECTED_GRID_POSITION_COLOR="lightgrey"
 SELECTED_GRID_POSITION_COLOR="lightblue"
@@ -131,7 +143,7 @@ class MultiPointWidget(QFrame):
             self.set_NY(self.multipointController.NY)
 
             self.entry_deltaZ = SpinBoxDouble(minimum=0.0,step=0.2,default=self.multipointController.deltaZ,num_decimals=3,keyboard_tracking=False,
-                on_valueChanged=self.set_deltaZ
+                on_valueChanged=lambda delta_um:self.set_deltaZ(delta_um/1000)
             ).widget
             
             self.entry_NZ = SpinBoxInteger(minimum=1,step=1,keyboard_tracking=False,
@@ -156,10 +168,12 @@ class MultiPointWidget(QFrame):
         self.list_configurations.model().rowsMoved.connect(self.channel_list_rows_moved)
 
         if True: # add autofocus related stuff
-            self.checkbox_withAutofocus = QCheckBox('Software AF')
-            self.checkbox_withAutofocus.setToolTip(SOFTWARE_AUTOFOCUS_TOOLTIP)
-            self.checkbox_withAutofocus.setChecked(MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
-            self.checkbox_withAutofocus.stateChanged.connect(self.set_software_af_flag)
+            self.checkbox_withAutofocus = Checkbox(
+                label="Software AF",
+                checked=MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT,
+                tooltip=SOFTWARE_AUTOFOCUS_TOOLTIP,
+                on_stateChanged=self.set_software_af_flag,
+            ).widget
 
             channel_names=[microscope_configuration.name for microscope_configuration in self.configurationManager.configurations]
             self.af_channel_dropdown=Dropdown(
@@ -171,11 +185,13 @@ class MultiPointWidget(QFrame):
 
             self.set_software_af_flag(MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT)
 
-            self.checkbox_laserAutofocs = QCheckBox('Laser AF')
-            self.checkbox_laserAutofocs.setChecked(False)
-            self.checkbox_laserAutofocs.setDisabled(True)
-            self.checkbox_laserAutofocs.setToolTip(LASER_AUTOFOCUS_TOOLTIP)
-            self.checkbox_laserAutofocs.stateChanged.connect(self.hcs_controller.set_laser_af_flag)
+            self.checkbox_laserAutofocs = Checkbox(
+                label="Laser AF",
+                checked=False,
+                enabled=False,
+                tooltip=LASER_AUTOFOCUS_TOOLTIP,
+                on_stateChanged=self.hcs_controller.set_laser_af_flag,
+            ).widget
             self.hcs_controller.set_laser_af_flag(False)
 
             self.btn_startAcquisition = Button(BUTTON_START_ACQUISITION_IDLE_TEXT,on_clicked=self.toggle_acquisition).widget
@@ -387,23 +403,29 @@ class MultiPointWidget(QFrame):
 
     @TypecheckFunction
     def set_deltaX(self,value:float):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_X_MM/(self.multipointController.navigationController.x_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_X) # to implement a get_x_microstepping() in multipointController
+        """ value in mm"""
+
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_x
         deltaX = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_deltaX.setValue(deltaX)
         self.multipointController.set_deltaX(deltaX)
 
     @TypecheckFunction
     def set_deltaY(self,value:float):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Y_MM/(self.multipointController.navigationController.y_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Y)
+        """ value in mm"""
+
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_y
         deltaY = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_deltaY.setValue(deltaY)
         self.multipointController.set_deltaY(deltaY)
 
     @TypecheckFunction
     def set_deltaZ(self,value:float):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.multipointController.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
-        deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
-        self.entry_deltaZ.setValue(deltaZ)
+        """ value in mm"""
+
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_z
+        deltaZ = round(value/mm_per_ustep)*mm_per_ustep
+        self.entry_deltaZ.setValue(deltaZ*1000.0)
         self.multipointController.set_deltaZ(deltaZ)
 
     @TypecheckFunction

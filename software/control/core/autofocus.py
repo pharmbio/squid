@@ -135,7 +135,7 @@ class AutoFocusController(QObject):
         self.N = N
 
     def set_deltaZ(self,deltaZ_um:float):
-        mm_per_ustep_Z = MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
+        mm_per_ustep_Z = self.navigationController.microcontroller.mm_per_ustep_z
         self.deltaZ = deltaZ_um/1000
         self.deltaZ_usteps = round((deltaZ_um/1000)/mm_per_ustep_Z)
 

@@ -88,14 +88,16 @@ class ConfigurationManager(QObject):
     def save_configurations(self):
         self.write_configuration(self.config_filename)
 
+    @property
+    def configurations_list(self)->list:
+        return [
+            config.as_dict() 
+            for config 
+            in self.configurations
+        ]
+
     def write_configuration(self,filename:str):
-        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({
-            'configurations':[
-                config.as_dict() 
-                for config 
-                in self.configurations
-            ]
-        })
+        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'configurations':self.configurations_list })
         with open(filename, mode="w", encoding="utf-8") as json_file:
             json_file.write(json_tree_string)
 

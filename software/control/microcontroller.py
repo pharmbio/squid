@@ -707,3 +707,23 @@ class Microcontroller():
         self.set_pin_level(MCU_PINS.AF_LASER,0)
         if not completion is None:
             self.wait_till_operation_is_completed(**completion)
+
+    @ property
+    def mm_per_ustep_x(self)->float:
+        return MACHINE_CONFIG.SCREW_PITCH_X_MM/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_X*MACHINE_CONFIG.FULLSTEPS_PER_REV_X)
+    @ property
+    def mm_per_ustep_y(self)->float:
+        return MACHINE_CONFIG.SCREW_PITCH_Y_MM/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_Y*MACHINE_CONFIG.FULLSTEPS_PER_REV_Y)
+    @ property
+    def mm_per_ustep_z(self)->float:
+        return MACHINE_CONFIG.SCREW_PITCH_Z_MM/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_Z*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
+
+    @property
+    def mm_to_ustep_x(self,value_mm:float)->int:
+        return int(value_mm/self.mm_per_ustep_x)
+    @property
+    def mm_to_ustep_y(self,value_mm:float)->int:
+        return int(value_mm/self.mm_per_ustep_y)
+    @property
+    def mm_to_ustep_z(self,value_mm:float)->int:
+        return int(value_mm/self.mm_per_ustep_z)

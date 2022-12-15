@@ -136,15 +136,15 @@ class NavigationWidget(QFrame):
         self.hcs_controller.move_z(-self.entry_dZ.value()/1000) 
 
     def set_deltaX(self,value):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_X_MM/(self.navigationController.x_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_X) # to implement a get_x_microstepping() in multipointController
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_x
         deltaX = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_dX.setValue(deltaX)
     def set_deltaY(self,value):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Y_MM/(self.navigationController.y_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Y)
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_y
         deltaY = round(value/mm_per_ustep)*mm_per_ustep
         self.entry_dY.setValue(deltaY)
     def set_deltaZ(self,value):
-        mm_per_ustep = MACHINE_CONFIG.SCREW_PITCH_Z_MM/(self.navigationController.z_microstepping*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
+        mm_per_ustep = self.hcs_controller.microcontroller.mm_per_ustep_z
         deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
         self.entry_dZ.setValue(deltaZ)
 
