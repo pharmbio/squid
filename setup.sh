@@ -49,7 +49,7 @@ deactivate
 
 # install microscope software (and firmware)
 cd ~/Downloads
-git clone https://github.com/hongquanli/octopi-research # download squid software and firmware repo
+git clone https://github.com/pharmbio/squid # download squid software and firmware repo
 # from https://forum.squid-imaging.org/t/setting-up-arduino-teensyduino-ide-for-uploading-firmware/36 :
 # download arduino IDE
 curl https://downloads.arduino.cc/arduino-1.8.19-linux64.tar.xz -o arduino-1.8.19.tar.xz
@@ -68,28 +68,24 @@ sudo ./install.sh
 
 # install/upgrade microscope firmware
 echo "manual instructions: in the now open window, manually comment #include 'def_octopi.h' and uncomment #include 'def_octopi_80120.h', then switch to correct board (teensy 4.1) then install the packages PacketSerial and FastLED (both in Tools), then flash firmware"
-cd ~/Downloads/octopi-research/firmware/octopi_firmware_v2/main_controller_teensy41
+cd ~/Downloads/squid/firmware/octopi_firmware_v2/main_controller_teensy41
 arduino main_controller_teensy41.ino
 # copy default microscope configuration file - requires adjustment of well positions and autofocus channel
-cd ~/Downloads/octopi-research/software
+cd ~/Downloads/squid/software
 cp configurations/configuration_HCS_v2.txt configuration.txt
 # install camera driver
-cd ~/Downloads/octopi-research/software/drivers\ and\ libraries/daheng\ camera/Galaxy_Linux-x86_Gige-U3_32bits-64bits_1.2.1911.9122
+cd ~/Downloads/squid/software/drivers\ and\ libraries/daheng\ camera/Galaxy_Linux-x86_Gige-U3_32bits-64bits_1.2.1911.9122
 echo -e "\ny\nEn\n" | sudo ./Galaxy_camera.run
-cd ~/Downloads/octopi-research/software/drivers\ and\ libraries/daheng\ camera/Galaxy_Linux_Python_1.0.1905.9081/api
+cd ~/Downloads/squid/software/drivers\ and\ libraries/daheng\ camera/Galaxy_Linux_Python_1.0.1905.9081/api
 python3 setup.py build
 sudo python3 setup.py install
 
-cd
+cd # to home directory
 
 # set up bash commands to run installed software
 echo '
 run_microscope() {
-  cd ~/Downloads/octopi-research/software
-  python3 main.py
-}
-run_hcs() {
-  cd ~/Downloads/octopi-research/software
+  cd ~/Downloads/squid/software
   python3 main_hcs.py
 }
 run_cellprofiler() {
@@ -109,6 +105,28 @@ run_orange() {
 }
 ' >> ~/.bashrc
 source ~/.bashrc
+
+# create scripts to run certain software in their respective environment
+echo '#!/bin/bash
+source /home/pharmbio/cellprofiler_venv/bin/activate
+python3 -m cellprofiler
+deactivate
+' > ~/Documents/cellprofiler.sh
+echo '#!/bin/bash
+source /home/pharmbio/cellprofileranalyst_venv/bin/activate
+python3 ~/CellProfiler-Analyst-3.0.4/CellProfiler-Analyst.py
+deactivate
+' > ~/Documents/cellprofileranalyst.sh
+echo '#!/bin/bash
+cd /home/pharmbio/Downloads/squid/software
+python3 main_hcs.py
+sleep 10
+' > ~/Documents/microscope.sh
+echo '#!/bin/bash
+source /home/pharmbio/orange_venv/bin/activate
+python3 -m Orange.canvas
+deactivate
+' > ~/Documents/orange.sh
 
 # add desktop icons to start the installed software (incl. microscope)
 echo '[Desktop Entry]
@@ -132,9 +150,9 @@ Type=Application
 Terminal=true
 Name=microscope
 Icon=utilities-terminal
-Exec=/home/pharmbio/Documents/hcs.sh
+Exec=/home/pharmbio/Documents/microscope.sh
 Categories=Application;
-' > ~/Desktop/hcs.desktop
+' > ~/Desktop/microscope.desktop
 echo '[Desktop Entry]
 Type=Application
 Terminal=false
@@ -143,28 +161,8 @@ Icon=utilities-terminal
 Exec=/home/pharmbio/Documents/orange.sh
 Categories=Application;
 ' > ~/Desktop/orange.desktop
-echo '#!/bin/bash
-source /home/pharmbio/cellprofiler_venv/bin/activate
-python3 -m cellprofiler
-deactivate
-' > ~/Documents/cellprofiler.sh
-echo '#!/bin/bash
-source /home/pharmbio/cellprofileranalyst_venv/bin/activate
-python3 ~/CellProfiler-Analyst-3.0.4/CellProfiler-Analyst.py
-deactivate
-' > ~/Documents/cellprofileranalyst.sh
-echo '#!/bin/bash
-cd /home/pharmbio/Downloads/octopi-research/software
-python3 main_hcs.py
-sleep 10
-' > ~/Documents/hcs.sh
-echo '#!/bin/bash
-source /home/pharmbio/orange_venv/bin/activate
-python3 -m Orange.canvas
-deactivate
-' > ~/Documents/orange.sh
 
-chmod 755 ~/Desktop/orange.desktop ~/Documents/orange.sh 
-chmod 755 ~/Desktop/hcs.desktop ~/Documents/hcs.sh
-chmod 755 ~/Desktop/cellprofiler.desktop ~/Documents/cellprofiler.sh 
-chmod 755 ~/Desktop/cellprofileranalyst.desktop ~/Documents/cellprofileranalyst.sh 
+chmod 755 ~/Desktop/orange.desktop ~/Documents/orange.sh
+chmod 755 ~/Desktop/microscope.desktop ~/Documents/microscope.sh
+chmod 755 ~/Desktop/cellprofiler.desktop ~/Documents/cellprofiler.sh
+chmod 755 ~/Desktop/cellprofileranalyst.desktop ~/Documents/cellprofileranalyst.sh
