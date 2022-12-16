@@ -61,28 +61,26 @@ class HasWidget():
     def __init__(self,
         enabled:Optional[bool]=None,
 
-        *args,
         **kwargs,
     ):
         if not enabled is None:
             self.widget.setEnabled(enabled)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
         
 class HasToolTip(HasWidget):
     def __init__(self,
         tooltip:Optional[str]=None,
 
-        *args,
         **kwargs,
     ):
         if not tooltip is None:
             self.widget.setToolTip(tooltip)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
 
 class HasCallbacks(HasWidget):
-    def __init__(self,*args,**kwargs):
+    def __init__(self,**kwargs):
         unused_kwargs={}
         for key,value in kwargs.items():
             if key.startswith("on_"):
@@ -104,7 +102,19 @@ class HasCallbacks(HasWidget):
             # if setting callback was unsuccessfull (for whatever reason), forward argument to other constructors
             unused_kwargs[key]=value
 
-        super().__init__(*args,**unused_kwargs)
+        super().__init__(**unused_kwargs)
+
+class TextSelectable(HasWidget):
+    def __init__(self,
+        text_selectable:Optional[bool]=None,
+
+        **kwargs,
+    ):
+        if not text_selectable is None:
+            self.widget.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        super().__init__(**kwargs)
+
 
 def try_add_member(adder,addee,*args,**kwargs):
     if isinstance(addee,HasLayout):
@@ -179,7 +189,6 @@ class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
         num_decimals=None,
         keyboard_tracking=None,
         
-        *args,
         **kwargs,
     ):
         self.widget=QDoubleSpinBox()
@@ -197,7 +206,7 @@ class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
 
 class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
@@ -208,7 +217,6 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
         num_decimals=None,
         keyboard_tracking=None,
 
-        *args,
         **kwargs,
     ):
         self.widget=QSpinBox()
@@ -226,15 +234,14 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
 
-class Label(HasToolTip,HasWidget):
+class Label(TextSelectable,HasToolTip,HasWidget):
     def __init__(self,
         text:str,
         text_color:Optional[str]=None,
         background_color:Optional[str]=None,
 
-        *args,
         **kwargs,
     ):
         self.widget=QLabel(text)
@@ -248,7 +255,7 @@ class Label(HasToolTip,HasWidget):
             final_stylesheet=f"QLabel {{ { stylesheet } }}"
             self.widget.setStyleSheet(final_stylesheet)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
 
 
 class Button(HasCallbacks,HasToolTip,HasWidget):
@@ -258,7 +265,6 @@ class Button(HasCallbacks,HasToolTip,HasWidget):
         checkable:Optional[bool]=None,
         checked:Optional[bool]=None,
 
-        *args,
         **kwargs,
     ):
         self.widget=QPushButton(text)
@@ -270,21 +276,20 @@ class Button(HasCallbacks,HasToolTip,HasWidget):
         if not checked is None:
             self.widget.setChecked(checked)
 
-        super().__init__(*args,**kwargs)            
+        super().__init__(**kwargs)            
 
 class Dropdown(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
         items:List[Any],
         current_index:int,
 
-        *args,
         **kwargs,
     ):
         self.widget=QComboBox()
         self.widget.addItems(items)
         self.widget.setCurrentIndex(current_index)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
                     
 class Checkbox(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
@@ -292,7 +297,6 @@ class Checkbox(HasCallbacks,HasToolTip,HasWidget):
 
         checked:Optional[bool]=None,
         
-        *args,
         **kwargs,
     ):
         self.widget=QCheckBox(label)
@@ -300,7 +304,7 @@ class Checkbox(HasCallbacks,HasToolTip,HasWidget):
         if not checked is None:
             self.widget.setChecked(checked)
 
-        super().__init__(*args,**kwargs)
+        super().__init__(**kwargs)
 
 # special widgets
 

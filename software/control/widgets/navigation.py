@@ -27,68 +27,53 @@ class NavigationWidget(QFrame):
 
         self.widget_configuration = widget_configuration
 
-        self.label_Xpos = QLabel()
-        self.label_Xpos.setNum(0)
+        self.label_Xpos = Label("0,0",text_selectable=True).widget
         self.label_Xpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dX = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False).widget
-        self.btn_moveX_forward = Button('Forward',default=False).widget
-        self.btn_moveX_backward = Button('Backward',default=False).widget
+        self.entry_dX = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaX).widget
+        self.btn_moveX_forward = Button('Forward',on_clicked=self.move_x_forward).widget
+        self.btn_moveX_backward = Button('Backward',on_clicked=self.move_x_backward).widget
         
-        self.label_Ypos = QLabel()
-        self.label_Ypos.setNum(0)
+        self.label_Ypos = Label("0,0",text_selectable=True).widget
         self.label_Ypos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dY = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False).widget
-        self.btn_moveY_forward = Button('Forward',default=False).widget
-        self.btn_moveY_backward = Button('Backward',default=False).widget
+        self.entry_dY = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaY).widget
+        self.btn_moveY_forward = Button('Forward',on_clicked=self.move_y_forward).widget
+        self.btn_moveY_backward = Button('Backward',on_clicked=self.move_y_backward).widget
 
-        self.label_Zpos = QLabel()
-        self.label_Zpos.setNum(0)
+        self.label_Zpos = Label("0,0",text_selectable=True).widget
         self.label_Zpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.entry_dZ = SpinBoxDouble(minimum=0.0,maximum=1000.0,step=0.2,default=10.0,num_decimals=3,keyboard_tracking=False).widget
-        self.btn_moveZ_forward = Button('Forward',default=False).widget
-        self.btn_moveZ_backward = Button('Backward',default=False).widget
+        self.entry_dZ = SpinBoxDouble(minimum=0.0,maximum=1000.0,step=0.2,default=10.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaZ).widget
+        self.btn_moveZ_forward = Button('Forward',on_clicked=self.move_z_forward).widget
+        self.btn_moveZ_backward = Button('Backward',on_clicked=self.move_z_backward).widget
 
-        self.btn_zero_Z = Button('Zero Z',default=False).widget
+        self.btn_zero_Z = Button('Zero Z',checkable=True,on_clicked=self.zero_z).widget
+        self.zero_z_offset=0.0
 
         self.btn_goToLoadingPosition=Button(BTN_LOADING_POSITION_IDLE_UNLOADED).widget
         self.btn_goToLoadingPosition.clicked.connect(self.loading_position_toggle)
         
-        grid_line0 = Grid([ QLabel('X (mm)'), self.label_Xpos, self.entry_dX, self.btn_moveX_forward, self.btn_moveX_backward, ]).layout
-        grid_line1 = Grid([ QLabel('Y (mm)'), self.label_Ypos, self.entry_dY, self.btn_moveY_forward, self.btn_moveY_backward, ]).layout
+        if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT:
+            grid_line0 = Grid([ QLabel('X (mm)'), self.label_Xpos, self.entry_dX, self.btn_moveX_forward, self.btn_moveX_backward, ]).layout
+            grid_line1 = Grid([ QLabel('Y (mm)'), self.label_Ypos, self.entry_dY, self.btn_moveY_forward, self.btn_moveY_backward, ]).layout
         grid_line2 = Grid([ QLabel('Z (um)'), self.label_Zpos, self.entry_dZ, self.btn_moveZ_forward, self.btn_moveZ_backward, ]).layout
         
-        grid_line3 = QGridLayout()
-        if self.widget_configuration == WELLPLATE_NAMES[384]:
-            grid_line3.addWidget(self.btn_zero_Z, 0,3,1,1)
-        elif self.widget_configuration == WELLPLATE_NAMES[96]:
-            grid_line3.addWidget(self.btn_zero_Z, 0,3,1,1)
+        if self.widget_configuration in (WELLPLATE_NAMES[384], WELLPLATE_NAMES[96]):
+            grid_line3 = Grid([ self.btn_zero_Z, self.btn_goToLoadingPosition ]).layout
         else:
             err_msg=f"{self.widget_configuration} is not a supported NavigationViewer configuration"
             raise Exception(err_msg)
 
-        grid_line4=Grid([ self.btn_goToLoadingPosition ]).layout
-
-        self.grid = Grid(
-            [grid_line0],
-            [grid_line1],
+        grid_lines=[]
+        if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT:
+            grid_lines.extend([
+                [grid_line0],
+                [grid_line1],
+            ])
+        grid_lines.extend([
             [grid_line2],
             [grid_line3],
-            [grid_line4],
-        ).layout
+        ])
+        self.grid = Grid(*grid_lines).layout
         self.setLayout(self.grid)
-
-        self.entry_dX.valueChanged.connect(self.set_deltaX)
-        self.entry_dY.valueChanged.connect(self.set_deltaY)
-        self.entry_dZ.valueChanged.connect(self.set_deltaZ)
-
-        self.btn_moveX_forward.clicked.connect(self.move_x_forward)
-        self.btn_moveX_backward.clicked.connect(self.move_x_backward)
-        self.btn_moveY_forward.clicked.connect(self.move_y_forward)
-        self.btn_moveY_backward.clicked.connect(self.move_y_backward)
-        self.btn_moveZ_forward.clicked.connect(self.move_z_forward)
-        self.btn_moveZ_backward.clicked.connect(self.move_z_backward)
-
-        self.btn_zero_Z.clicked.connect(self.zero_z)
 
     def set_movement_ability(self,movement_allowed:bool,apply_to_loading_position_button:bool=False):
         for item in [
@@ -148,8 +133,23 @@ class NavigationWidget(QFrame):
         deltaZ = round(value/1000/mm_per_ustep)*mm_per_ustep*1000
         self.entry_dZ.setValue(deltaZ)
 
-    def zero_z(self):
-        self.core.navigation.zero_z()
+    def set_pos_x(self,new_x):
+        self.real_pos_x=new_x
+        self.label_Xpos.setText(f"{new_x:.2f}".replace(".",","))
+    def set_pos_y(self,new_y):
+        self.real_pos_y=new_y
+        self.label_Ypos.setText(f"{new_y:.2f}".replace(".",","))
+    def set_pos_z(self,new_z):
+        self.real_pos_z=new_z
+        self.label_Zpos.setText(f"{(new_z-self.zero_z_offset):.2f}".replace(".",","))
+
+    def zero_z(self,btn_state):
+        if btn_state:
+            self.zero_z_offset=self.real_pos_z
+        else:
+            self.zero_z_offset=0.0
+
+        self.set_pos_z(self.real_pos_z)
 
 import pyqtgraph as pg
 import numpy as np

@@ -230,10 +230,10 @@ class MultiPointWidget(QFrame):
         self.progress_bar.setValue(0)
 
         grid_line2 = Grid(
-            [ Label('Nx',tooltip=dx_tooltip), self.entry_NX, Label('dx (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
-            [ Label('Ny',tooltip=dy_tooltip), self.entry_NY, Label('dy (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
-            [ Label('Nz',tooltip=dz_tooltip), self.entry_NZ, Label('dz (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
-            [ Label('Nt',tooltip=dt_tooltip), self.entry_Nt, Label('dt (s)', tooltip=dt_tooltip), self.entry_dt, ],
+            [ Label('num acq. in x',tooltip=dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
+            [ Label('num acq. in y',tooltip=dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
+            [ Label('num acq. in z',tooltip=dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
+            [ Label('num acq. in t',tooltip=dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=dt_tooltip), self.entry_dt, ],
 
             GridItem(self.well_grid_selector,0,4,4,1)
         )

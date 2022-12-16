@@ -91,6 +91,10 @@ class CameraWrapper:
         if not self.stream_handler is None:
             self.camera.set_callback(self.stream_handler.on_new_frame)
 
+    def close(self):
+        self.camera.close()
+        self.live_controller.stop_live()
+
 class Core(QObject):
     @property
     def camera(self):
@@ -407,10 +411,9 @@ class Core(QObject):
             self.navigation.move_y(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_y needs to be called before move_y_to if the stage has been moved by the joystick
             self.navigation.move_y_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
 
-        self.liveController.stop_live()
-        self.liveController_focus_camera.stop_live()
-        self.camera.close()
+        self.main_camera.close()
         self.focus_camera.close()
+
         self.imageSaver.close()
         self.microcontroller.close()
 

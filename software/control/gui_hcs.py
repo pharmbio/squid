@@ -218,11 +218,7 @@ class OctopiGUI(QMainWindow):
 
         self.add_image_inspection()
 
-        self.laserAutofocusControlWidget=Dock(
-            self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self.laserAutofocusController),
-            title="Laser AF",minimize_height=True
-        ).widget
-
+        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self.laserAutofocusController)
         self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocs.setDisabled(False))
 
         self.named_widgets.live == ObjectManager()
@@ -264,35 +260,35 @@ class OctopiGUI(QMainWindow):
                 Label("max. FPS",tooltip=FPS_TOOLTIP),
                 self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
             ),
+            Dock(self.navigationWidget,"Navigation",True).widget,
 
-            Label(""),
-            self.laserAutofocusControlWidget,
+            # autofocus section
+            Dock(self.named_widgets.laserAutofocusControlWidget,title="Laser AF",minimize_height=True).widget,
+            Dock(self.autofocusWidget,title="Software AF",minimize_height=True).widget,
         ).widget
 
         self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
 
-        self.liveWidget=VBox(
-            Dock(self.navigationWidget,"Navigation",True).widget,
-            Dock(self.autofocusWidget,"Software AF",True).widget,
-            #self.named_widgets.special_widget == BlankWidget(
-            #    height=300,width=300,
-            #    #background_image_path="./images/384_well_plate_1509x1010.png",
-            #    children=self.named_widgets.wells == [
-            #        BlankWidget(
-            #            height=10,width=10,
-            #            background_color="red",
-            #            offset_left=i*(10+5),offset_top=j*(10+5),
-            #            on_mousePressEvent=lambda event,i=i,j=j: self.well_click_callback(event,i,j)
-            #        )
-            #        for i in range(24) for j in range(16)
-            #    ]
-            #),
-        ).widget
+        if False:
+            self.liveWidget=VBox(
+                #self.named_widgets.special_widget == BlankWidget(
+                #    height=300,width=300,
+                #    #background_image_path="./images/384_well_plate_1509x1010.png",
+                #    children=self.named_widgets.wells == [
+                #        BlankWidget(
+                #            height=10,width=10,
+                #            background_color="red",
+                #            offset_left=i*(10+5),offset_top=j*(10+5),
+                #            on_mousePressEvent=lambda event,i=i,j=j: self.well_click_callback(event,i,j)
+                #        )
+                #        for i in range(24) for j in range(16)
+                #    ]
+                #),
+            ).widget
 
         self.recordTabWidget = TabBar(
-            Tab(self.multiPointWidget, "Multipoint Acquisition"),
-            Tab(self.imagingModes,"Channel config"),
-            Tab(self.liveWidget, "Setup"),
+            Tab(self.multiPointWidget, "Acquisition"),
+            Tab(self.imagingModes,"Setup"),
         ).widget
 
         clear_history_button=Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget
@@ -325,11 +321,13 @@ class OctopiGUI(QMainWindow):
         ]
         self.centralWidget:QWidget = VBox(
             HBox(
+                Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
                 self.named_widgets.trigger_mode_dropdown == Dropdown(
                     items=trigger_modes_list,
                     current_index=0,
                     on_currentIndexChanged=lambda new_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_TRIGGER_MODE",trigger_modes_list[new_index])
                 ),
+                Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
                 self.named_widgets.pixel_format == Dropdown(
                     items=[
                         "Mono8",
@@ -337,6 +335,10 @@ class OctopiGUI(QMainWindow):
                     ],
                     current_index=0,
                 ),
+            ),
+            HBox(
+                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config),
+                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config),
             ),
             self.recordTabWidget
         ).widget
@@ -371,21 +373,18 @@ class OctopiGUI(QMainWindow):
             self.streamHandler_focus_camera.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
             self.laserAutofocusController.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
 
-        self.streamHandler_focus_camera.signal_new_frame_received.connect(self.liveController_focus_camera.on_new_frame)
-        self.streamHandler_focus_camera.image_to_display.connect(self.displacementMeasurementController.update_measurement)
+            self.streamHandler_focus_camera.signal_new_frame_received.connect(self.liveController_focus_camera.on_new_frame)
 
         # make connections
-        self.navigation.xPos.connect(lambda x:self.navigationWidget.label_Xpos.setText("{:.2f}".format(x)))
-        self.navigation.yPos.connect(lambda x:self.navigationWidget.label_Ypos.setText("{:.2f}".format(x)))
-        self.navigation.zPos.connect(lambda x:self.navigationWidget.label_Zpos.setText("{:.2f}".format(x)))
+        self.navigation.xPos.connect(self.navigationWidget.set_pos_x)
+        self.navigation.yPos.connect(self.navigationWidget.set_pos_y)
+        self.navigation.zPos.connect(self.navigationWidget.set_pos_z)
         self.navigation.signal_joystick_button_pressed.connect(self.autofocusController.autofocus)
         self.navigation.xyPos.connect(self.navigationViewer.update_current_location)
 
         self.imageDisplay.image_to_display.connect(self.processLiveImage) # internally calls self.imageDisplayWindow.display_image, among other things
 
         self.autofocusController.image_to_display.connect(self.imageDisplayWindow.display_image)
-        self.multipointController.image_to_display.connect(self.imageDisplayWindow.display_image)
-        self.multipointController.image_to_display_multi.connect(self.imageArrayDisplayWindow.display_image)
 
         self.multipointController.signal_register_current_fov.connect(self.navigationViewer.register_fov)
 
@@ -402,9 +401,9 @@ class OctopiGUI(QMainWindow):
 
         # image display windows
         self.imageDisplayTabs = TabBar(
-            Tab(self.imageDisplayWindow.widget, "Live View"),
-            Tab(self.imageArrayDisplayWindow.widget, "Multichannel Acquisition"),
-            Tab(laserfocus_dockArea,"Laser-based Focus"),
+            Tab(self.imageDisplayWindow.widget, "Single View"),
+            Tab(self.imageArrayDisplayWindow.widget, "Multi View"),
+            Tab(laserfocus_dockArea,"Laser AF Signal"),
         ).widget
 
         main_dockArea = dock.DockArea()
@@ -420,6 +419,12 @@ class OctopiGUI(QMainWindow):
 
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
+
+    def save_all_config(self):
+        print("save_all_config")
+
+    def load_all_config(self):
+        print("load_all_config")
 
     # @TypecheckFunction # dont check because signal cannot yet be checked properly
     def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str])->Optional[Signal]:
@@ -495,19 +500,25 @@ class OctopiGUI(QMainWindow):
         """ TODO : implement custom well selection widget """
         self.named_widgets.wells[i*16+j].setStyleSheet("QWidget {background-color: blue;}")
 
-    @property
-    def all_interactible_widgets(self)->list:
+    def get_all_interactible_widgets(self)->list:
         ret=[
-            self.named_widgets.live.channel_dropdown,
-            self.named_widgets.live.fps,
+            self.named_widgets.trigger_mode_dropdown,
+            self.named_widgets.pixel_format,
+
+            self.named_widgets.save_all_config,
+            self.named_widgets.load_all_config,
 
             self.named_widgets.snap_all_button,
 
             self.named_widgets.save_config_button,
             self.named_widgets.load_config_button,
 
+            self.named_widgets.live.channel_dropdown,
+            self.named_widgets.live.fps,
+
+            self.named_widgets.laserAutofocusControlWidget,
             self.autofocusWidget,
-            self.laserAutofocusControlWidget,
+
             self.navigationWidget,
             self.multiPointWidget,
         ]
@@ -529,7 +540,7 @@ class OctopiGUI(QMainWindow):
         can be used e.g. to disable all widgets that interact with the hardware while imaging is in progress to avoid conflicts.
         """
 
-        for widget in self.all_interactible_widgets:
+        for widget in self.get_all_interactible_widgets():
             if not widget in exceptions:
                 if isinstance(widget,QWidget):
                     widget.setEnabled(enable)
@@ -552,7 +563,10 @@ class OctopiGUI(QMainWindow):
             config=self.configurationManager.configurations[channel_index]
             fps=self.named_widgets.live.fps.value()
 
-            self.set_all_interactibles_enabled(False,exceptions=[self.named_widgets.live.button])
+            self.set_all_interactibles_enabled(False,exceptions=[
+                self.named_widgets.live.button,
+                self.navigationWidget,
+            ])
 
             with core.StreamingCamera(self.camera):
                 last_imaging_time=0.0
@@ -568,7 +582,7 @@ class OctopiGUI(QMainWindow):
                         # leave live
                         self.named_widgets.live.button.setText(LIVE_BUTTON_IDLE_TEXT)
                         
-                        self.set_all_interactibles_enabled(True,exceptions=[self.named_widgets.live.button])
+                        self.set_all_interactibles_enabled(True)
 
                         break
         else:
