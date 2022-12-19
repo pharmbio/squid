@@ -23,6 +23,8 @@ import time
 from control.typechecker import TypecheckFunction
 from typing import Union
 
+from tqdm import tqdm
+
 import os
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
@@ -358,7 +360,15 @@ class OctopiGUI(QMainWindow):
             ).widget
             dock_laserfocus_liveController = Dock(
                 title='Focus Camera Controller',
-                widget=self.liveControlWidget_focus_camera,
+                widget=VBox(
+                    self.liveControlWidget_focus_camera,
+                    HBox(
+                        Button("measure",on_clicked=self.calibrate_displacement),
+                        self.named_widgets.displacement_accuracy_granularity == SpinBoxInteger(minimum=1,maximum=20,default=7,step=1),
+                        self.named_widgets.displacement_accuracy_halfrange == SpinBoxDouble(minimum=100.0,maximum=300.0,default=150.0,step=10.0),
+                    ),
+                    self.named_widgets.displacement_graph_widget == pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
+                ).widget,
                 fixed_width=self.liveControlWidget_focus_camera.minimumSizeHint().width()
             ).widget
 
@@ -418,6 +428,52 @@ class OctopiGUI(QMainWindow):
 
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
+
+    def calibrate_displacement(self):
+        half_range=self.named_widgets.displacement_accuracy_halfrange.widget.value()
+        x=numpy.linspace(-half_range,half_range,50)
+        y0=x.copy()
+        y1=numpy.zeros_like(x)
+
+        try:
+            _=self.named_widgets.displacement_graph_widget.view
+        except:
+            self.named_widgets.displacement_graph_widget.view=self.named_widgets.displacement_graph_widget.addViewBox()
+        try:
+            _=self.named_widgets.displacement_graph_widget.plot
+            self.named_widgets.displacement_graph_widget.plot.clear()
+        except:
+            self.named_widgets.displacement_graph_widget.plot=self.named_widgets.displacement_graph_widget.addPlot(0,0,title="displacement",viewBox=self.named_widgets.displacement_graph_widget.view)
+
+        total_moved_distance=0.0
+        with core.StreamingCamera(self.core.focus_camera.camera):
+            for i,x_i in enumerate(tqdm(x)):
+                if i==0:
+                    move_z_distance_um=x_i
+                else:
+                    move_z_distance_um=x_i-x[i-1]
+
+                total_moved_distance+=move_z_distance_um
+                if i==0:
+                    self.core.navigation.move_z(move_z_distance_um*1e-3-1e-2,wait_for_completion={})
+                    self.core.navigation.move_z(1e-2,wait_for_completion={})
+                else:
+                    self.core.navigation.move_z(move_z_distance_um*1e-3,wait_for_completion={})
+                    
+                measured_displacement=self.core.laserAutofocusController.measure_displacement(self.named_widgets.displacement_accuracy_granularity.widget.value())
+                if i==0:
+                    measured_displacement=self.core.laserAutofocusController.measure_displacement(self.named_widgets.displacement_accuracy_granularity.widget.value())
+
+                y1[i]=measured_displacement
+
+                QApplication.processEvents()
+
+        move_z_distance_um=-total_moved_distance
+        self.core.navigation.move_z(move_z_distance_um*1e-3,wait_for_completion={})
+
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0,pen=pg.mkPen(color="green"))
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1,pen=pg.mkPen(color="orange"))
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1-y0,pen=pg.mkPen(color="red"))
 
     def set_main_camera_pixel_format(self,pixel_format_index):
         new_pixel_format=self.core.main_camera.pixel_formats[pixel_format_index]

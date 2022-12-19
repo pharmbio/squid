@@ -106,13 +106,13 @@ class LaserAutofocusController(QObject):
 
         print("laser AF initialization done")
 
-    def measure_displacement(self)->float:
+    def measure_displacement(self,override_num_images:Optional[int]=None)->float:
         assert self.is_initialized and not self.x_reference is None
 
         # get laser spot location
         # sometimes one of the two expected dots cannot be found in _get_laser_spot_centroid because the plate is so far off the focus plane though, catch that case
         try:
-            x,y = self._get_laser_spot_centroid(num_images=MACHINE_CONFIG.LASER_AF_AVERAGING_N_FAST)
+            x,y = self._get_laser_spot_centroid(num_images=override_num_images or MACHINE_CONFIG.LASER_AF_AVERAGING_N_FAST)
 
             # calculate displacement
             displacement_um = (x - self.x_reference)*self.pixel_to_um
