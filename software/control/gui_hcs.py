@@ -148,7 +148,7 @@ class OctopiGUI(QMainWindow):
         self.wellSelectionWidget    = widgets.WellSelectionWidget(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
         self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
         self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
-        self.multiPointWidget       = widgets.MultiPointWidget(self.core,self.start_experiment,self.abort_experiment)
+        self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self,start_experiment=self.start_experiment,abort_experiment=self.abort_experiment)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
         self.imaging_mode_config_managers={}
@@ -226,7 +226,7 @@ class OctopiGUI(QMainWindow):
             # snap and channel config section
             HBox(
                 self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_all),
-                self.named_widgets.snap_all_with_offset_checkbox == Checkbox("incl. offset",tooltip="move to channel-specific offset from reference plane on snap"),
+                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label="incl. offset",tooltip="not implemented yet.",enabled=False),#move to channel-specific offset from reference plane on snap"),
             ),
 
             Label(""),
@@ -294,18 +294,18 @@ class OctopiGUI(QMainWindow):
         clear_history_button=Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget
 
         wellplate_types_str=list(WELLPLATE_NAMES.values())
-        wellplate_selector=Dropdown(
+        self.named_widgets.wellplate_selector == Dropdown(
             items=wellplate_types_str,
             current_index=wellplate_types_str.index(default_well_plate),
             on_currentIndexChanged=lambda wellplate_type_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"WELLPLATE_FORMAT",tuple(WELLPLATE_FORMATS.keys())[wellplate_type_index])
         ).widget
         # disable 6 and 24 well wellplates, because images of these plates are missing
         for wpt in [0,2]:
-            item=wellplate_selector.model().item(wpt)
+            item=self.named_widgets.wellplate_selector.model().item(wpt)
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled) # type: ignore
 
         self.navigationViewWrapper=VBox(
-            HBox( QLabel("wellplate overview"), clear_history_button, QLabel("change plate type:"), wellplate_selector ).layout,
+            HBox( QLabel("wellplate overview"), clear_history_button, QLabel("change plate type:"), self.named_widgets.wellplate_selector ).layout,
             self.navigationViewer
         ).layout
 
@@ -334,11 +334,13 @@ class OctopiGUI(QMainWindow):
                         "Mono12",
                     ],
                     current_index=0,
+                    enabled=False,
+                    tooltip="not implemented yet."
                 ),
             ),
             HBox(
-                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config),
-                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config),
+                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=False, tooltip="not implemented yet."),
+                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config, enabled=False, tooltip="not implemented yet."),
             ),
             self.recordTabWidget
         ).widget
@@ -503,16 +505,18 @@ class OctopiGUI(QMainWindow):
     def get_all_interactible_widgets(self)->list:
         ret=[
             self.named_widgets.trigger_mode_dropdown,
-            self.named_widgets.pixel_format,
+            #self.named_widgets.pixel_format, # currently disabled because they are not implemented
 
-            self.named_widgets.save_all_config,
-            self.named_widgets.load_all_config,
+            #self.named_widgets.save_all_config, # currently disabled because they are not implemented
+            #self.named_widgets.load_all_config, # currently disabled because they are not implemented
 
             self.named_widgets.snap_all_button,
+            #self.named_widgets.snap_all_with_offset_checkbox, # currently disabled because they are not implemented
 
             self.named_widgets.save_config_button,
             self.named_widgets.load_config_button,
 
+            self.named_widgets.live.button,
             self.named_widgets.live.channel_dropdown,
             self.named_widgets.live.fps,
 
@@ -520,7 +524,10 @@ class OctopiGUI(QMainWindow):
             self.autofocusWidget,
 
             self.navigationWidget,
-            self.multiPointWidget,
+
+            *(self.multiPointWidget.get_all_interactible_widgets()),
+
+            self.named_widgets.wellplate_selector,
         ]
 
         for _id,manager in self.imaging_mode_config_managers.items():
@@ -546,6 +553,8 @@ class OctopiGUI(QMainWindow):
                     widget.setEnabled(enable)
                 elif isinstance(widget,HasWidget):
                     widget.widget.setEnabled(enable)
+    
+        QApplication.processEvents()
 
     def toggle_live(self,button_pressed:bool):
         """

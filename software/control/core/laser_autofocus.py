@@ -123,24 +123,24 @@ class LaserAutofocusController(QObject):
 
         return displacement_um
 
-    def move_to_target(self,target_um:float,currently_repeating:bool=False):
+    def move_to_target(self,target_um:float,max_repeats:int=MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS):
         with StreamingCamera(self.camera):
-            current_displacement_um = self.measure_displacement()
+            for num_repeat in range(max_repeats+1):
+                current_displacement_um = self.measure_displacement()
 
-            if math.isnan(current_displacement_um):
-                raise ValueError("displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrongs. Make sure that the laser AF laser is not currently used for live imaging.")
+                if math.isnan(current_displacement_um):
+                    raise ValueError("displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrongs. Make sure that the laser AF laser is not currently used for live imaging.")
 
-            um_to_move = target_um - current_displacement_um
-            if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-                return
+                um_to_move = target_um - current_displacement_um
+                if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
+                    return
 
-            # limit the range of movement
-            um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
+                # limit the range of movement
+                um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
 
-            self.navigation.move_z(um_to_move/1000,wait_for_completion={})
+                print(f"laser af - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
 
-            if not currently_repeating:
-                self.move_to_target(target_um,currently_repeating=True)
+                self.navigation.move_z(um_to_move/1000,wait_for_completion={})
 
     def set_reference(self):
         assert self.is_initialized

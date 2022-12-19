@@ -81,6 +81,7 @@ class MultiPointWidget(QFrame):
 
     def __init__(self,
         core,
+        gui,
         start_experiment:Callable[[str,List[str]],Optional[Signal]],
         abort_experiment:Callable[[],None]
     ):
@@ -88,6 +89,7 @@ class MultiPointWidget(QFrame):
         super().__init__()
         
         self.core = core
+        self.gui = gui
         self.start_experiment=start_experiment
         self.abort_experiment=abort_experiment
 
@@ -250,6 +252,9 @@ class MultiPointWidget(QFrame):
         self.setLayout(self.grid.layout)
 
         self.acquisition_is_running=False
+
+        self.multipointController.image_to_display.connect(self.gui.imageDisplay.image_to_display)
+        self.multipointController.image_to_display.connect(self.gui.imageDisplay.image_to_display)
 
     @TypecheckFunction
     def set_image_format(self,index:int):
@@ -446,7 +451,7 @@ class MultiPointWidget(QFrame):
 
             self.acquisition_is_running=True
             
-            self.setEnabled_all(False)
+            self.setEnabled_all(False,exclude_btn_startAcquisition=False)
 
             # get list of selected channels
             selected_channel_list:List[str]=[item.text() for item in self.list_configurations.selectedItems()]
@@ -465,9 +470,11 @@ class MultiPointWidget(QFrame):
                 return
 
             self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
-            QApplication.processEvents() # make sure that the text change is visible
 
             self.experiment_finished_signal.connect(self.acquisition_is_finished)
+
+            self.btn_startAcquisition.setEnabled(True)
+            QApplication.processEvents()
         else:
             self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
             self.abort_experiment()
@@ -477,20 +484,18 @@ class MultiPointWidget(QFrame):
     def acquisition_is_finished(self,aborted:bool=False):
         self.acquisition_is_running=False
         self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_IDLE_TEXT)
-        QApplication.processEvents() # make sure that the text change is visible
 
         self.experiment_finished_signal=None
         
-        self.setEnabled_all(True)
+        self.setEnabled_all(True,exclude_btn_startAcquisition=False)
 
         if aborted:
             MessageBox(title="Acquisition terminated",text="Acquisition was terminated. It may take a few seconds until the microscope has finished the last step is was working on.",mode="information").run()
         else:
             MessageBox(title="Acquisition finished",text="Acquisition is finished. See progress bar for details.",mode="information").run()
 
-    @TypecheckFunction
-    def setEnabled_all(self,enabled:bool,exclude_btn_startAcquisition:bool=True):
-        for item in [
+    def get_all_interactible_widgets(self):
+        return [
             self.btn_setSavingDir,
             self.lineEdit_savingDir,
             self.lineEdit_experimentID,
@@ -504,11 +509,20 @@ class MultiPointWidget(QFrame):
             self.entry_Nt,
             self.list_configurations,
             self.checkbox_withAutofocus,
-        ]:
-            item.setEnabled(enabled)
-            
-        if exclude_btn_startAcquisition is not True:
-            self.btn_startAcquisition.setEnabled(enabled)
+            *([self.checkbox_laserAutofocs] if self.gui.named_widgets.laserAutofocusControlWidget.has_been_initialized else []),
+            self.well_grid_selector,
+            self.image_compress_widget,
+            self.image_format_widget,
+            self.btn_startAcquisition,
+        ]
+
+    @TypecheckFunction
+    def setEnabled_all(self,enabled:bool,exclude_btn_startAcquisition:bool=True):
+        exceptions=[]
+        if exclude_btn_startAcquisition:
+            exceptions.append(self.btn_startAcquisition)
+
+        self.gui.set_all_interactibles_enabled(enabled,exceptions=exceptions)
 
     @TypecheckFunction
     def disable_the_start_aquisition_button(self):

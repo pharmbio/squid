@@ -127,6 +127,7 @@ class MultiPointWorker(QObject):
             pass
             
         self.finished.emit()
+        QApplication.processEvents()
 
         print("finished multipoint acquisition")
 
@@ -162,6 +163,8 @@ class MultiPointWorker(QObject):
         # process the image -  @@@ to move to camera
         self.image_to_display.emit(image)
         self.image_to_display_multi.emit(image,config.illumination_source)
+
+        QApplication.processEvents()
             
         if self.camera.is_color:
             if 'BF LED matrix' in config.name:
@@ -204,7 +207,7 @@ class MultiPointWorker(QObject):
                 self.laserAutofocusController.set_reference()
                 self.reflection_af_initialized = True
             else:
-                self.laserAutofocusController.move_to_target(0)
+                self.laserAutofocusController.move_to_target(0.0)
 
         if (self.NZ > 1):
             # move to bottom of the z stack
@@ -232,6 +235,10 @@ class MultiPointWorker(QObject):
             # iterate through selected modes
             for config in tqdm(self.selected_configurations,desc="channel",unit="channel",leave=False):
                 saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
+
+                if self.multiPointController.abort_acqusition_requested:
+                    raise AbortAcquisitionException()
+                    
                 self.image_config(config=config,saving_path=saving_path)
 
             # add the coordinate of the current location
@@ -651,30 +658,42 @@ class MultiPointController(QObject):
 
             # run the acquisition
             self.timestamp_acquisition_started = time.time()
-            # create a QThread object
             self.thread = QThread()
-            # create a worker object
+
             self.multiPointWorker = MultiPointWorker(self,image_positions)
-            # move the worker to the thread
             self.multiPointWorker.moveToThread(self.thread)
+
             # connect signals and slots
             self.thread.started.connect(self.multiPointWorker.run)
             if not on_new_acquisition is None:
                 self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
-            self.multiPointWorker.finished.connect(self._on_acquisition_completed)
-            self.multiPointWorker.finished.connect(self.multiPointWorker.deleteLater)
-            self.multiPointWorker.finished.connect(self.thread.quit)
+
+            self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
+
             self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
             self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
             self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
             self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration,type=Qt.BlockingQueuedConnection)
             self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
-            self.thread.finished.connect(self.thread.quit)
-            self.thread.finished.connect(lambda:setattr(self,'thread',None))
+
+            self.thread.finished.connect(self.on_thread_finished)
             
             self.thread.start()
 
             return self.thread
+
+    def on_multipointworker_finished(self):
+        self._on_acquisition_completed()
+        self.multiPointWorker.deleteLater()
+        self.thread.quit()
+
+    def on_thread_finished(self):
+        print("thread finished 1",end="; ")
+        self.thread.quit()
+        print("thread finished 2",end="; ")
+        self.multiPointWorker=None
+        self.thread=None
+        print("thread finished 3")
 
     def _on_acquisition_completed(self):
         # restore the previous selected mode
@@ -683,7 +702,6 @@ class MultiPointController(QObject):
         
         # emit the acquisition finished signal to enable the UI
         self.acquisitionFinished.emit()
-        QApplication.processEvents()
 
     def request_abort_aquisition(self):
         self.abort_acqusition_requested = True
