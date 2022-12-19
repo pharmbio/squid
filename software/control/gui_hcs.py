@@ -784,7 +784,7 @@ class OctopiGUI(QMainWindow):
             if _image.dtype==numpy.uint8:
                 return 2**8-1
             elif _image.dtype==numpy.uint16:
-                return 2**12-1
+                return 2**16-1
             else:
                 raise Exception(f"{_image.dtype=} unimplemented")
 
@@ -829,7 +829,7 @@ class OctopiGUI(QMainWindow):
 
             # since integer conversion truncates or whatever instead of scaling, scale manually
             if image.dtype==numpy.uint16:
-                truncated_image=numpy.uint8(image>>4)
+                truncated_image=numpy.uint8(image>>8)
             else:
                 truncated_image=image
             
