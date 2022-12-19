@@ -64,11 +64,11 @@ class LiveControlWidget(QFrame):
 
         self.btn_live=Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,default=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget
 
-        image_formats=list(self.liveController.camera.camera.PixelFormat.get_range().keys())
-        self.camera_pixel_format_widget=Dropdown(image_formats,
+        self.camera_pixel_format_widget=Dropdown(
+            items=self.liveController.camera.wrapper.pixel_formats,
             current_index=0, # default pixel format is 8 bits
             tooltip=CAMERA_PIXEL_FORMAT_TOOLTIP,
-            on_currentIndexChanged=lambda index:self.liveController.camera.set_pixel_format(image_formats[index])
+            on_currentIndexChanged=lambda index:self.liveController.camera.set_pixel_format(self.liveController.camera.wrapper.pixel_formats[index])
         ).widget
 
         self.grid = VBox(

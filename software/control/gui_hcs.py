@@ -329,13 +329,10 @@ class OctopiGUI(QMainWindow):
                 ),
                 Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
                 self.named_widgets.pixel_format == Dropdown(
-                    items=[
-                        "Mono8",
-                        "Mono12",
-                    ],
-                    current_index=0,
-                    enabled=False,
-                    tooltip="not implemented yet."
+                    items=self.core.main_camera.pixel_formats,
+                    current_index=0, # default pixel format is 8 bits
+                    on_currentIndexChanged=self.set_main_camera_pixel_format,
+                    tooltip="",
                 ),
             ),
             HBox(
@@ -422,6 +419,10 @@ class OctopiGUI(QMainWindow):
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
 
+    def set_main_camera_pixel_format(self,pixel_format_index):
+        new_pixel_format=self.core.main_camera.pixel_formats[pixel_format_index]
+        self.core.main_camera.camera.set_pixel_format(new_pixel_format)
+
     def save_all_config(self):
         print("save_all_config")
 
@@ -505,7 +506,7 @@ class OctopiGUI(QMainWindow):
     def get_all_interactible_widgets(self)->list:
         ret=[
             self.named_widgets.trigger_mode_dropdown,
-            #self.named_widgets.pixel_format, # currently disabled because they are not implemented
+            self.named_widgets.pixel_format,
 
             #self.named_widgets.save_all_config, # currently disabled because they are not implemented
             #self.named_widgets.load_all_config, # currently disabled because they are not implemented
@@ -664,10 +665,10 @@ class OctopiGUI(QMainWindow):
 
     def add_image_inspection(self,
         brightness_adjust_min:float=0.1,
-        brightness_adjust_max:float=4.0,
+        brightness_adjust_max:float=5.0,
 
         contrast_adjust_min:float=0.1,
-        contrast_adjust_max:float=4.0,
+        contrast_adjust_max:float=5.0,
 
         histogram_log_display_default:bool=True
     ):
@@ -681,6 +682,7 @@ class OctopiGUI(QMainWindow):
                 minimum=brightness_adjust_min,
                 maximum=brightness_adjust_max,
                 default=1.0,
+                step=0.1,
                 on_valueChanged=self.set_brightness,
             )
         ).layout
@@ -692,6 +694,7 @@ class OctopiGUI(QMainWindow):
                 minimum=contrast_adjust_min,
                 maximum=contrast_adjust_max,
                 default=1.0,
+                step=0.1,
                 on_valueChanged=self.set_contrast,
             )
         ).layout
@@ -777,16 +780,18 @@ class OctopiGUI(QMainWindow):
             self.last_image_data=image_data
             calculate_histogram=True
 
+        def image_type_max_value(_image):
+            if _image.dtype==numpy.uint8:
+                return 2**8-1
+            elif _image.dtype==numpy.uint16:
+                return 2**12-1
+            else:
+                raise Exception(f"{_image.dtype=} unimplemented")
+
         # calculate histogram
         if calculate_histogram and not self.last_image_data is None:
             image_data=self.last_image_data
-            if image_data.dtype==numpy.uint8:
-                max_value=2**8-1
-            # 12 bit pixel data type is stretched to fit 16 bit range neatly (with the 4 least significant bits always zero)
-            elif image_data.dtype==numpy.uint16:
-                max_value=2**16-1
-            else:
-                raise Exception(f"{image_data.dtype=} unimplemented")
+            max_value=image_type_max_value(image_data)
 
             bins=numpy.linspace(0,max_value,129,dtype=image_data.dtype)
             hist,bins=numpy.histogram(image_data,bins=bins)
@@ -806,6 +811,7 @@ class OctopiGUI(QMainWindow):
                 minYRange=1.0,
                 maxYRange=1.0,
             )
+            self.histogramWidget.view.setRange(xRange=(0,max_value))
 
             plot_kwargs={'x':bins[:-1],'y':hist,'pen':pg.mkPen(color=histogram_color)}
             try:
@@ -823,31 +829,35 @@ class OctopiGUI(QMainWindow):
 
             # since integer conversion truncates or whatever instead of scaling, scale manually
             if image.dtype==numpy.uint16:
-                image=numpy.uint8(image>>8)
-
-            foreground_mask=image>self.backgroundSlider.value
+                truncated_image=numpy.uint8(image>>4)
+            else:
+                truncated_image=image
+            
+            # estimate SNR (signal to noise ratio)
             snr_text="SNR: undefined"
+            foreground_mask=image>self.backgroundSlider.value
             if foreground_mask.any() and not foreground_mask.all():
-                foreground_mean=image[foreground_mask].mean()
-                background_mean=image[~foreground_mask].mean()
+                foreground_mean=truncated_image[foreground_mask].mean()
+                background_mean=truncated_image[~foreground_mask].mean()
 
-                snr_value=foreground_mean/background_mean
-                
-                snr_text=f"SNR: {snr_value:.1f}"
+                if background_mean>0.0:
+                    snr_value=foreground_mean/background_mean
+                    
+                    snr_text=f"SNR: {snr_value:.1f}"
 
             self.backgroundSNRValueText.setText(snr_text)
 
+            # adjust image brightness and contrast (if required)
             if not (self.imageBrightnessAdjust.value==1.0 and self.imageContrastAdjust.value==1.0):
-                # convert to uint8 for pillow image enhancement (not sure why uint8 is required..?)
+                image=Image.fromarray(truncated_image) # requires image to be uint8
 
-                image=Image.fromarray(image)
                 if self.imageBrightnessAdjust.value!=1.0:
                     brightness_enhancer = ImageEnhance.Brightness(image)
-                    image=brightness_enhancer.enhance(self.imageBrightnessSlider.value)
+                    image=brightness_enhancer.enhance(self.imageBrightnessAdjust.value)
 
                 if self.imageContrastAdjust.value!=1.0:
                     contrast_enhancer = ImageEnhance.Contrast(image)
-                    image=contrast_enhancer.enhance(self.imageContrastSlider.value)
+                    image=contrast_enhancer.enhance(self.imageContrastAdjust.value)
 
                 image=numpy.asarray(image) # numpy.array could also be used, but asarray does not copy the image data (read only view)
 

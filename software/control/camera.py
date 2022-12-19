@@ -84,7 +84,7 @@ class Camera(object):
         self.exposure_delay_us = self.exposure_delay_us_8bit*self.pixel_size_byte
         self.strobe_delay_us = self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1)
 
-        self.pixel_format='MONO8'
+        self.pixel_format=None
 
         self.is_live = False # this determines whether a new frame received will be handled in the streamHandler
         # mainly for discarding the last frame received after stop_live() is called, where illumination is being turned off during exposure
@@ -121,8 +121,7 @@ class Camera(object):
         # turn off device link throughput limit
         self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
 
-        if False and not self.used_for_laser_autofocus:
-            self.set_pixel_format(self.pixel_format)
+        self.set_pixel_format(list(self.camera.PixelFormat.get_range().keys())[0])
 
     def set_callback(self,function):
         self.new_image_callback_external = function
@@ -288,24 +287,30 @@ class Camera(object):
             was_streaming = False
 
         if self.camera.PixelFormat.is_implemented() and self.camera.PixelFormat.is_writable():
-            if pixel_format == 'MONO8':
+            if pixel_format.lower() == 'MONO8'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO8)
                 self.pixel_size_byte = 1
-            if pixel_format == 'MONO12':
+            elif pixel_format.lower() == 'MONO10'.lower():
+                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO10)
+                self.pixel_size_byte = 2
+            elif pixel_format.lower() == 'MONO12'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO12)
                 self.pixel_size_byte = 2
-            if pixel_format == 'MONO14':
+            elif pixel_format.lower() == 'MONO14'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO14)
                 self.pixel_size_byte = 2
-            if pixel_format == 'MONO16':
+            elif pixel_format.lower() == 'MONO16'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO16)
                 self.pixel_size_byte = 2
-            if pixel_format == 'BAYER_RG8':
+            elif pixel_format.lower() == 'BAYER_RG8'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.BAYER_RG8)
                 self.pixel_size_byte = 1
-            if pixel_format == 'BAYER_RG12':
+            elif pixel_format.lower() == 'BAYER_RG12'.lower():
                 self.camera.PixelFormat.set(gx.GxPixelFormatEntry.BAYER_RG12)
                 self.pixel_size_byte = 2
+            else:
+                assert False, f"pixel format {pixel_format} is not valid"
+                
             self.pixel_format = pixel_format
         else:
             print("pixel format is not implemented or not writable")
@@ -361,7 +366,7 @@ class Camera(object):
                 numpy_image = numpy_image << 4
         else:
             numpy_image = raw_image.get_numpy_array()
-            if self.pixel_format == 'MONO12':
+            if self.pixel_format.lower() == 'MONO12'.lower():
                 numpy_image = numpy_image << 4
         # self.current_frame = numpy_image
         return numpy_image
@@ -389,7 +394,7 @@ class Camera(object):
         else:
             numpy_image = raw_image.get_numpy_array()
 
-            if self.pixel_format == 'MONO12':
+            if self.pixel_format.lower() == 'MONO12'.lower():
                 numpy_image = numpy_image << 4
 
         if numpy_image is None:

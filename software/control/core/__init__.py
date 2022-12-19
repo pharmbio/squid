@@ -87,9 +87,24 @@ class CameraWrapper:
             **kwargs
         )
 
-        self.camera.set_software_triggered_acquisition() #self.camera.set_continuous_acquisition()
+        self.camera.set_software_triggered_acquisition() # default trigger type
         if not self.stream_handler is None:
             self.camera.set_callback(self.stream_handler.on_new_frame)
+
+        try:
+            _=self.camera.wrapper
+            camera_had_wrapper_before=True
+        except:
+            camera_had_wrapper_before=False
+
+        if not camera_had_wrapper_before:
+            self.camera.wrapper=self
+        else:
+            assert False, "a camera that already had a wrapper was attempted to be put inside a wrapper again"
+        
+    @property
+    def pixel_formats(self)->List[str]:
+        return list(self.camera.camera.PixelFormat.get_range().keys())
 
     def close(self):
         self.camera.close()

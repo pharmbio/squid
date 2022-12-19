@@ -9,8 +9,8 @@ from control.typechecker import TypecheckClass, ClosedRange, ClosedSet, Typechec
 from qtpy.QtCore import Signal, QObject
 
 class TriggerMode(str,Enum):
-    SOFTWARE = 'Software Trigger'
-    HARDWARE = 'Hardware Trigger'
+    SOFTWARE = 'Software'
+    HARDWARE = 'Hardware'
     CONTINUOUS = 'Continuous Acqusition'
 
 class ImageFormat(Enum):

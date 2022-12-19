@@ -6,7 +6,7 @@ from control._def import *
 
 from queue import Queue
 from threading import Thread, Lock
-import numpy as np
+import numpy
 import pyqtgraph as pg
 
 from typing import Optional, List, Union, Tuple
@@ -15,7 +15,7 @@ from control.core import ConfigurationManager
 
 class ImageDisplay(QObject):
 
-    image_to_display = Signal(np.ndarray)
+    image_to_display = Signal(numpy.ndarray)
 
     def __init__(self):
         QObject.__init__(self)
@@ -128,7 +128,7 @@ class ImageDisplayWindow(QMainWindow):
         self.DrawCirc = False
         self.centroid = None
         self.DrawCrossHairs = False
-        self.image_offset = np.array([0, 0])
+        self.image_offset = numpy.array([0, 0])
 
         ## Layout
         layout = QGridLayout()
@@ -147,7 +147,13 @@ class ImageDisplayWindow(QMainWindow):
 
     def display_image(self,image):
         """ display image in the respective widget """
-        self.graphics_widget.img.setImage(image,autoLevels=False) # disable automatically scaling the image pixel values (scale so that the lowest pixel value is pure black, and the highest value if pure white)
+        kwargs={
+            'autoLevels':False, # disable automatically scaling the image pixel values (scale so that the lowest pixel value is pure black, and the highest value if pure white)
+        }
+        if image.dtype==numpy.float32:
+            self.graphics_widget.img.setImage(image,levels=(0.0,1.0),**kwargs)
+        else:
+            self.graphics_widget.img.setImage(image,**kwargs)
 
     def update_ROI(self):
         self.roi_pos = self.ROI.pos()
@@ -173,7 +179,7 @@ class ImageDisplayWindow(QMainWindow):
         height = self.roi_size[1]
         xmin = max(0, self.roi_pos[0])
         ymin = max(0, self.roi_pos[1])
-        return np.array([xmin, ymin, width, height])
+        return numpy.array([xmin, ymin, width, height])
 
 
 class ImageArrayDisplayWindow(QMainWindow):

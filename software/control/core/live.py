@@ -88,11 +88,30 @@ class LiveController(QObject):
             self.set_microscope_mode(config)
 
             """ take image """
-            self.trigger_acquisition()
-            image = self.camera.read_frame()
-            self.end_acquisition()
+            image=None
+            start_time=time.monotonic()
+            while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
+                try:
+                    self.trigger_acquisition()
+                    image = self.camera.read_frame()
+                    self.end_acquisition()
+                    break
+                except AttributeError as a:
+                    if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
+                        raise a
+                    continue
+
+            if image is None:
+                raise ValueError(f"! error - could not take an image in config {config.name} !")
 
         """ de-prepare camera and lights """
+
+        if False:
+            max_value={
+                numpy.dtype('uint8'):2**8-1,
+                numpy.dtype('uint16'):2**12-1,
+            }[image.dtype]
+            print(f"recorded image in channel {config.name} with {config.exposure_time:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
 
         crop_height=override_crop_height or self.stream_handler.crop_height
         crop_width=override_crop_width or self.stream_handler.crop_width
