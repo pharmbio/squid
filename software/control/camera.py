@@ -2,10 +2,7 @@ import time
 import numpy
 
 from control.gxipy import gxiapi
-try:
-    import control.gxipy as gx
-except:
-    print('gxipy import error')
+import control.gxipy as gx
 
 from control._def import *
 from typing import Optional, Any
@@ -287,31 +284,20 @@ class Camera(object):
             was_streaming = False
 
         if self.camera.PixelFormat.is_implemented() and self.camera.PixelFormat.is_writable():
-            if pixel_format.lower() == 'MONO8'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO8)
-                self.pixel_size_byte = 1
-            elif pixel_format.lower() == 'MONO10'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO10)
-                self.pixel_size_byte = 2
-            elif pixel_format.lower() == 'MONO12'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO12)
-                self.pixel_size_byte = 2
-            elif pixel_format.lower() == 'MONO14'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO14)
-                self.pixel_size_byte = 2
-            elif pixel_format.lower() == 'MONO16'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.MONO16)
-                self.pixel_size_byte = 2
-            elif pixel_format.lower() == 'BAYER_RG8'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.BAYER_RG8)
-                self.pixel_size_byte = 1
-            elif pixel_format.lower() == 'BAYER_RG12'.lower():
-                self.camera.PixelFormat.set(gx.GxPixelFormatEntry.BAYER_RG12)
-                self.pixel_size_byte = 2
-            else:
+            pixel_format_found=False
+
+            for camera_pixel_format in CAMERA_PIXEL_FORMATS:
+                if camera_pixel_format.value.name == pixel_format:
+                    self.camera.PixelFormat.set(camera_pixel_format.value.gx_pixel_format)
+                    self.pixel_size_byte = camera_pixel_format.value.num_bytes_per_pixel
+
+                    self.pixel_format = camera_pixel_format
+
+                    pixel_format_found=True
+                    break
+
+            if not pixel_format_found:
                 assert False, f"pixel format {pixel_format} is not valid"
-                
-            self.pixel_format = pixel_format
         else:
             print("pixel format is not implemented or not writable")
 
@@ -356,18 +342,33 @@ class Camera(object):
             print('trigger not sent - camera is not streaming')
 
     @TypecheckFunction
-    def read_frame(self)->numpy.ndarray:
-        assert not self.camera is None
-        raw_image = self.camera.data_stream[self.device_index].get_image()
+    def rescale_raw_image(self,raw_image:gxiapi.RawImage)->numpy.ndarray:
         if self.is_color:
             rgb_image = raw_image.convert("RGB")
             numpy_image = rgb_image.get_numpy_array()
-            if self.pixel_format == 'BAYER_RG12':
+
+            if self.pixel_format == CAMERA_PIXEL_FORMATS.BAYER_RG12:
                 numpy_image = numpy_image << 4
         else:
             numpy_image = raw_image.get_numpy_array()
-            if self.pixel_format.lower() == 'MONO12'.lower():
+
+            if self.pixel_format == CAMERA_PIXEL_FORMATS.MONO10:
+                numpy_image = numpy_image << 6
+            elif self.pixel_format == CAMERA_PIXEL_FORMATS.MONO12:
                 numpy_image = numpy_image << 4
+            elif self.pixel_format == CAMERA_PIXEL_FORMATS.MONO14:
+                numpy_image = numpy_image << 2
+
+        return numpy_image
+
+    @TypecheckFunction
+    def read_frame(self)->numpy.ndarray:
+        assert not self.camera is None
+
+        raw_image = self.camera.data_stream[self.device_index].get_image()
+
+        numpy_image = self.rescale_raw_image(raw_image)
+
         # self.current_frame = numpy_image
         return numpy_image
 
@@ -385,17 +386,7 @@ class Camera(object):
             print('last image is still being processed, a frame is dropped')
             return
 
-        if self.is_color:
-            rgb_image = raw_image.convert("RGB")
-            numpy_image = rgb_image.get_numpy_array()
-
-            if self.pixel_format == 'BAYER_RG12':
-                numpy_image = numpy_image << 4
-        else:
-            numpy_image = raw_image.get_numpy_array()
-
-            if self.pixel_format.lower() == 'MONO12'.lower():
-                numpy_image = numpy_image << 4
+        numpy_image = self.rescale_raw_image(raw_image)
 
         if numpy_image is None:
             return

@@ -156,7 +156,7 @@ class LiveController(QObject):
         if self.trigger_mode == TriggerMode.SOFTWARE or ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
             self.camera.enable_callback() # in case it's disabled e.g. by the laser AF controller
             self._start_triggered_acquisition()
-        # if controlling the laser displacement measurement camera
+
         if self.for_displacement_measurement:
             self.microcontroller.turn_on_AF_laser(completion={})
 
@@ -177,7 +177,6 @@ class LiveController(QObject):
             if self.trigger_mode == TriggerMode.SOFTWARE or ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
                 self._stop_triggered_acquisition()
 
-            # if controlling the laser displacement measurement camera
             if self.for_displacement_measurement:
                 self.microcontroller.turn_off_AF_laser(completion={})
 

@@ -3,10 +3,12 @@ import json
 from pathlib import Path
 from enum import Enum
 
-from typing import Optional, Dict, List, ClassVar, Any, Tuple
+from typing import Optional, Dict, List, ClassVar, Any, Tuple, Union
 
 from control.typechecker import TypecheckClass, ClosedRange, ClosedSet, TypecheckFunction
 from qtpy.QtCore import Signal, QObject
+
+import control.gxipy as gx
 
 class TriggerMode(str,Enum):
     SOFTWARE = 'Software'
@@ -17,6 +19,51 @@ class ImageFormat(Enum):
     BMP=0
     TIFF=1
     TIFF_COMPRESSED=2
+
+@TypecheckClass(create_str=True)
+class CameraPixelFormat:
+    name:str
+    num_bytes_per_pixel:int
+    gx_pixel_format:Union[gx.GxPixelFormatEntry,int] # instances of gx.GxPixelFormatEntry are represented as an int
+
+
+class CAMERA_PIXEL_FORMATS(Enum):
+    MONO8=CameraPixelFormat(
+        name='Mono8',
+        num_bytes_per_pixel=1,
+        gx_pixel_format=gx.GxPixelFormatEntry.MONO8,
+    )
+    MONO10=CameraPixelFormat(
+        name='Mono10',
+        num_bytes_per_pixel=2,
+        gx_pixel_format=gx.GxPixelFormatEntry.MONO10,
+    )
+    MONO12=CameraPixelFormat(
+        name='Mono12',
+        num_bytes_per_pixel=2,
+        gx_pixel_format=gx.GxPixelFormatEntry.MONO12,
+    )
+    MONO14=CameraPixelFormat(
+        name='Mono14',
+        num_bytes_per_pixel=2,
+        gx_pixel_format=gx.GxPixelFormatEntry.MONO14,
+    )
+    MONO16=CameraPixelFormat(
+        name='Mono16',
+        num_bytes_per_pixel=2,
+        gx_pixel_format=gx.GxPixelFormatEntry.MONO16,
+    )
+    BAYER_RG8=CameraPixelFormat(
+        name='BAYER_RG8',
+        num_bytes_per_pixel=1,
+        gx_pixel_format=gx.GxPixelFormatEntry.BAYER_RG8,
+    )
+    BAYER_RG12=CameraPixelFormat(
+        name='BAYER_RG12',
+        num_bytes_per_pixel=2,
+        gx_pixel_format=gx.GxPixelFormatEntry.BAYER_RG12,
+    )
+
 
 class Acquisition:
     """ config stuff for (multi point) image acquisition """

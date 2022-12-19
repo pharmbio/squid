@@ -44,21 +44,6 @@ class StreamHandler(QObject):
 
         self.last_image=None
 
-    def start_recording(self):
-        self.save_image_flag = True
-
-    def stop_recording(self):
-        self.save_image_flag = False
-
-    def start_tracking(self):
-        self.tracking_flag = True
-
-    def stop_tracking(self):
-        self.tracking_flag = False
-
-    def set_save_fps(self,fps):
-        self.fps_save = fps
-
     @TypecheckFunction
     def set_crop(self,crop_width:int,crop_height:int):
         self.crop_width = crop_width
@@ -99,15 +84,6 @@ class StreamHandler(QObject):
             # self.image_to_display.emit(cv2.resize(image_cropped,(round(self.crop_width), round(self.crop_height)),cv2.INTER_LINEAR))
             self.image_to_display.emit(self.last_image)
             self.timestamp_last_display = time_now
-
-            # send image to write
-            if self.save_image_flag and time_now-self.timestamp_last_save >= 1/self.fps_save:
-                if camera.is_color:
-                    packet_image = cv2.cvtColor(self.last_image,cv2.COLOR_RGB2BGR)
-                else:
-                    packet_image=self.last_image
-                self.packet_image_to_write.emit(packet_image,camera.frame_ID,camera.timestamp)
-                self.timestamp_last_save = time_now
 
             self.handler_busy = False
             camera.image_locked = False
