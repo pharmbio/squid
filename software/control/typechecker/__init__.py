@@ -7,24 +7,8 @@ from inspect import signature, Parameter, getmro
 
 from qtpy.QtCore import Signal, QObject
 
-def type_name(t)->str:
-    try:
-        if t.__module__!="builtins":
-            return f"{t.__module__}.{t.__qualname__}"
-        else:
-            return t.__qualname__
-    except:
-        return str(t)
-
-def is_protected_symbol(symbol:str)->bool:
-    return len(symbol)>4 and symbol[:2]=="__" and symbol[-2:]=="__"
-
-class TypeCheckResult:
-    def __init__(self,val:bool,msg:str=""):
-        self.val=val
-        self.msg=msg
-    def __bool__(self)->bool:
-        return self.val
+from .util import *
+#from .type_match import type_match
 
 # compared expected to value type
 # param _vt is used for recursion as part of inheritence check
