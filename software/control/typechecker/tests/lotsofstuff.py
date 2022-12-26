@@ -64,3 +64,59 @@ class Person:
 
 peter=Person(name="peter")
 _=peter.sayhi()
+
+def seconds_to_long_time(sec:float)->str:
+    hours=int(sec//3600)
+    sec-=hours*3600
+    minutes=int(sec//60)
+    sec-=minutes*60
+    return f"{hours!s:3}h {minutes:2}m {sec:4.1f}s"
+
+class Configuration:
+    """ illumination channel configuration """
+
+    mode_id:str
+    name:str
+    camera_sn:str
+    exposure_time:float
+    analog_gain:float
+    illumination_source:int
+    illumination_intensity:float
+    channel_z_offset:float
+
+    def __init__(self,
+        mode_id:str,
+        name:str,
+        camera_sn:str,
+        exposure_time:float,
+        analog_gain:float,
+        illumination_source:int,
+        illumination_intensity:float,
+    ):
+        self.mode_id = mode_id
+        self.name = name
+        self.camera_sn = camera_sn
+        self.exposure_time = exposure_time
+        self.analog_gain = analog_gain
+        self.illumination_source = illumination_source
+        self.illumination_intensity = illumination_intensity
+
+    def set_exposure_time(self,new_value:float):
+        self.exposure_time=new_value
+
+    def set_analog_gain(self,new_value:float):
+        self.analog_gain=new_value
+
+    def set_offset(self,new_value:float):
+        self.channel_z_offset=new_value
+
+    def set_illumination_intensity(self,new_value:float):
+        self.illumination_intensity=new_value
+
+    @property
+    def automatic_tooltip(self)->str:
+        if self.name.startswith("Fluorescence"):
+            excitation_wavelength=self.name.split(" ")#[1]
+            return f"Imaging mode where the sample is excited with light at a wavelength of {excitation_wavelength}nm. The camera then records all the light that is emitted from the sample (e.g. via fluorescence)."
+        else:
+            return "no description for this channel"

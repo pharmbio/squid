@@ -9,6 +9,18 @@ from typing import Union, List, Optional, Tuple, Any, Dict, Set
 
 from util import type_name, TypeCheckResult
 
+def op_name(op)->str:
+    if isinstance(op,ast.Add):
+        return "add"
+    elif isinstance(op,ast.Sub):
+        return "sub"
+    elif isinstance(op,ast.Mult):
+        return "mult"
+    elif isinstance(op,ast.Div):
+        return "div"
+    elif isinstance(op,ast.FloorDiv):
+        return "floordiv"
+
 class FunctionHeader:
     def __init__(self,
         name:str,
@@ -23,6 +35,8 @@ class FunctionHeader:
 
         starargs:bool=False,
         starkwargs:bool=False,
+
+        scope:Optional[Any]=None,
     ):
         self.name=name
         self.return_type=return_type
@@ -36,6 +50,8 @@ class FunctionHeader:
 
         self.args_with_default_values=args_with_default_values
 
+        self.scope=scope
+
     def get_args(self):
         return [
             *self.posonlyargs,
@@ -47,33 +63,6 @@ class FunctionHeader:
             *self.args,
             *self.kwonlyargs,
         ]
-
-CONSTRUCTOR_NAME="__init__"
-BUILTIN_TYPE_NAMES={
-    'None':None,
-
-    'str':str,
-    'bool':bool,
-    'int':int,
-    'float':float,
-}
-AST_TYPE_ANNOTATIONS={
-    str:ast.Name(id="str",ctx=ast.Load()),
-}
-BUILTIN_FUNCTION_ANNOTATIONS={
-    "print":FunctionHeader(
-        name="print",
-        return_type=str,
-        args=[
-            ("item",str)
-        ],
-        kwonlyargs=[
-            ("sep",str),
-        ],
-        args_with_default_values={"sep"}
-    )
-}
-
 
 class TypeCheckError(Exception):
     def __init__(self,node=None):
@@ -94,10 +83,14 @@ class IncompatibleBinOpTypes(TypeCheckError):
         super().__init__(node=node)
         self.left_type=left_type
         self.right_type=right_type
-        self.left_topype=op
+        self.op=op
     def __str__(self):
-        return "incompatible bin op types"
-        
+        return f"incompatible types {type_name(self.left_type)} and {type_name(self.right_type)} for op {op_name(self.op)}"
+class ValueCannotBeNone(TypeCheckError):
+    def __init__(self,node):
+        super().__init__(node=node)
+    def __str__(self):
+        return f"value cannot have type None."
 class UnknownSymbol(TypeCheckError):
     def __init__(self,symbol_name:str,**kwargs):
         super().__init__(**kwargs)
@@ -110,6 +103,13 @@ class UnusedArgument(TypeCheckError):
         self.symbol_name=symbol_name
     def __str__(self):
         return f"unused argument '{self.symbol_name}'"
+class ArgumentNumberMismatch(TypeCheckError):
+    def __init__(self,expect_num:int,got_num:int,node):
+        super().__init__(node=node)
+        self.expect_num=expect_num
+        self.got_num=got_num
+    def __str__(self)->str:
+        return f"expected {self.expect_num} arguments, got {self.got_num} instead."
 
 class FunctionArgumentMissing(TypeCheckError):
     def __init__(self,func,arg,site):
@@ -165,7 +165,17 @@ class UnknownAttribute(TypeCheckError):
         super().__init__(node=node)
         self.container_type=container_type
     def __str__(self):
-        return f"type {type_name(self.node.name)} does not have attribute {self.container_type.attr}"
+        try:
+            node_name=type_name(self.node.name)
+        except:
+            node_name=type_name(self.node)
+
+        return f"type {type_name(self.container_type)} does not have attribute {self.node.attr}"
+class MissingTypeAnnotation(TypeCheckError):
+    def __init__(self,node):
+        super().__init__(node=node)
+    def __str__(self):
+        return "missing type annotation."
 
 def typecheck_assignment(node,left_type,right_type)->TypeCheckResult:
     if left_type==right_type:
@@ -232,11 +242,13 @@ class Scope:
         return_type:Optional[type]=None,
         in_loop:bool=False,
         location:Optional[str]=None,
+        known_symbol_types:Optional[dict]=None,
 
         code_str:Optional[str]=None,
+        is_class:bool=False,
     ):
         self.parent=parent
-        self.known_symbol_types={}
+        self.known_symbol_types=known_symbol_types or {}
         self.can_return=can_return
         self.must_return=must_return
         self.return_type=return_type
@@ -249,7 +261,7 @@ class Scope:
             assert code_str is None, "only the topmost scope must have the source code attached"
             self.code_str=self.parent.code_str
 
-        self.is_class=False
+        self.is_class=is_class
 
     @property
     def full_location(self)->str:
@@ -263,7 +275,7 @@ class Scope:
         else:
             return parent_location
 
-    def highlighted_error_location(self,node):
+    def highlighted_error_location(self,node)->str:
         if node is None:
             return self.full_location
 
@@ -275,7 +287,7 @@ class Scope:
 
         return f"{self.full_location}\n{statement_code_location}{statement_code_text}\n{code_highlight}"
 
-    def resolve_symbol_name_to_type(self,symbol):
+    def resolve_symbol_name_to_type(self,symbol)->type:
         """ resolve symbol _name_ to a type (only applicable to alone standing symbol names) """
         if isinstance(symbol,str):
             name=symbol
@@ -290,9 +302,10 @@ class Scope:
         else:
             if not self.parent is None:
                 return self.parent.resolve_symbol_name_to_type(symbol)
+
             raise UnknownSymbol(name,node=symbol)
 
-    def eval_value_type(self,value):
+    def eval_value_type(self,value)->type:
         if isinstance(value,ast.Constant):
             return type(value.value)
 
@@ -302,9 +315,12 @@ class Scope:
                 return self.known_symbol_types[name]
             elif name in BUILTIN_FUNCTION_ANNOTATIONS:
                 return BUILTIN_FUNCTION_ANNOTATIONS[name]
+            elif name in __builtins__.__dict__.keys():
+                assert False, f"did not implement anntations for builtin function {name}"
             else:
                 if not self.parent is None:
                     return self.parent.eval_value_type(value)
+
                 raise UnknownSymbol(name,node=value)
 
         elif isinstance(value,ast.BinOp):
@@ -346,20 +362,53 @@ class Scope:
             container_type=self.eval_value_type(value.value)
 
             if isinstance(container_type,type): # for builtin types
-                if container_type.attr in container_type.__dict__:
-                    return type(container_type.__dict__[container_type.attr])
+                if value.attr in container_type.__dict__:
+                    builtin_function=container_type.__dict__[value.attr]
+                    if builtin_function in BUILTIN_FUNCTION_ANNOTATIONS:
+                        return BUILTIN_FUNCTION_ANNOTATIONS[builtin_function]
+
+                    return type(builtin_function)
+
+                raise UnknownAttribute(node=value,container_type=container_type)
             elif isinstance(container_type,ClassChecker):
                 class_type=container_type
                 if value.attr in class_type.scope.known_symbol_types:
                     return class_type.scope.known_symbol_types[value.attr]
             
-            raise UnknownAttribute(node=value,container_type=container_type)
+                raise UnknownAttribute(node=value,container_type=container_type.node.name)
+
+        elif isinstance(value,ast.FormattedValue):
+            value_type=self.eval_value_type(value.value) # check value type to ensure the value exists
+
+            if value.conversion==-1: # no (default?) conversion
+                return str
+            elif value.conversion==115: # str conversion
+                return str
+            elif value.conversion==114: # repr conversion
+                return str
+            elif value.conversion==97: # print("ascii conversion")
+                return str
+            else:
+                assert False, f"unknown conversion specifier {value.conversion}"
+
+            # TODO currently value.format_spec is ignored. unsure if this can effect the formatting value type somehow
+
+        elif isinstance(value,ast.JoinedStr):
+            for segment in value.values:
+                segment_value_type=self.eval_value_type(segment)
+                if not segment_value_type==str:
+                    raise TypesUnequal(left_type=str,right_type=segment_value_type,node=value)
+
+            return str
         
         assert False,f"unknown type {ast.dump(value)}"
     
-    def type_annotation_to_type(self,type_annotation:Union[None,ast.Name,Any]):
+    def type_annotation_to_type(self,type_annotation:Union[ast.Name,ast.Constant,ast.Subscript],replace_none_with_type:bool=False,node:Optional[Any]=None)->type:
         if type_annotation is None:
-            return None
+            if replace_none_with_type:
+                type_annotation=AST_TYPE_ANNOTATIONS[None]
+            else:
+                raise MissingTypeAnnotation(node=node)
 
         if isinstance(type_annotation,ast.Name):
             if type_annotation.id in BUILTIN_TYPE_NAMES:
@@ -376,6 +425,21 @@ class Scope:
                 return None
             
             raise ExpectedType(node=type_annotation)
+
+        elif isinstance(type_annotation,ast.Subscript):
+            if isinstance(type_annotation.value,ast.Name):
+                if type_annotation.value.id=="Optional":
+                    if isinstance(type_annotation.slice,ast.Name):
+                        inner_type=self.type_annotation_to_type(type_annotation.slice)
+                        
+                        return Optional[inner_type]
+                    else:
+                        assert False, f"unreachable: {type_annotation.slice}"
+                else:
+                    assert False, f"unreachable: {type_annotation.value.id}"
+            else:
+                assert False, "unreachable"
+
         else:
             assert False,f"unknown type {ast.dump(type_annotation)}"
 
@@ -412,6 +476,9 @@ class Scope:
         args_accounted_for={arg[0]:False for arg in func_args}
 
         # check positional arguments first. (validate types and keep track of which ones were provided)
+        if len(args)>len(func_args):
+            raise ArgumentNumberMismatch(expect_num=len(func_args),got_num=len(args),node=call_node)
+
         for pos,pos_arg in enumerate(args):
             arg_name,arg_type=func_args[pos]
             left_type=arg_type
@@ -459,13 +526,23 @@ class Scope:
         return return_type
 
 
-    def validate_statements(self,nodes):
+    def validate_statements(self,nodes,allow_docstring:bool=False):
+        remaining_nodes=nodes
         try:
-            for node in nodes:
+            if allow_docstring and len(nodes)>=1:
+                try:
+                    first_node_type=self.validate_statement(nodes[0])
+                except CannotDiscardValueImplicitely as c:
+                    if c.node!=nodes[0]:
+                        raise c
+
+                remaining_nodes=nodes[1:]
+
+            for node in remaining_nodes:
                 self.validate_statement(node)
 
-            if len(nodes)>=1:
-                if self.can_return and (not self.return_type is None) and self.must_return and not isinstance(node,ast.Return):
+            if len(remaining_nodes)>=1:
+                if self.can_return and (not self.return_type is None) and self.must_return and not isinstance(remaining_nodes[-1],ast.Return):
                     raise MissingReturn(node)
 
         except TypeCheckError as t:
@@ -506,8 +583,12 @@ class Scope:
             """ e.g. a/=3; or b+=1 """
             left_type=self.resolve_symbol_name_to_type(statement.target)
             right_type=self.eval_value_type(statement.value)
-            if not bin_op_result_type(left_type,right_type,statement.op,strict_type_compatiblity=True)==left_type:
-                raise IncompatibleBinOpTypes(left_type,right_type,statement.op)
+
+            # if left type is float, type on right side does not matter (as long as it is a valid arithmetic type), the result will be float
+            strict_type_compatiblity=left_type!=float
+
+            if not bin_op_result_type(left_type,right_type,op=statement.op,strict_type_compatiblity=strict_type_compatiblity)==left_type:
+                raise IncompatibleBinOpTypes(node=statement,left_type=left_type,right_type=right_type,op=statement.op)
 
         elif isinstance(statement,ast.If):
             """ includes if[/else], and if/elif[/else]"""
@@ -614,7 +695,7 @@ class Scope:
             except:
                 pass
 
-            class_scope.validate_statements(statement.body)
+            class_scope.validate_statements(statement.body,allow_docstring=True)
 
         else:
             assert False, f"unimplemented {statement}"
@@ -637,24 +718,26 @@ class FunctionChecker:
         self.name=self.function.name
 
         self.scope=Scope(self.parent_scope,can_return=True,must_return=True,in_loop=False,location=f"function '{self.function.name}'")
-        self.scope.return_type=self.scope.type_annotation_to_type(function.returns)
+        self.scope.return_type=self.scope.type_annotation_to_type(function.returns,replace_none_with_type=True,node=function)
 
         self.arguments=[]
 
         # handle function.args.{vararg is *arg, kwarg is **kwargs}
         for arg in function.args.posonlyargs:
-            arg_type=self.scope.type_annotation_to_type(arg.annotation)
+            arg_type=self.scope.type_annotation_to_type(arg.annotation,node=arg)
             self.scope.known_symbol_types[arg.arg]=arg_type
 
         for arg in function.args.args:
-            arg_type=self.scope.type_annotation_to_type(arg.annotation)
+            arg_type=self.scope.type_annotation_to_type(arg.annotation,node=arg)
+            if arg_type is None:
+                print(ast.dump(function))
             self.scope.known_symbol_types[arg.arg]=arg_type
 
         for arg in function.args.kwonlyargs:
-            arg_type=self.scope.type_annotation_to_type(arg.annotation)
+            arg_type=self.scope.type_annotation_to_type(arg.annotation,node=arg)
             self.scope.known_symbol_types[arg.arg]=arg_type
 
-        self.scope.validate_statements(function.body)
+        self.scope.validate_statements(function.body,allow_docstring=True)
 
         self.args_with_default_values=set({})
         if len(function.args.posonlyargs)>0:
@@ -717,12 +800,86 @@ class ModuleChecker:
 
         self.scope=Scope(location=self.filename,code_str=self.file_contents)
 
-        target_ast=ast.parse(self.file_contents)
+        target_ast=ast.parse(self.file_contents,filename=filename) # provide filename for parsing error messages
 
         if print_ast:
             print(ast.dump(target_ast))
 
         self.scope.validate_statements(target_ast.body)
+
+CONSTRUCTOR_NAME="__init__"
+BUILTIN_TYPE_NAMES={
+    'None':None,
+
+    'str':str,
+    'bool':bool,
+    'int':int,
+    'float':float,
+}
+AST_TYPE_ANNOTATIONS={
+    str:ast.Name(id="str",ctx=ast.Load()),
+    None:ast.Name(id="None",ctx=ast.Load()),
+}
+BUILTIN_CLASS_SCOPES={
+    str:Scope(
+        parent=None,
+        is_class=True,
+        code_str="",
+    )
+}
+BUILTIN_FUNCTION_ANNOTATIONS={
+    "print":FunctionHeader(
+        name="print",
+        return_type=str,
+        args=[
+            ("item",str)
+        ],
+        kwonlyargs=[
+            ("sep",str),
+        ],
+        args_with_default_values={"sep"}
+    ),
+    "int":FunctionHeader(
+        name="int",
+        return_type=int,
+        posonlyargs=[('val',float)],
+    ),
+    "float":FunctionHeader(
+        name="float",
+        return_type=float,
+        posonlyargs=[('val',int)],
+    ),
+
+    str.startswith:FunctionHeader(
+        name="startswith",
+        args=[('start_sym',str)],
+        return_type=bool,
+        scope=Scope(parent=BUILTIN_CLASS_SCOPES[str]),
+    ),
+    str.endswith:FunctionHeader(
+        name="endswith",
+        args=[('end_sym',str)],
+        return_type=bool,
+        scope=Scope(parent=BUILTIN_CLASS_SCOPES[str]),
+    ),
+    str.split:FunctionHeader(
+        name="split",
+        args=[("sep",str),("maxsplit",int)],
+        args_with_default_values={"sep","maxsplit"},
+        return_type=bool,
+        scope=Scope(parent=BUILTIN_CLASS_SCOPES[str]),
+    ),
+    str.lower:FunctionHeader(
+        name="lower",
+        return_type=str,
+        scope=Scope(parent=BUILTIN_CLASS_SCOPES[str]),
+    ),
+    str.upper:FunctionHeader(
+        name="upper",
+        return_type=str,
+        scope=Scope(parent=BUILTIN_CLASS_SCOPES[str]),
+    ),
+}
 
 class TestCase:
     def __init__(self,filename,should_fail,name:Optional[str]=None,debug:bool=False):
