@@ -5,9 +5,75 @@
 import ast, sys, typing, os
 from pathlib import Path
 
-from typing import Union, List, Optional, Tuple, Any
+from typing import Union, List, Optional, Tuple, Any, Dict, Set
 
 from util import type_name, TypeCheckResult
+
+class FunctionHeader:
+    def __init__(self,
+        name:str,
+
+        return_type:type=None,
+
+        posonlyargs:List[Tuple[str,type]]=[],
+        args:List[Tuple[str,type]]=[],
+        kwonlyargs:List[Tuple[str,type]]=[],
+
+        args_with_default_values:Dict[str,bool]={},
+
+        starargs:bool=False,
+        starkwargs:bool=False,
+    ):
+        self.name=name
+        self.return_type=return_type
+
+        self.posonlyargs=posonlyargs
+        self.args=args
+        self.kwonlyargs=kwonlyargs
+
+        self.starargs=starargs
+        self.starkwargs=starkwargs
+
+        self.args_with_default_values=args_with_default_values
+
+    def get_args(self):
+        return [
+            *self.posonlyargs,
+            *self.get_kwargs(),
+        ]
+
+    def get_kwargs(self)->dict:
+        return [
+            *self.args,
+            *self.kwonlyargs,
+        ]
+
+CONSTRUCTOR_NAME="__init__"
+BUILTIN_TYPE_NAMES={
+    'None':None,
+
+    'str':str,
+    'bool':bool,
+    'int':int,
+    'float':float,
+}
+AST_TYPE_ANNOTATIONS={
+    str:ast.Name(id="str",ctx=ast.Load()),
+}
+BUILTIN_FUNCTION_ANNOTATIONS={
+    "print":FunctionHeader(
+        name="print",
+        return_type=str,
+        args=[
+            ("item",str)
+        ],
+        kwonlyargs=[
+            ("sep",str),
+        ],
+        args_with_default_values={"sep"}
+    )
+}
+
 
 class TypeCheckError(Exception):
     def __init__(self,node=None):
@@ -38,6 +104,12 @@ class UnknownSymbol(TypeCheckError):
         self.symbol_name=symbol_name
     def __str__(self):
         return f"unknown symbol '{self.symbol_name}'"
+class UnusedArgument(TypeCheckError):
+    def __init__(self,symbol_name:str,**kwargs):
+        super().__init__(**kwargs)
+        self.symbol_name=symbol_name
+    def __str__(self):
+        return f"unused argument '{self.symbol_name}'"
 
 class FunctionArgumentMissing(TypeCheckError):
     def __init__(self,func,arg,site):
@@ -86,7 +158,14 @@ class CannotDiscardValueImplicitely(TypeCheckError):
         super().__init__(node=statement)
         self.expression_type=expression_type
     def __str__(self):
-        return f"cannot discard value implicitely. expected type None, got type {type_name(self.expression_type)} instead."
+        return f"cannot discard value of type {type_name(self.expression_type)} implicitely."
+
+class UnknownAttribute(TypeCheckError):
+    def __init__(self,node,container_type):
+        super().__init__(node=node)
+        self.container_type=container_type
+    def __str__(self):
+        return f"type {type_name(self.node.name)} does not have attribute {self.container_type.attr}"
 
 def typecheck_assignment(node,left_type,right_type)->TypeCheckResult:
     if left_type==right_type:
@@ -170,6 +249,8 @@ class Scope:
             assert code_str is None, "only the topmost scope must have the source code attached"
             self.code_str=self.parent.code_str
 
+        self.is_class=False
+
     @property
     def full_location(self)->str:
         if self.parent is None:
@@ -219,6 +300,8 @@ class Scope:
             name=value.id
             if name in self.known_symbol_types:
                 return self.known_symbol_types[name]
+            elif name in BUILTIN_FUNCTION_ANNOTATIONS:
+                return BUILTIN_FUNCTION_ANNOTATIONS[name]
             else:
                 if not self.parent is None:
                     return self.parent.eval_value_type(value)
@@ -232,7 +315,7 @@ class Scope:
             )
             
         elif isinstance(value,ast.Call):
-            func_type=self.resolve_symbol_name_to_type(value.func)
+            func_type=self.eval_value_type(value.func)
 
             try:
                 starargs=value.starargs
@@ -244,7 +327,7 @@ class Scope:
                 kwargs=None
 
             return self.validate_function_call(
-                func_type=func_type,
+                called_node=func_type,
                 args=value.args,
                 keywords=value.keywords,
                 starargs=starargs,
@@ -258,6 +341,19 @@ class Scope:
         elif value is None:
             # not suuuuuper correct, but allows specifying None as function return type instead of NoneType (which would be the 'correct' behaviour, but seems unintuitive)
             return None
+
+        elif isinstance(value,ast.Attribute):
+            container_type=self.eval_value_type(value.value)
+
+            if isinstance(container_type,type): # for builtin types
+                if container_type.attr in container_type.__dict__:
+                    return type(container_type.__dict__[container_type.attr])
+            elif isinstance(container_type,ClassChecker):
+                class_type=container_type
+                if value.attr in class_type.scope.known_symbol_types:
+                    return class_type.scope.known_symbol_types[value.attr]
+            
+            raise UnknownAttribute(node=value,container_type=container_type)
         
         assert False,f"unknown type {ast.dump(value)}"
     
@@ -266,23 +362,25 @@ class Scope:
             return None
 
         if isinstance(type_annotation,ast.Name):
-            return {
-                'None':None,
+            if type_annotation.id in BUILTIN_TYPE_NAMES:
+                return BUILTIN_TYPE_NAMES[type_annotation.id]
+            elif type_annotation.id in self.known_symbol_types:
+                return self.known_symbol_types[type_annotation.id]
+            elif not self.parent is None:
+                return self.parent.type_annotation_to_type(type_annotation)
+            
+            raise UnknownSymbol(type_annotation.id,node=type_annotation)
 
-                'bool':bool,
-                'int':int,
-                'float':float,
-            }[type_annotation.id]
         elif isinstance(type_annotation,ast.Constant):
             if type_annotation.value is None:
                 return None
-            else:
-                raise ExpectedType(node=type_annotation)
+            
+            raise ExpectedType(node=type_annotation)
         else:
             assert False,f"unknown type {ast.dump(type_annotation)}"
 
     def validate_function_call(self, 
-        func_type, # currently implemented as FunctionChecker
+        called_node, # currently implemented as FunctionChecker
         args:list, # meaning arguments passed as positional arguments
         keywords:List[ast.keyword], # meaning arguments passed by keyword
         starargs:Optional[Any], # meaning *args
@@ -291,7 +389,26 @@ class Scope:
         call_node:ast.Call,
     )->type:
         # set up structure to keep track of arguments provided in the function call
-        func_args=func_type.get_args()
+        if isinstance(called_node,FunctionChecker):
+            func_type=called_node
+            return_type=func_type.scope.return_type
+            func_args=func_type.get_args()
+        elif isinstance(called_node,ClassChecker):
+            if not CONSTRUCTOR_NAME in called_node.scope.known_symbol_types:
+                raise UnknownSymbol(CONSTRUCTOR_NAME,node=call_node)
+
+            func_type=called_node.scope.known_symbol_types[CONSTRUCTOR_NAME]
+            return_type=called_node
+            func_args=func_type.get_args()
+        elif isinstance(called_node,ast.Name):
+            assert False, "unreachable"
+        elif isinstance(called_node,FunctionHeader):
+            func_type=called_node
+            return_type=func_type.return_type
+            func_args=func_type.get_args()
+        else:
+            assert False, f"unreachable. calling node other than function/class: {called_node}"
+
         args_accounted_for={arg[0]:False for arg in func_args}
 
         # check positional arguments first. (validate types and keep track of which ones were provided)
@@ -306,8 +423,12 @@ class Scope:
 
         # check arguments passed by keyword. (validate types and keep track of which ones were provided)
         func_kw_args=func_type.get_kwargs()
+        unused_kwargs={}
         for kw in keywords:
-            assert kw.arg in func_kw_args
+            if not kw.arg in func_kw_args:
+                unused_kwargs[kw.arg]=kw
+                continue
+
             func_arg_type=func_kw_args[kw.arg]
             left_type=func_arg_type
 
@@ -321,16 +442,21 @@ class Scope:
         if not starargs is None and len(starargs)>0:
             assert False, "unimplemented"
         # **kwargs
+        for name,kw_arg in unused_kwargs.items():
+            raise UnusedArgument(name,node=kw_arg)
+
         if not kwargs is None and len(kwargs)>0:
             assert False, "unimplemented"
 
         # make sure that all function arguments have been provided (TODO currently does not take default argument values into account)
         for arg,accounted_for in args_accounted_for.items():
-            if not accounted_for:
-                print(f"arg {arg}")
+            if not accounted_for and not ( \
+                (func_type.scope.parent.is_class and arg == "self") \
+                or arg in func_type.args_with_default_values
+            ):
                 raise FunctionArgumentMissing(func=func_type,arg=arg,site=call_node)
 
-        return func_type.scope.return_type
+        return return_type
 
 
     def validate_statements(self,nodes):
@@ -411,6 +537,12 @@ class Scope:
             raise Exception(f"importing modules is not supported (importing module(s) '{','.join([i.name for i in statement.names])}' here)")
 
         elif isinstance(statement,ast.FunctionDef):
+            if self.is_class:
+                if len(statement.args.args)>=1:
+                    first_arg=statement.args.args[0]
+                    if first_arg.arg=="self" and first_arg.annotation is None:
+                        first_arg.annotation=ast.Name(id="Self",ctx=ast.Load())
+
             function=FunctionChecker(self,statement)
 
             function_name=function.function.name
@@ -453,22 +585,63 @@ class Scope:
             if not expression_type is None:
                 raise CannotDiscardValueImplicitely(statement,expression_type)
 
+        elif isinstance(statement,ast.ClassDef):
+            class_name=statement.name
+
+            if class_name in self.known_symbol_types:
+                raise SymbolAlreadyExists(new_node=statement)
+
+            class_scope=Scope(parent=self)
+            class_checker_object=ClassChecker(statement,class_scope)
+
+            self.known_symbol_types[class_name]=class_checker_object
+
+            for decorator in statement.decorator_list:
+                print(f"found decorator {decorator} for classdef")
+
+            for base_class in statement.bases:
+                print(f"found base class {base_class} for class {class_name}")
+            for kwarg in statement.keywords:
+                print(f"found keyword arguments for class definition: {kwarg}")
+
+            try:
+                print(f"starargs exists: {statement.starargs}")
+            except:
+                pass
+
+            try:
+                print(f"kwargs exist: {statement.kwargs}")
+            except:
+                pass
+
+            class_scope.validate_statements(statement.body)
+
         else:
             assert False, f"unimplemented {statement}"
 
+class ClassChecker:
+    def __init__(self,class_def_node,class_scope):
+        self.node=class_def_node
+        self.scope=class_scope
+
+        assert not self.scope.is_class
+        self.scope.is_class=True
+
+        self.scope.known_symbol_types["Self"]=self
 
 class FunctionChecker:
     def __init__(self,parent_module,function):
         self.parent_scope=parent_module
 
         self.function=function
+        self.name=self.function.name
 
         self.scope=Scope(self.parent_scope,can_return=True,must_return=True,in_loop=False,location=f"function '{self.function.name}'")
         self.scope.return_type=self.scope.type_annotation_to_type(function.returns)
 
         self.arguments=[]
 
-        # handle function.args.{vararg is *arg, kwarg is **kwargs, defaults, kw_defaults}
+        # handle function.args.{vararg is *arg, kwarg is **kwargs}
         for arg in function.args.posonlyargs:
             arg_type=self.scope.type_annotation_to_type(arg.annotation)
             self.scope.known_symbol_types[arg.arg]=arg_type
@@ -483,6 +656,23 @@ class FunctionChecker:
 
         self.scope.validate_statements(function.body)
 
+        self.args_with_default_values=set({})
+        if len(function.args.posonlyargs)>0:
+            assert len(function.args.posonlyargs)==len(function.args.defaults)
+
+        for pos_index,pos_default in enumerate(function.args.defaults):
+            if not pos_default is None:
+                pos_arg_index=-len(function.args.defaults)+pos_index
+                referenced_arg=self.function.args.args[pos_arg_index]
+
+                default_value_type=self.scope.eval_value_type(pos_default)
+                typecheck_assignment(pos_default,self.scope.known_symbol_types[referenced_arg.arg],default_value_type)
+
+                self.args_with_default_values.add(referenced_arg.arg)
+        for kw_index,kw_default in enumerate(function.args.kw_defaults):
+            if not kw_default is None:
+                self.args_with_default_values.add(self.function.args.kwonlyargs[kw_index].arg)
+
     def get_args(self)->list:
         return [
             *[
@@ -491,14 +681,9 @@ class FunctionChecker:
                 in self.function.args.posonlyargs
             ],
             *[
-                (arg.arg,self.scope.resolve_symbol_name_to_type(arg.arg))
-                for arg
-                in self.function.args.args
-            ],
-            *[
-                (arg.arg,self.scope.resolve_symbol_name_to_type(arg.arg))
-                for arg
-                in self.function.args.kwonlyargs
+                (name,value_type)
+                for (name,value_type)
+                in self.get_kwargs().items()
             ],
         ]
 

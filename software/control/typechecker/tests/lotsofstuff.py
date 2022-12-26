@@ -53,3 +53,14 @@ def multiple_assignment():
     a=3
     b=4
 
+class Person:
+    name:str
+
+    def __init__(self,name:str):
+        self.name=name
+
+    def sayhi(self,b:float=2.0,a:int=2)->str:
+        return self.name
+
+peter=Person(name="peter")
+_=peter.sayhi()
