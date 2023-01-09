@@ -486,18 +486,11 @@ class MultiPointWidget(QFrame):
                     MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
                     self.acquisition_is_running=False
                     return
-
-            experiment_data_target_folder:Path=(Path(base_dir_str)/project_name_str)/plate_name_str
-            print(f"saving images into {str(experiment_data_target_folder)}")
-            if experiment_data_target_folder.exists():
-                MessageBox(title="Directory already exists!",mode="critical",text=f"The directory (folder) where the images for this experiment would be saved already exists, so saving images there can make existing data unusable. Please choose a different base directory or project name or plate name, or remove the existing folder {str(experiment_data_target_folder)} if you are really sure about that.").run()
-                self.acquisition_is_running=False
-                return
             
             self.setEnabled_all(False,exclude_btn_startAcquisition=False)
 
             self.experiment_finished_signal=self.gui.start_experiment(
-                str(experiment_data_target_folder),
+                str(Path(base_dir_str)/project_name_str/plate_name_str),
                 imaging_channel_list,
                 additional_data={
                     'project_name':project_name_str,

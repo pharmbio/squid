@@ -1,7 +1,7 @@
 # installing prerequisite software packages
 sudo usermod -aG dialout $USER # allow communication with arduino boards without superuser access
 sudo apt update
-sudo apt install -y tree curl git micro htop # basic tools that should be installed
+sudo apt install -y tree curl git htop xclip # basic tools that should be installed
 sudo apt install -y python3-pip python3-pyqtgraph python3-pyqt5 # squid software dependencies
 sudo apt install -y libreoffice virtualenv make gcc build-essential libgtk-3-dev openjdk-11-jdk-headless default-libmysqlclient-dev libnotify-dev libsdl2-dev # dependencies for cellprofiler
 sudo snap install --classic code # install visual studio code
@@ -12,6 +12,10 @@ export PATH=$PATH:/home/ubuntu/.local/bin
 
 # install everything relative to home
 cd ~
+
+# install micro, a great terminal text editor (from .deb file instead of apt repo because the version in apt creates a trash log.txt file in wd whenever the editor is opened)
+wget https://github.com/zyedidia/micro/releases/download/v2.0.11/micro-2.0.11-amd64.deb
+sudo dpkg -i micro-2.0.11-amd64.deb
 
 # setup microscope python env (which is global env, since Qt is used for gui, which does not work inside virtualenv)
 pip3 install --upgrade setuptools pip
@@ -166,3 +170,7 @@ chmod 755 ~/Desktop/orange.desktop ~/Documents/orange.sh
 chmod 755 ~/Desktop/microscope.desktop ~/Documents/microscope.sh
 chmod 755 ~/Desktop/cellprofiler.desktop ~/Documents/cellprofiler.sh
 chmod 755 ~/Desktop/cellprofileranalyst.desktop ~/Documents/cellprofileranalyst.sh
+
+# remove install files
+cd
+rm teensyduino-install.linux64 00-teensy.rules arduino-1.8.19.tar.xz micro-2.0.11-amd64.deb

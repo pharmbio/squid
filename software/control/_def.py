@@ -499,7 +499,7 @@ class MachineConfiguration:
     MUTABLE_STATE:MutableMachineConfiguration
     DISPLAY:MachineDisplayConfiguration
 
-    def from_file(filename:str):
+    def from_file(filename:str)->"MachineConfiguration":
         try:
             with open(filename,"r",encoding="utf-8") as json_file:
                 kwargs=json.decoder.JSONDecoder().decode(json_file.read())
@@ -516,6 +516,7 @@ class MachineConfiguration:
 
         return MachineConfiguration(**kwargs)
 
+MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
 
 @dataclass(frozen=True)
 class WellplateFormatPhysical:
@@ -611,5 +612,3 @@ WELLPLATE_NAMES:Dict[int,str]={
     i:f"{i} well plate"
     for i in WELLPLATE_FORMATS.keys()
 }
-
-MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
