@@ -118,18 +118,26 @@ class TextSelectable(HasWidget):
 
 def try_add_member(adder,addee,*args,**kwargs):
     if isinstance(addee,HasLayout):
-        adder.addLayout(addee.layout,*args,**kwargs)
+        try_add_member(adder,addee.layout,*args,**kwargs)
     elif isinstance(addee,HasWidget):
-        adder.addWidget(addee.widget,*args,**kwargs)
+        try_add_member(adder,addee.widget,*args,**kwargs)
     else:
         try:
-            adder.addWidget(addee,*args,**kwargs)
-        except TypeError:
             adder.addLayout(addee,*args,**kwargs)
+        except TypeError:
+            adder.addWidget(addee,*args,**kwargs)
 
-class GridItem:
-    def __init__(self,widget,row,column,rowSpan,colSpan):
+class GridItem(HasWidget):
+    def __init__(self,
+        widget:Optional[Any],
+
+        row:Optional[int]=None,
+        column:Optional[int]=None,
+        rowSpan:Optional[int]=None,
+        colSpan:Optional[int]=None,
+    ):
         self.widget=widget
+
         self.row=row
         self.column=column
         self.rowSpan=rowSpan
@@ -138,9 +146,16 @@ class GridItem:
 class Grid(HasLayout,HasWidget):
     def __init__(self,*args,**kwargs):
         self.layout=QGridLayout()
+        row_offset=0
         for outer_index,outer_arg in enumerate(args):
             if isinstance(outer_arg,GridItem):
-                self.layout.addWidget(outer_arg.widget,outer_arg.row,outer_arg.column,outer_arg.rowSpan,outer_arg.colSpan)
+                if not outer_arg.widget is None:
+                    try_add_member(self.layout, outer_arg.widget,
+                        outer_arg.row if not outer_arg.row is None else outer_index,
+                        outer_arg.column or 0,
+                        outer_arg.rowSpan or 1,
+                        outer_arg.colSpan or 1
+                    )
                 continue
 
             try:
@@ -150,11 +165,26 @@ class Grid(HasLayout,HasWidget):
                 can_be_iterated_over=False
 
             if can_be_iterated_over:
+                col_offset=0
                 for inner_index,inner_arg in enumerate(outer_arg):
-                    if not inner_arg is None: # inner args can be NONE to allow for some easy padding between elements
-                        try_add_member(self.layout,inner_arg,outer_index,inner_index)
+                    if not inner_arg is None: # inner args can be NONE to allow for some easy padding between elements (GridItem(widget=None) achieves the same, though allows for variable padding with e.g. colSpan=2)
+                        if isinstance(inner_arg,GridItem):
+                            row = ( inner_arg.row if not inner_arg.row is None else outer_index ) + row_offset
+                            col = ( inner_arg.column if not inner_arg.column is None else inner_index ) + col_offset
+                            height = inner_arg.rowSpan or 1
+                            width = inner_arg.colSpan or 1
+
+                            if not inner_arg.widget is None:
+                                try_add_member(self.layout, inner_arg.widget, row, col, height, width)
+
+                            if width != 1:
+                                col_offset+=width-1
+
+                            continue
+
+                        try_add_member(self.layout, inner_arg, outer_index + row_offset, inner_index + col_offset)
             else:
-                try_add_member(self.layout,outer_arg,outer_index,0)
+                try_add_member(self.layout, outer_arg, outer_index+row_offset, 0)
 
     @property
     def widget(self):

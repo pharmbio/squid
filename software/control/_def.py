@@ -494,6 +494,8 @@ class MachineConfiguration:
 
     DEFAULT_TRIGGER_FPS:float=5.0
 
+    MACHINE_NAME:str="unknown HCS SQUID"
+
     MUTABLE_STATE:MutableMachineConfiguration
     DISPLAY:MachineDisplayConfiguration
 

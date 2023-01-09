@@ -683,12 +683,16 @@ class MultiPointController(QObject):
             return self.thread
 
     def on_multipointworker_finished(self):
+        print("!debug: mpw finished 1",end="; ")
         self._on_acquisition_completed()
+        print("mpw finished 2",end="; ")
         self.multiPointWorker.deleteLater()
+        print("mpw finished 3",end="; ")
         self.thread.quit()
+        print("mpw finished 4")
 
     def on_thread_finished(self):
-        print("thread finished 1",end="; ")
+        print("!debug: thread finished 1",end="; ")
         self.thread.quit()
         print("thread finished 2",end="; ")
         self.multiPointWorker=None

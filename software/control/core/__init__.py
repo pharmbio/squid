@@ -290,6 +290,8 @@ class Core(QObject):
         grid_mask:Optional[Any]=None,
 
         headless:bool=True,
+
+        additional_data:Optional[dict]=None,
     )->Optional[QThread]:
 
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
@@ -346,6 +348,10 @@ class Core(QObject):
 
             "laser_af_on":laser_af_on,
         }
+        
+        if not additional_data is None:
+            assert set(acquisition_data.keys()).isdisjoint(set(additional_data.keys())), "additional data provided to save as metadata overlaps primary data! (this is a bug)"
+            acquisition_data.update(additional_data)
 
         # print well names as debug info
         #print("imaging wells: ",", ".join(well_list_names))

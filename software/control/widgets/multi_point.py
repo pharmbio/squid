@@ -15,6 +15,9 @@ from control.core import MultiPointController, ConfigurationManager
 from control.typechecker import TypecheckFunction
 from control.gui import *
 
+from pathlib import Path
+from datetime import datetime
+
 BUTTON_START_ACQUISITION_IDLE_TEXT="Start Acquisition"
 BUTTON_START_ACQUISITION_RUNNING_TEXT="Abort Acquisition"
 
@@ -82,42 +85,33 @@ class MultiPointWidget(QFrame):
     def __init__(self,
         core,
         gui,
-        start_experiment:Callable[[str,List[str]],Optional[Signal]],
-        abort_experiment:Callable[[],None]
     ):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
         super().__init__()
         
         self.core = core
         self.gui = gui
-        self.start_experiment=start_experiment
-        self.abort_experiment=abort_experiment
 
         self.base_path_is_set = False
 
         if True: # add image saving options (path where to save)
-            self.btn_setSavingDir = Button('Browse',default=False).widget
-            self.btn_setSavingDir.setIcon(QIcon('icon/folder.png'))
-            self.btn_setSavingDir.clicked.connect(self.set_saving_dir)
+            self.btn_setBaseDir = Button('Browse',default=False).widget
+            self.btn_setBaseDir.setIcon(QIcon('icon/folder.png'))
+            self.btn_setBaseDir.clicked.connect(self.set_saving_dir)
             
-            self.lineEdit_savingDir = QLineEdit()
-            self.lineEdit_savingDir.setReadOnly(True)
-            self.lineEdit_savingDir.setText('Choose a base saving directory')
+            self.lineEdit_baseDir = QLineEdit()
+            self.lineEdit_baseDir.setReadOnly(True)
+            self.lineEdit_baseDir.setText('Choose a base saving directory')
 
-            self.lineEdit_savingDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
+            self.lineEdit_baseDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
             self.multipointController.set_base_path(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
             self.base_path_is_set = True
 
-            self.lineEdit_experimentID = QLineEdit()
-
-            self.image_compress_widget=Checkbox(
-                label="compression",
-                tooltip=COMPRESSION_TOOLTIP,
-                on_stateChanged=self.set_image_compression
-            ).widget
+            self.lineEdit_projectName = QLineEdit()
+            self.lineEdit_plateName = QLineEdit()
 
             self.image_format_widget=Dropdown(
-                items=["BMP","TIF"],
+                items=["BMP","TIF","TIF (compr.)"],
                 current_index=list(ImageFormat).index(Acquisition.IMAGE_FORMAT),
                 tooltip=IMAGE_FORMAT_TOOLTIP,
                 on_currentIndexChanged=self.set_image_format
@@ -206,18 +200,6 @@ class MultiPointWidget(QFrame):
             ).widget
 
         # layout
-        grid_line0 = Grid([
-            QLabel('Saving Path'),
-            self.lineEdit_savingDir,
-            self.btn_setSavingDir,
-        ])
-
-        grid_line1 = Grid([
-            QLabel('Experiment ID'),
-            self.lineEdit_experimentID,
-            self.image_compress_widget,
-            self.image_format_widget,
-        ])
 
         self.well_grid_selector=None
         self.grid_changed("x",self.multipointController.NX)
@@ -231,23 +213,49 @@ class MultiPointWidget(QFrame):
         self.progress_bar.setMaximum(1)
         self.progress_bar.setValue(0)
 
-        grid_line2 = Grid(
-            [ Label('num acq. in x',tooltip=dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
-            [ Label('num acq. in y',tooltip=dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
-            [ Label('num acq. in z',tooltip=dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
-            [ Label('num acq. in t',tooltip=dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=dt_tooltip), self.entry_dt, ],
-
-            GridItem(self.well_grid_selector,0,4,4,1)
-        )
-
-        grid_line3 = HBox( self.list_configurations, grid_multipoint_acquisition_config )
-
         self.grid = Grid(
-            [grid_line0],
-            [grid_line1],
-            [grid_line2],
-            [grid_line3],
-            [self.progress_bar],
+            [
+                QLabel('Base Path:'),
+                GridItem(self.lineEdit_baseDir,colSpan=2),
+                self.btn_setBaseDir,
+            ],
+            [
+                QLabel('Project Name:'),
+                GridItem(self.lineEdit_projectName,colSpan=3),
+            ],
+            [
+                QLabel('Plate Name:'),
+                self.lineEdit_plateName,
+                QLabel("Image File Format:"),
+                self.image_format_widget,
+            ],
+            GridItem(
+                widget=Grid(
+                    [ Label('num acq. in x',tooltip=dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
+                    [ Label('num acq. in y',tooltip=dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
+                    [ Label('num acq. in z',tooltip=dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
+                    [ Label('num acq. in t',tooltip=dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=dt_tooltip), self.entry_dt, ],
+
+                    GridItem(self.well_grid_selector,0,4,4,1)
+                ).widget,
+                colSpan=4
+            ),
+            GridItem(self.list_configurations,
+                row=4,
+                column=0,
+                colSpan=2,
+            ),
+            GridItem(
+                grid_multipoint_acquisition_config,
+                row=4,
+                column=2,
+                colSpan=2,
+            ),
+            GridItem(
+                self.progress_bar,
+                row=5,
+                colSpan=4,
+            ),
         )
         self.setLayout(self.grid.layout)
 
@@ -259,28 +267,8 @@ class MultiPointWidget(QFrame):
     @TypecheckFunction
     def set_image_format(self,index:int):
         Acquisition.IMAGE_FORMAT=list(ImageFormat)[index]
-        if Acquisition.IMAGE_FORMAT==ImageFormat.TIFF:
-            self.image_compress_widget.setDisabled(False)
-        else:
-            self.image_compress_widget.setDisabled(True)
-            self.image_compress_widget.setCheckState(False)
 
     @TypecheckFunction
-    def set_image_compression(self,state:Union[int,bool]):
-        if type(state)==int:
-            state=bool(state)
-
-        if state:
-            if Acquisition.IMAGE_FORMAT==ImageFormat.TIFF:
-                Acquisition.IMAGE_FORMAT=ImageFormat.TIFF_COMPRESSED
-            else:
-                raise Exception("enabled compression even though current image file format does not support compression. this is a bug.")
-        else:
-            if Acquisition.IMAGE_FORMAT==ImageFormat.TIFF_COMPRESSED:
-                Acquisition.IMAGE_FORMAT=ImageFormat.TIFF
-            else:
-                raise Exception("disabled compression while a format that is not compressed tiff was selected. this is a bug.")
-
     def set_NX(self,new_value:int):
         self.multipointController.set_NX(new_value)
         if new_value==1:
@@ -288,6 +276,7 @@ class MultiPointWidget(QFrame):
         else:
             self.entry_deltaX.setDisabled(False)
 
+    @TypecheckFunction
     def set_NY(self,new_value:int):
         self.multipointController.set_NY(new_value)
         if new_value==1:
@@ -295,6 +284,7 @@ class MultiPointWidget(QFrame):
         else:
             self.entry_deltaY.setDisabled(False)
 
+    @TypecheckFunction
     def set_NZ(self,new_value:int):
         self.multipointController.set_NZ(new_value)
         if new_value==1:
@@ -302,6 +292,7 @@ class MultiPointWidget(QFrame):
         else:
             self.entry_deltaZ.setDisabled(False)
 
+    @TypecheckFunction
     def set_Nt(self,new_value:int):
         self.multipointController.set_Nt(new_value)
         if new_value==1:
@@ -309,12 +300,13 @@ class MultiPointWidget(QFrame):
         else:
             self.entry_dt.setDisabled(False)
 
-
+    @TypecheckFunction
     def set_software_af_flag(self,flag:Union[int,bool]):
         flag=bool(flag)
         self.af_channel_dropdown.setDisabled(not flag)
         self.multipointController.set_software_af_flag(flag)
 
+    @TypecheckFunction
     def grid_changed(self,dimension:str,new_value:int):
         size=QDesktopWidget().width()*0.06
         nx=self.multipointController.NX
@@ -438,7 +430,7 @@ class MultiPointWidget(QFrame):
         save_dir_base = FileDialog(mode="open_dir",caption="Select base directory").run()
         if save_dir_base!="":
             self.multipointController.set_base_path(save_dir_base)
-            self.lineEdit_savingDir.setText(save_dir_base)
+            self.lineEdit_baseDir.setText(save_dir_base)
             self.base_path_is_set = True
 
     @TypecheckFunction
@@ -448,21 +440,71 @@ class MultiPointWidget(QFrame):
             return
 
         if not self.acquisition_is_running:
-
             self.acquisition_is_running=True
-            
-            self.setEnabled_all(False,exclude_btn_startAcquisition=False)
 
             # get list of selected channels
             selected_channel_list:List[str]=[item.text() for item in self.list_configurations.selectedItems()]
             # 'sort' list according to current order in widget
             imaging_channel_list=[channel for channel in self.list_configurations.list_channel_names if channel in selected_channel_list]
 
-            experiment_data_target_folder:str=self.lineEdit_experimentID.text()
+            base_dir_str=self.lineEdit_baseDir.text()
+            project_name_str=self.lineEdit_projectName.text()
+            plate_name_str=self.lineEdit_plateName.text()
 
-            self.experiment_finished_signal=self.start_experiment(
-                experiment_data_target_folder,
-                imaging_channel_list
+            if len(project_name_str)==0:
+                MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+                self.acquisition_is_running=False
+                return
+            if len(plate_name_str)==0:
+                MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
+                self.acquisition_is_running=False
+                return
+
+            FORBIDDEN_NAME_CHARS=" ,:/\\\t\n\r"
+            for C in FORBIDDEN_NAME_CHARS:
+                try:
+                    char_name={
+                        " ":"space",
+                        ",":"comma",
+                        ":":"colon",
+                        "/":"forward slash",
+                        "\\":"backward slash",
+                        "\t":"tab",
+                        "\n":"newline? (enter key)",
+                        "\r":"carriage return?! contact support (patrick/dan)!",
+                    }[C]
+                except KeyError:
+                    print(f"unknown character name '{C}'")
+                    char_name=""
+
+                if C in project_name_str:
+                    MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                    self.acquisition_is_running=False
+                    return
+
+                if C in plate_name_str:
+                    MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                    self.acquisition_is_running=False
+                    return
+
+            experiment_data_target_folder:Path=(Path(base_dir_str)/project_name_str)/plate_name_str
+            print(f"saving images into {str(experiment_data_target_folder)}")
+            if experiment_data_target_folder.exists():
+                MessageBox(title="Directory already exists!",mode="critical",text=f"The directory (folder) where the images for this experiment would be saved already exists, so saving images there can make existing data unusable. Please choose a different base directory or project name or plate name, or remove the existing folder {str(experiment_data_target_folder)} if you are really sure about that.").run()
+                self.acquisition_is_running=False
+                return
+            
+            self.setEnabled_all(False,exclude_btn_startAcquisition=False)
+
+            self.experiment_finished_signal=self.gui.start_experiment(
+                str(experiment_data_target_folder),
+                imaging_channel_list,
+                additional_data={
+                    'project_name':project_name_str,
+                    'plate_name':plate_name_str,
+                    'timestamp':datetime.now().replace(microsecond=0).isoformat(sep='_'),
+                    'microscope_name':MACHINE_CONFIG.MACHINE_NAME
+                }
             )
 
             if self.experiment_finished_signal is None:
@@ -477,7 +519,7 @@ class MultiPointWidget(QFrame):
             QApplication.processEvents()
         else:
             self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
-            self.abort_experiment()
+            self.gui.abort_experiment()
             self.acquisition_is_finished(aborted=True)
 
     @TypecheckFunction
@@ -496,9 +538,11 @@ class MultiPointWidget(QFrame):
 
     def get_all_interactible_widgets(self):
         return [
-            self.btn_setSavingDir,
-            self.lineEdit_savingDir,
-            self.lineEdit_experimentID,
+            self.btn_setBaseDir,
+            self.lineEdit_baseDir,
+            self.lineEdit_projectName,
+            self.lineEdit_plateName,
+
             self.entry_deltaX,
             self.entry_NX,
             self.entry_deltaY,
@@ -507,11 +551,14 @@ class MultiPointWidget(QFrame):
             self.entry_NZ,
             self.entry_dt,
             self.entry_Nt,
+
             self.list_configurations,
+
             self.checkbox_withAutofocus,
             *([self.checkbox_laserAutofocs] if self.gui.named_widgets.laserAutofocusControlWidget.has_been_initialized else []),
+
             self.well_grid_selector,
-            self.image_compress_widget,
+            
             self.image_format_widget,
             self.btn_startAcquisition,
         ]

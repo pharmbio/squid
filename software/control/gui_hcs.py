@@ -150,7 +150,7 @@ class OctopiGUI(QMainWindow):
         self.wellSelectionWidget    = widgets.WellSelectionWidget(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
         self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
         self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
-        self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self,start_experiment=self.start_experiment,abort_experiment=self.abort_experiment)
+        self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
         self.imaging_mode_config_managers={}
@@ -160,12 +160,20 @@ class OctopiGUI(QMainWindow):
         for config_num,config in enumerate(self.configurationManager.configurations):
             config_manager=ObjectManager()
 
-            imaging_modes_wide_widgets.append(GridItem(Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,config_num*2,0,1,2))
-            imaging_modes_wide_widgets.append(GridItem(config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,config_num*2,2,1,2))
+            imaging_modes_wide_widgets.extend([
+                GridItem(
+                    Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,
+                    row=config_num*2,colSpan=2
+                ),
+                GridItem(
+                    config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,
+                    row=config_num*2,column=2,colSpan=2
+                )
+            ])
 
             imaging_modes_widget_list.extend([
                 [
-                    *([None]*4),
+                    GridItem(None,colSpan=4),
                     Label("illumination:",tooltip=ILLUMINATION_TOOLTIP).widget,
                     config_manager.illumination_strength == SpinBoxDouble(
                         minimum=0.1,maximum=100.0,step=0.1,
@@ -293,8 +301,6 @@ class OctopiGUI(QMainWindow):
             Tab(self.imagingModes,"Setup"),
         ).widget
 
-        clear_history_button=Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget
-
         wellplate_types_str=list(WELLPLATE_NAMES.values())
         self.named_widgets.wellplate_selector == Dropdown(
             items=wellplate_types_str,
@@ -307,12 +313,17 @@ class OctopiGUI(QMainWindow):
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled) # type: ignore
 
         self.navigationViewWrapper=VBox(
-            HBox( QLabel("wellplate overview"), clear_history_button, QLabel("change plate type:"), self.named_widgets.wellplate_selector ).layout,
+            HBox(
+                QLabel("wellplate overview"),
+                Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget,
+                QLabel("change plate type:"),
+                self.named_widgets.wellplate_selector
+            ).layout,
             self.navigationViewer
         ).layout
 
-        self.multiPointWidget.grid.layout.addWidget(self.wellSelectionWidget,5,0)
-        self.multiPointWidget.grid.layout.addLayout(self.navigationViewWrapper,6,0)
+        self.multiPointWidget.grid.layout.addWidget(self.wellSelectionWidget,6,0,1,4)
+        self.multiPointWidget.grid.layout.addLayout(self.navigationViewWrapper,7,0,1,4)
 
         # layout widgets
         
@@ -486,7 +497,7 @@ class OctopiGUI(QMainWindow):
         print("load_all_config")
 
     # @TypecheckFunction # dont check because signal cannot yet be checked properly
-    def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str])->Optional[Signal]:
+    def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str],additional_data:dict={})->Optional[Signal]:
         self.navigationViewer.register_preview_fovs()
 
         well_list=self.wellSelectionWidget.currently_selected_well_indices
@@ -509,6 +520,8 @@ class OctopiGUI(QMainWindow):
 
             grid_mask=self.multiPointWidget.well_grid_items_selected,
             headless=False, # allow display of gui components like warning messages
+
+            additional_data=additional_data,
         )
         
         if acquisition_thread is None:
