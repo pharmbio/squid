@@ -369,10 +369,10 @@ class Dock(HasWidget):
             self.widget.setFixedHeight(self.widget.minimumSizeHint().height())
 
 class DockArea(HasWidget):
-    def __init__(self,*args):
+    def __init__(self,minimize_height:bool=False,*args):
         self.widget=dock.DockArea()
         for dock in args:
-            self.widget.addDock(temp_dock)
+            self.widget.addDock(dock)
 
         if minimize_height:
             self.widget.setFixedHeight(self.widget.minimumSizeHint().height())
