@@ -9,6 +9,7 @@
 #include "def_octopi_80120.h"
 //#include "def_gravitymachine.h"
 //#include "def_squid.h"
+//#include "def_platereader.h"
 //#include "def_squid_vertical.h"
 
 #define N_MOTOR 3
@@ -56,6 +57,7 @@ static const int SET_LEAD_SCREW_PITCH = 23;
 static const int SET_OFFSET_VELOCITY = 24;
 static const int SEND_HARDWARE_TRIGGER = 30;
 static const int SET_STROBE_DELAY = 31;
+static const int SET_PIN_LEVEL = 41;
 static const int INITIALIZE = 254;
 static const int RESET = 255;
 
@@ -103,8 +105,15 @@ static const int LASER_730nm = 23;  // to rename
 // PWM7 1
 // PWM8 0
 
+// output pins
+//static const int digitial_output_pins = {2,1,6,7,8,9,10,15,24,25} // PWM 6-7, 9-16
+//static const int num_digital_pins = 10;
+// pin 7,8 (PWM 10, 11) may be used for UART, pin 24,25 (PWM 15, 16) may be used for UART
+static const int num_digital_pins = 6;
+static const int digitial_output_pins[num_digital_pins] = {2,1,6,9,10,15}; // PWM 6-7, 9, 12-14
+
 // camera trigger 
-static const int camera_trigger_pins[] = {29,30,31,32,16,28};
+static const int camera_trigger_pins[] = {29,30,31,32,16,28}; // trigger 1-6
 
 // motors
 const uint8_t pin_TMC4361_CS[4] = {41,36,35,34};
@@ -123,14 +132,15 @@ const int pin_PG = 0;
 /************************************ camera trigger and strobe ************************************/
 /***************************************************************************************************/
 static const int TRIGGER_PULSE_LENGTH_us = 50;
-bool trigger_output_level[5] = {LOW,LOW,LOW,LOW,LOW};
-bool control_strobe[5] = {false,false,false,false,false};
-bool strobe_output_level[5] = {LOW,LOW,LOW,LOW,LOW};
-bool strobe_on[5] = {false,false,false,false,false};
-int strobe_delay[5] = {0,0,0,0,0};
-long illumination_on_time[5] = {0,0,0,0,0};
-long timestamp_trigger_rising_edge[5] = {0,0,0,0,0};
-// to do: change the number of channels (5) to a named constant
+bool trigger_output_level[6] = {HIGH,HIGH,HIGH,HIGH,HIGH,HIGH};
+bool control_strobe[6] = {false,false,false,false,false,false};
+bool strobe_output_level[6] = {LOW,LOW,LOW,LOW,LOW,LOW};
+bool strobe_on[6] = {false,false,false,false,false,false};
+int strobe_delay[6] = {0,0,0,0,0,0};
+long illumination_on_time[6] = {0,0,0,0,0,0};
+long timestamp_trigger_rising_edge[6] = {0,0,0,0,0,0};
+IntervalTimer strobeTimer;
+static const int strobeTimer_interval_us = 100;
 
 /***************************************************************************************************/
 /******************************************* DAC80508 **********************************************/
@@ -485,6 +495,44 @@ void set_illumination_led_matrix(int source, uint8_t r, uint8_t g, uint8_t b)
     turn_on_illumination(); //update the illumination
 }
 
+void ISR_strobeTimer()
+{
+  for(int camera_channel=0;camera_channel<6;camera_channel++)
+  {
+    // strobe pulse
+    if(control_strobe[camera_channel])
+    {
+      if(illumination_on_time[camera_channel] <= 30000)
+      {
+        // if the illumination on time is smaller than 30 ms, use delayMicroseconds to control the pulse length to avoid pulse length jitter
+        if( ((micros()-timestamp_trigger_rising_edge[camera_channel])>=strobe_delay[camera_channel]) && strobe_output_level[camera_channel]==LOW )
+        {
+          turn_on_illumination();
+          delayMicroseconds(illumination_on_time[camera_channel]);
+          turn_off_illumination();
+          control_strobe[camera_channel] = false;
+        }
+      }
+      else
+      {
+        // start the strobe
+        if( ((micros()-timestamp_trigger_rising_edge[camera_channel])>=strobe_delay[camera_channel]) && strobe_output_level[camera_channel]==LOW )
+        {
+          turn_on_illumination();
+          strobe_output_level[camera_channel] = HIGH;
+        }
+        // end the strobe
+        if(((micros()-timestamp_trigger_rising_edge[camera_channel])>=strobe_delay[camera_channel]+illumination_on_time[camera_channel]) && strobe_output_level[camera_channel]==HIGH)
+        {
+          turn_off_illumination();
+          strobe_output_level[camera_channel] = LOW;
+          control_strobe[camera_channel] = false;
+        }
+      }
+    }
+  }
+}
+
 /***************************************************************************************************/
 /********************************************* setup ***********************************************/
 /***************************************************************************************************/
@@ -509,7 +557,7 @@ void setup() {
   for(int i=0;i<6;i++)
   {
     pinMode(camera_trigger_pins[i], OUTPUT);
-    digitalWrite(camera_trigger_pins[i], LOW);
+    digitalWrite(camera_trigger_pins[i], HIGH);
   }
   
   // enable pins
@@ -527,6 +575,12 @@ void setup() {
 
   pinMode(LASER_730nm, OUTPUT);
   digitalWrite(LASER_730nm, LOW);
+
+  for(int i=0;i<num_digital_pins;i++)
+  {
+    pinMode(digitial_output_pins[i],OUTPUT);
+    digitalWrite(digitial_output_pins[i], LOW);
+  }
 
   // steppers pins
   for(int i = 0;i<4;i++)
@@ -651,6 +705,9 @@ void setup() {
 
   offset_velocity_x = 0;
   offset_velocity_y = 0;
+
+  // strobe timer
+  strobeTimer.begin(ISR_strobeTimer,strobeTimer_interval_us);
 
 }
 
@@ -1251,13 +1308,23 @@ void loop() {
           int camera_channel = buffer_rx[2] & 0x0f;
           control_strobe[camera_channel] = buffer_rx[2] >> 7;
           illumination_on_time[camera_channel] = uint32_t(buffer_rx[3])*16777216 + uint32_t(buffer_rx[4])*65536 + uint32_t(buffer_rx[5])*256 + uint32_t(buffer_rx[6]);
-          digitalWrite(camera_trigger_pins[camera_channel],HIGH);
+          digitalWrite(camera_trigger_pins[camera_channel],LOW);
           timestamp_trigger_rising_edge[camera_channel] = micros();
-          trigger_output_level[camera_channel] = HIGH;
+          trigger_output_level[camera_channel] = LOW;
+          break;
+        }
+        case SET_PIN_LEVEL:
+        {
+          int pin = buffer_rx[2];
+          bool level = buffer_rx[3];
+          digitalWrite(pin,level);
           break;
         }
         case INITIALIZE:
         {
+          // reset z target position so that z does not move when "current position" for z is set to 0
+          focusPosition = 0;
+          first_packet_from_joystick_panel = true;
           // initilize TMC4361 and TMC2660
           for (int i = 0; i < N_MOTOR; i++)     
             tmc4361A_tmc2660_init(&tmc4361[i], clk_Hz_TMC4361); // set up ICs with SPI control and other parameters
@@ -1322,15 +1389,16 @@ void loop() {
   }
 
   // camera trigger
-  for(int camera_channel=0;camera_channel<5;camera_channel++)
+  for(int camera_channel=0;camera_channel<6;camera_channel++)
   {
     // end the trigger pulse
-    if(trigger_output_level[camera_channel] == HIGH && (micros()-timestamp_trigger_rising_edge[camera_channel])>= TRIGGER_PULSE_LENGTH_us )
+    if(trigger_output_level[camera_channel] == LOW && (micros()-timestamp_trigger_rising_edge[camera_channel])>= TRIGGER_PULSE_LENGTH_us )
     {
-      digitalWrite(camera_trigger_pins[camera_channel],LOW);
-      trigger_output_level[camera_channel] = LOW;
+      digitalWrite(camera_trigger_pins[camera_channel],HIGH);
+      trigger_output_level[camera_channel] = HIGH;
     }
 
+    /*
     // strobe pulse
     if(control_strobe[camera_channel])
     {
@@ -1360,8 +1428,9 @@ void loop() {
           strobe_output_level[camera_channel] = LOW;
           control_strobe[camera_channel] = false;
         }
-      }      
+      }
     }
+    */
   }
 
   // homing - preparing for homing
