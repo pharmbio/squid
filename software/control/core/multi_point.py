@@ -371,7 +371,7 @@ class MultiPointWorker(QObject):
                                 coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
                                 self.navigation.enable_joystick_button_action = True
 
-                                return
+                                raise AbortAcquisitionException()
 
                         self.signal_new_acquisition.emit('x')
 
@@ -604,8 +604,8 @@ class MultiPointController(QObject):
         headless:bool=True
     )->Optional[QThread]:
         while not self.thread is None:
-            print("thread is sleeping in control.core.multi_point (this should not actually happen)")
             time.sleep(0.05)
+            self.thread.quit() # this should result in the self.thread.finished signal being sent, which calls self.on_thread_finished, which sets self.thread=None
 
         image_positions=well_selection
 
@@ -668,13 +668,13 @@ class MultiPointController(QObject):
             if not on_new_acquisition is None:
                 self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
 
-            self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
-
             self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
             self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
             self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
             self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration,type=Qt.BlockingQueuedConnection)
             self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
+
+            self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
 
             self.thread.finished.connect(self.on_thread_finished)
             
@@ -683,21 +683,14 @@ class MultiPointController(QObject):
             return self.thread
 
     def on_multipointworker_finished(self):
-        print("!debug: mpw finished 1",end="; ")
         self._on_acquisition_completed()
-        print("mpw finished 2",end="; ")
         self.multiPointWorker.deleteLater()
-        print("mpw finished 3",end="; ")
         self.thread.quit()
-        print("mpw finished 4")
 
     def on_thread_finished(self):
-        print("!debug: thread finished 1",end="; ")
         self.thread.quit()
-        print("thread finished 2",end="; ")
         self.multiPointWorker=None
         self.thread=None
-        print("thread finished 3")
 
     def _on_acquisition_completed(self):
         # restore the previous selected mode

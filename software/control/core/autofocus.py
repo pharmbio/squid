@@ -24,7 +24,7 @@ class AutofocusWorker(QObject):
         QObject.__init__(self)
         self.autofocusController = autofocusController
 
-        self.camera:camera.Camera = self.autofocusController.camera
+        self.camera:Camera = self.autofocusController.camera
         self.microcontroller:Microcontroller = self.autofocusController.navigation.microcontroller
         self.navigation = self.autofocusController.navigation
         self.liveController = self.autofocusController.liveController
