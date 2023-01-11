@@ -129,7 +129,7 @@ class MultiPointWorker(QObject):
         self.finished.emit()
         QApplication.processEvents()
 
-        print("finished multipoint acquisition")
+        print("\nfinished multipoint acquisition\n")
 
     def perform_software_autofocus(self):
         """ run software autofocus to focus on current fov """
@@ -456,7 +456,7 @@ class MultiPointController(QObject):
         self.deltat:float = DefaultMultiPointGrid.DEFAULT_DT_S
 
         self.do_autofocus:bool = False
-        self.do_reflection_af:bool = True
+        self.do_reflection_af:bool = False
 
         self.crop_width = Acquisition.CROP_WIDTH
         self.crop_height = Acquisition.CROP_HEIGHT

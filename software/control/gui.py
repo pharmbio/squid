@@ -379,6 +379,8 @@ class DockArea(HasWidget):
 
 # more like windows rather than widgets
 
+FILTER_JSON="JSON (*.json)"
+
 class FileDialog:
     @TypecheckFunction
     def __init__(self,

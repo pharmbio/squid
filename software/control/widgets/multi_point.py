@@ -365,18 +365,23 @@ class MultiPointWidget(QFrame):
                     on_mousePressEvent=lambda event_data,r=r,c=c:self.toggle_well_grid_selection(event_data,row=r,column=c)
                 )
                 self.well_grid_items[r][c]=new_item
-                self.toggle_well_grid_selection(event_data=None,row=r,column=c)
+                self.toggle_well_grid_selection(_event_data=None,row=r,column=c)
 
         self.well_grid_selector.set_children(flatten(self.well_grid_items))
 
-    def toggle_well_grid_selection(self,event_data,row:int,column:int):
+    def toggle_well_grid_selection(self,_event_data:Any,row:int,column:int,override_selected_state:Optional[bool]=None):
         grid_item=self.well_grid_items[row][column]
-        if self.well_grid_items_selected[row][column]:
+        is_currently_selected=self.well_grid_items_selected[row][column]
+        if not override_selected_state is None:
+            is_currently_selected=not override_selected_state # invert because if statement below toggles state
+
+        if is_currently_selected:
             grid_item.background_color=UNSELECTED_GRID_POSITION_COLOR
             self.well_grid_items_selected[row][column]=False
         else:
             grid_item.background_color=SELECTED_GRID_POSITION_COLOR
             self.well_grid_items_selected[row][column]=True
+
         grid_item.generate_stylesheet()
 
     def channel_list_rows_moved(self,_parent:QModelIndex,row_range_moved_start:int,row_range_moved_end:int,_destination:QModelIndex,row_index_drop_release:int):
@@ -442,59 +447,19 @@ class MultiPointWidget(QFrame):
         if not self.acquisition_is_running:
             self.acquisition_is_running=True
 
-            # get list of selected channels
-            selected_channel_list:List[str]=[item.text() for item in self.list_configurations.selectedItems()]
-            # 'sort' list according to current order in widget
-            imaging_channel_list=[channel for channel in self.list_configurations.list_channel_names if channel in selected_channel_list]
-
-            base_dir_str=self.lineEdit_baseDir.text()
-            project_name_str=self.lineEdit_projectName.text()
-            plate_name_str=self.lineEdit_plateName.text()
-
-            if len(project_name_str)==0:
-                MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+            # make sure that the project and plate names are valid
+            try:
+                output_dir:str=self.gui.get_output_dir(require_names_present=True)
+            except RuntimeError:
                 self.acquisition_is_running=False
                 return
-            if len(plate_name_str)==0:
-                MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
-                self.acquisition_is_running=False
-                return
-
-            FORBIDDEN_NAME_CHARS=" ,:/\\\t\n\r"
-            for C in FORBIDDEN_NAME_CHARS:
-                try:
-                    char_name={
-                        " ":"space",
-                        ",":"comma",
-                        ":":"colon",
-                        "/":"forward slash",
-                        "\\":"backward slash",
-                        "\t":"tab",
-                        "\n":"newline? (enter key)",
-                        "\r":"carriage return?! contact support (patrick/dan)!",
-                    }[C]
-                except KeyError:
-                    print(f"unknown character name '{C}'")
-                    char_name=""
-
-                if C in project_name_str:
-                    MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
-                    self.acquisition_is_running=False
-                    return
-
-                if C in plate_name_str:
-                    MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
-                    self.acquisition_is_running=False
-                    return
             
             self.setEnabled_all(False,exclude_btn_startAcquisition=False)
 
             self.experiment_finished_signal=self.gui.start_experiment(
-                str(Path(base_dir_str)/project_name_str/plate_name_str),
-                imaging_channel_list,
                 additional_data={
-                    'project_name':project_name_str,
-                    'plate_name':plate_name_str,
+                    'project_name':self.gui.project_name_str,
+                    'plate_name':self.gui.plate_name_str,
                     'timestamp':datetime.now().replace(microsecond=0).isoformat(sep='_'),
                     'microscope_name':MACHINE_CONFIG.MACHINE_NAME
                 }

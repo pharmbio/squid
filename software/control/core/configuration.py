@@ -105,9 +105,12 @@ class ConfigurationManager(QObject):
         with open(filename,mode="r",encoding="utf-8") as json_file:
             json_tree=json.decoder.JSONDecoder().decode(json_file.read())
 
+        self.load_configuration_from_json_list(json_tree['configurations'])
+
+    def load_configuration_from_json_list(self,json_list):
         self.configurations=[]
 
-        for mode in json_tree['configurations']:
+        for mode in json_list:
             self.configurations.append(
                 Configuration(
                     mode_id =                       mode['ID'],

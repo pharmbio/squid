@@ -1,6 +1,6 @@
 # qt libraries
 from qtpy.QtCore import Qt, Signal # type: ignore
-from qtpy.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem
+from qtpy.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem, QAbstractItemView
 
 from control._def import *
 
@@ -11,7 +11,7 @@ import numpy as np
 
 class WellSelectionWidget(QTableWidget):
  
-    signal_wellSelected:Signal = Signal(int,int,float)
+    #signal_wellSelected:Signal = Signal(int,int,float)
     signal_wellSelectedPos:Signal = Signal(float,float)
 
     currently_selected_well_indices:List[Tuple[int,int]]=[]
@@ -20,6 +20,7 @@ class WellSelectionWidget(QTableWidget):
     def __init__(self, format: int):
         self.was_initialized=False
         self.set_wellplate_type(format)
+        self.setSelectionMode(QAbstractItemView.MultiSelection)
         self.was_initialized=True
 
         self.itemSelectionChanged.connect(self.itemselectionchanged)

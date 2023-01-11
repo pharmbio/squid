@@ -258,6 +258,10 @@ class Core(QObject):
     @property
     def turn_off_AF_laser(self):
         return self.microcontroller.turn_off_AF_laser
+
+    @property
+    def plate_type(self)->int:
+        return MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
         
     #borrowed imageSaver functions
     #borrowed autofocusController functions
@@ -292,6 +296,7 @@ class Core(QObject):
         headless:bool=True,
 
         additional_data:Optional[dict]=None,
+        **kwargs
     )->Optional[QThread]:
 
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
@@ -301,7 +306,7 @@ class Core(QObject):
         # set selection and order of channels to be imaged <- acquire.channels argument
 
         # calculate physical imaging positions on wellplate given plate type and well selection
-        plate_type=plate_type if not plate_type is None else MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
+        plate_type=plate_type or self.plate_type
         wellplate_format=WELLPLATE_FORMATS[plate_type]
 
         # validate well positions (should be on the plate, given selected wellplate type)
@@ -331,14 +336,14 @@ class Core(QObject):
 
         acquisition_data={
             "well_list":well_list_names,
-            "experiment_id":experiment_id,
+            "experiment_data_target_folder":experiment_id,
             "grid":{
                 'x':{'d(mm)':grid_data['x']['d'],'N':grid_data['x']['N']},
                 'y':{'d(mm)':grid_data['y']['d'],'N':grid_data['y']['N']},
                 'z':{'d(um)':grid_data['z']['d']*1000,'N':grid_data['z']['N']},
                 't':{'d(s)':grid_data['t']['d'],'N':grid_data['t']['N']},
             },
-            "plate_type":str(plate_type),
+            "plate_type":plate_type,
 
             "channels_order":channels,
             "channel_config":self.configurationManager.configurations_list,
@@ -347,8 +352,13 @@ class Core(QObject):
             "software_af_channel":af_channel or "",
 
             "laser_af_on":laser_af_on,
+
+            "grid_mask":grid_mask,
+
+            #TODO camera_pixel_format_override, trigger_override
         }
         
+        additional_data.update(kwargs)
         if not additional_data is None:
             assert set(acquisition_data.keys()).isdisjoint(set(additional_data.keys())), "additional data provided to save as metadata overlaps primary data! (this is a bug)"
             acquisition_data.update(additional_data)
@@ -364,6 +374,8 @@ class Core(QObject):
             if af_channel!=MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL:
                 MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL=af_channel
             self.multipointController.set_software_af_flag(True)
+
+        self.multipointController.set_laser_af_flag(laser_af_on)
 
         # set grid data per well
         self.set_NX(grid_data['x']['N'])

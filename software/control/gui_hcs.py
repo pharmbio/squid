@@ -1,6 +1,6 @@
 # qt libraries
-from qtpy.QtCore import Qt, QEvent, Signal
-from qtpy.QtWidgets import QMainWindow, QTabWidget, QPushButton, QComboBox, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QDesktopWidget, QSlider, QCheckBox, QWidget, QApplication
+from qtpy.QtCore import Qt, QEvent, Signal, QItemSelectionModel
+from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange
 
 import numpy
 
@@ -26,6 +26,8 @@ from typing import Union
 from tqdm import tqdm
 
 import os
+
+from pathlib import Path
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
 LIVE_BUTTON_RUNNING_TEXT="Stop Live"
@@ -349,8 +351,8 @@ class OctopiGUI(QMainWindow):
                 ),
             ),
             HBox(
-                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=False, tooltip="not implemented yet."),
-                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config, enabled=False, tooltip="not implemented yet."),
+                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=True, tooltip="not implemented yet."),
+                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config, enabled=True, tooltip="not implemented yet."),
             ),
             self.recordTabWidget
         ).widget
@@ -486,39 +488,238 @@ class OctopiGUI(QMainWindow):
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1,pen=pg.mkPen(color="orange"))
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1-y0,pen=pg.mkPen(color="red"))
 
-    def set_main_camera_pixel_format(self,pixel_format_index):
+    @TypecheckFunction
+    def set_main_camera_pixel_format(self,pixel_format_index:int):
         new_pixel_format=self.core.main_camera.pixel_formats[pixel_format_index]
         self.core.main_camera.camera.set_pixel_format(new_pixel_format)
 
-    def save_all_config(self):
-        print("save_all_config")
+    @property
+    def project_name_str(self)->str:
+        return self.multiPointWidget.lineEdit_projectName.text()
+    @property
+    def plate_name_str(self)->str:
+        return self.multiPointWidget.lineEdit_plateName.text()
 
-    def load_all_config(self):
-        print("load_all_config")
+    @TypecheckFunction
+    def get_selected_channel_names(self,ordered:bool)->List[str]:
+        selected_channel_list:List[str]=[item.text() for item in self.multiPointWidget.list_configurations.selectedItems()]
+        if not ordered:
+            return selected_channel_list
 
-    # @TypecheckFunction # dont check because signal cannot yet be checked properly
-    def start_experiment(self,experiment_data_target_folder:str,imaging_channel_list:List[str],additional_data:dict={})->Optional[Signal]:
-        self.navigationViewer.register_preview_fovs()
+        # 'sort' list according to current order in widget
+        imaging_channel_list=[channel for channel in self.multiPointWidget.list_configurations.list_channel_names if channel in selected_channel_list]
+        return imaging_channel_list
 
+    @TypecheckFunction
+    def get_output_dir(self,require_names_present:bool)->str:
+        base_dir_str=self.multiPointWidget.lineEdit_baseDir.text()
+        project_name_str=self.project_name_str
+        plate_name_str=self.plate_name_str
+
+        if require_names_present and len(project_name_str)==0:
+            MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+            raise RuntimeError("project name empty")
+        if require_names_present and len(plate_name_str)==0:
+            MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
+            raise RuntimeError("wellplate name empty")
+
+        FORBIDDEN_NAME_CHARS=" ,:/\\\t\n\r"
+        for C in FORBIDDEN_NAME_CHARS:
+            try:
+                char_name={
+                    " ":"space",
+                    ",":"comma",
+                    ":":"colon",
+                    "/":"forward slash",
+                    "\\":"backward slash",
+                    "\t":"tab",
+                    "\n":"newline? (enter key)",
+                    "\r":"carriage return?! contact support (patrick/dan)!",
+                }[C]
+            except KeyError:
+                print(f"unknown character name '{C}'")
+                char_name=""
+
+            if C in project_name_str:
+                MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                raise RuntimeError("forbidden character in experiment name")
+
+            if C in plate_name_str:
+                MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                raise RuntimeError("forbidden character in wellplate name")
+
+        return str(Path(base_dir_str)/project_name_str/plate_name_str)
+
+
+    def get_all_config(self)->dict:
+        experiment_data_target_folder:str=self.get_output_dir(require_names_present=False)
+        software_af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
         well_list=self.wellSelectionWidget.currently_selected_well_indices
+        imaging_channel_list:List[str]=self.get_selected_channel_names(ordered=True)
 
-        af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
-
-        acquisition_thread=self.core.acquire(
-            well_list,
-            imaging_channel_list,
-            experiment_data_target_folder,
-            grid_data={
+        data={
+            "well_list":well_list,
+            "channels":imaging_channel_list,
+            "experiment_id":experiment_data_target_folder,
+            "project_name":self.project_name_str,
+            "plate_name":self.plate_name_str,
+            "plate_type":self.core.plate_type,
+            "grid_data":{
                 'x':{'d':self.multipointController.deltaX,'N':self.multipointController.NX},
                 'y':{'d':self.multipointController.deltaY,'N':self.multipointController.NY},
                 'z':{'d':self.multipointController.deltaZ,'N':self.multipointController.NZ},
                 't':{'d':self.multipointController.deltat,'N':self.multipointController.Nt},
             },
-            af_channel=af_channel,
+            "af_channel":software_af_channel,
+
+            "laser_af_on":self.core.multipointController.do_reflection_af,
+
+            "grid_mask":self.multiPointWidget.well_grid_items_selected,
+
+            #TODO camera_pixel_format, trigger_mode
+        }
+
+        return data
+
+    def save_all_config(self):
+        file_path=FileDialog(mode="save",caption="File to save the whole config to",filter_type=FILTER_JSON).run()
+        if file_path=="":
+            return
+
+        if not file_path.endswith(".json"):
+            file_path+=".json"
+        data=self.get_all_config()
+
+        data.update({
+            "software_af_on":not data['af_channel'] is None,
+            "software_af_channel":data['af_channel'] or "",
+            "channel_config":self.core.configurationManager.configurations_list,
+            "channels_order":data["channels"],
+            "grid":data["grid_data"],
+            "experiment_data_target_folder":data["experiment_id"],
+        })
+        del data['af_channel']
+        del data['channels']
+        del data['grid_data']
+        del data["experiment_id"]
+
+        json_tree_string=json.encoder.JSONEncoder(indent=2).encode(data)
+        with open(file_path, mode="w", encoding="utf-8") as json_file:
+            json_file.write(json_tree_string)
+
+        print(f"saved all config to {file_path}")
+
+    def load_all_config(self):
+        file_path=FileDialog(mode="open",caption="File to load the whole config from",filter_type=FILTER_JSON).run()
+        if file_path=="":
+            return
+        
+        with open(file_path,mode="r",encoding="utf-8") as json_file:
+            data=json.decoder.JSONDecoder().decode(json_file.read())
+
+        # load selected wells (and block the selectionChanged signal until it is done, which would redraw some gui components for every single selected well, which takes several seconds)
+        self.wellSelectionWidget.blockSignals(True)
+
+        well_list:List[Union[Tuple[int,int],str]]=data["well_list"]
+        for well in well_list:
+            if isinstance(well,str):
+                assert len(well)==3
+                assert well[0] in "ABCDEFGHIJKLMNOPQRSTUVW", well[0]
+                assert int(well[1:])>=0
+                row=ord(well[0])-ord("A")
+                column=int(well[1:])
+            else:
+                row,column=well
+
+            # self.wellSelectionWidget.itemAt(row,column).setSelected(True) # this does not work for some reason?! is replaced with the setCurrentCell call below (code preserved here for a more enlightened time)
+            self.wellSelectionWidget.setCurrentCell(row,column,QItemSelectionModel.Select)
+
+        self.wellSelectionWidget.blockSignals(False)
+
+        # load channel selection
+        # 1) unselect all currently selected items
+        for currently_selected_item in self.multiPointWidget.list_configurations.selectedItems():
+            #self.multiPointWidget.list_configurations.itemClicked.emit(currently_selected_item)
+            currently_selected_item.setSelected(False)
+        # 2) iterate over all items in list, and select the ones with a name in the list of selected items
+        channel_items=[self.multiPointWidget.list_configurations.item(row) for row in range(self.multiPointWidget.list_configurations.count())]
+        for channel_name in data["channels_order"]:
+            item_with_name=[item for item in channel_items if item.text()==channel_name][0]
+            item_with_name.setSelected(True)
+            # TODO change order of channels if required
+
+        # load imaging channel configuration
+        self.configurationManager.load_configuration_from_json_list(data["channel_config"])
+        self.reload_configuration_into_gui(new_file_path=file_path)
+
+        avoided_projectname_overwrite=False
+        avoided_platename_overwrite=False
+        data_project_name:str=data["project_name"]
+        if data_project_name!="" and self.multiPointWidget.lineEdit_projectName.text()=="":
+            self.multiPointWidget.lineEdit_projectName.setText(data_project_name)
+        else:
+            avoided_projectname_overwrite=True
+        data_plate_name:str=data["plate_name"]
+        if data_plate_name!="" and self.multiPointWidget.lineEdit_plateName.text()=="":
+            self.multiPointWidget.lineEdit_plateName.setText(data_plate_name)
+        else:
+            avoided_platename_overwrite=True
+
+        if avoided_platename_overwrite or avoided_projectname_overwrite:
+            text=""
+            if data_project_name!="" and avoided_projectname_overwrite:
+                text+=f"Did not replace existing PROJECT name with '{data_project_name}' (from config file).\n\n"
+            if data_plate_name!="" and avoided_platename_overwrite:
+                text+=f"Did not replace existing PLATE name with '{data_plate_name}' (from config file).\n\n"
+            text+="Copy the project/plate name from this message box if you want to replace them. (manually)"
+            MessageBox(title="project/plate name not replaced",mode="information",text=text).run()
+        
+        plate_type:Union[str,int]=data["plate_type"]
+        if isinstance(plate_type,str):
+            plate_type=int(plate_type)
+        MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT=plate_type
+
+        # load grid data
+        self.multiPointWidget.entry_NX.setValue(data["grid"]["x"]["N"])
+        self.multiPointWidget.entry_NY.setValue(data["grid"]["y"]["N"])
+        self.multiPointWidget.entry_NZ.setValue(data["grid"]["z"]["N"])
+        self.multiPointWidget.entry_Nt.setValue(data["grid"]["t"]["N"])
+        self.multiPointWidget.entry_deltaX.setValue([v for k,v in data["grid"]["x"].items() if k[0]=="d"][0]) # in manually saved config file, the key is "d", in the project-directory saved config files the keys are "d(<physical unit>)"
+        self.multiPointWidget.entry_deltaY.setValue([v for k,v in data["grid"]["y"].items() if k[0]=="d"][0])
+        self.multiPointWidget.entry_deltaZ.setValue([v for k,v in data["grid"]["z"].items() if k[0]=="d"][0])
+        self.multiPointWidget.entry_dt.setValue(    [v for k,v in data["grid"]["t"].items() if k[0]=="d"][0])
+
+        # load software af data
+        software_af_on:bool=data["software_af_on"]
+        if software_af_on:
+            self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Checked)
+        else:
+            self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Unchecked)
+
+        if software_af_on:
+            af_channel=data["software_af_channel"]
+            self.multiPointWidget.af_channel_dropdown.setCurrentIndex([m_i for m_i,microscope_configuration in enumerate(self.configurationManager.configurations) if microscope_configuration.name==af_channel][0])
+
+        # TODO
+        data["laser_af_on"]
+
+        # load grid item selection mask
+        data["grid_mask"]
+        for row_i,row in enumerate(data["grid_mask"]):
+            for column_i,mask in enumerate(row):
+                self.multiPointWidget.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=mask)
+
+        print(f"loaded config from {file_path}")
+
+    # @TypecheckFunction # dont check because signal cannot yet be checked properly
+    def start_experiment(self,additional_data:dict={})->Optional[Signal]:
+        self.navigationViewer.register_preview_fovs()
+
+        acquisition_thread=self.core.acquire(
+            **self.get_all_config(),
+
             set_num_acquisitions_callback=self.set_num_acquisitions,
             on_new_acquisition=self.on_step_completed,
-
-            grid_mask=self.multiPointWidget.well_grid_items_selected,
             headless=False, # allow display of gui components like warning messages
 
             additional_data=additional_data,
@@ -577,8 +778,8 @@ class OctopiGUI(QMainWindow):
             self.named_widgets.trigger_mode_dropdown,
             self.named_widgets.pixel_format,
 
-            #self.named_widgets.save_all_config, # currently disabled because they are not implemented
-            #self.named_widgets.load_all_config, # currently disabled because they are not implemented
+            self.named_widgets.save_all_config,
+            self.named_widgets.load_all_config,
 
             self.named_widgets.snap_all_button,
             #self.named_widgets.snap_all_with_offset_checkbox, # currently disabled because they are not implemented
@@ -698,19 +899,22 @@ class OctopiGUI(QMainWindow):
             print("! warning: cannot load illumination settings while live !")
             return
         
-        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Load which illumination config?",filter_type="JSON (*.json)").run()
+        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Load which illumination config?",filter_type=FILTER_JSON).run()
 
         if load_path!="":
             print(f"loading config from {load_path}")
 
             self.configurationManager.read_configurations(load_path)
-            for config in self.configurationManager.configurations:
-                self.imaging_mode_config_managers[config.id].illumination_strength.setValue(config.illumination_intensity)
-                self.imaging_mode_config_managers[config.id].exposure_time.setValue(config.exposure_time)
-                self.imaging_mode_config_managers[config.id].analog_gain.setValue(config.analog_gain)
-                self.imaging_mode_config_managers[config.id].z_offset.setValue(config.channel_z_offset)
+            self.reload_configuration_into_gui(new_file_path=load_path)
 
-            self.set_illumination_config_path_display(new_path=load_path,set_config_changed=False)
+    def reload_configuration_into_gui(self,new_file_path:str):
+        for config in self.configurationManager.configurations:
+            self.imaging_mode_config_managers[config.id].illumination_strength.setValue(config.illumination_intensity)
+            self.imaging_mode_config_managers[config.id].exposure_time.setValue(config.exposure_time)
+            self.imaging_mode_config_managers[config.id].analog_gain.setValue(config.analog_gain)
+            self.imaging_mode_config_managers[config.id].z_offset.setValue(config.channel_z_offset)
+
+        self.set_illumination_config_path_display(new_path=new_file_path,set_config_changed=False)
 
     def snap_single(self,_button_state,
         config:core.Configuration,
