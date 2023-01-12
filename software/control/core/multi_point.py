@@ -72,10 +72,9 @@ class MultiPointWorker(QObject):
         self.crop_width = self.multiPointController.crop_width
         self.crop_height = self.multiPointController.crop_height
         self.counter = self.multiPointController.counter
-        self.experiment_ID = self.multiPointController.experiment_ID
-        self.base_path = self.multiPointController.base_path
         self.selected_configurations = self.multiPointController.selected_configurations
         self.grid_mask=self.multiPointController.grid_mask
+        self.output_path:str=self.multiPointController.output_path
 
         if not self.grid_mask is None:
             assert len(self.grid_mask)==self.NY
@@ -290,13 +289,12 @@ class MultiPointWorker(QObject):
 
             if self.Nt > 1:
                 # for each time point, create a new folder
-                current_path = os.path.join(self.base_path,self.experiment_ID,str(self.time_point))
+                current_path = str(self.output_path/self.time_point)
                 self.current_path=current_path
                 os.mkdir(current_path)
             else:
                 # only one time point, save it directly in the experiment folder
-                current_path = os.path.join(self.base_path,self.experiment_ID)
-                self.current_path=current_path
+                self.current_path=str(self.output_path)
 
             # create a dataframe to save coordinates
             coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
@@ -363,12 +361,14 @@ class MultiPointWorker(QObject):
                                     pd.DataFrame(imaged_coords_dict_list)
                                 ])
                             except AbortAcquisitionException:
+                                self.well_tqdm_iter.close()
+
                                 self.liveController.turn_off_illumination()
                                 self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
                                 self.navigation.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
                                 self.navigation.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
 
-                                coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
+                                coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                                 self.navigation.enable_joystick_button_action = True
 
                                 raise AbortAcquisitionException()
@@ -411,7 +411,7 @@ class MultiPointWorker(QObject):
                     self.navigation.microcontroller.move_z_to_usteps(z_pos)
                     self.navigation.microcontroller.wait_till_operation_is_completed()
 
-            coordinates_pd.to_csv(os.path.join(current_path,'coordinates.csv'),index=False,header=True)
+            coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
             self.navigation.enable_joystick_button_action = True
 
             self.signal_new_acquisition.emit('t')
@@ -462,8 +462,7 @@ class MultiPointController(QObject):
         self.crop_height = Acquisition.CROP_HEIGHT
         
         self.counter:int = 0
-        self.experiment_ID: Optional[str] = None
-        self.base_path:Optional[str]  = None
+        self.output_path: Optional[str] = None
         self.selected_configurations = []
         self.thread:Optional[QThread]=None
         self.parent = parent
@@ -533,60 +532,31 @@ class MultiPointController(QObject):
         self.crop_height = crop_height
 
     @TypecheckFunction
-    def set_base_path(self,path:str):
-        self.base_path = path
-
-    @property
-    def acquisition_parameters(self)->dict:
-        return {
-            'dx(mm)':             self.deltaX,
-            'Nx':                 self.NX,
-            'dy(mm)':             self.deltaY,
-            'Ny':                 self.NY,
-            'dz(um)':             self.deltaZ*1000,
-            'Nz':                 self.NZ,
-            'dt(s)':              self.deltat,
-            'Nt':                 self.Nt,
-            'with AF':            self.do_autofocus,
-            'with reflection AF': self.do_reflection_af,
-        }
-
-    @TypecheckFunction
-    def prepare_folder_for_new_experiment(self,experiment_ID:str,complete_experiment_data:Optional[dict]=None):
-        assert not self.base_path is None
-        base_path = Path(self.base_path)
-
+    def prepare_folder_for_new_experiment(self,output_path:str,complete_experiment_data:dict):
         # try generating unique experiment ID (that includes current timestamp) until successfull
         while True:
             now = datetime.now()
             now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
             now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
 
-            experiment_pathname = experiment_ID + '_' + now_str
+            experiment_pathname = output_path + '_' + now_str
             experiment_pathname = experiment_pathname.replace(' ', '_')
             experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
-            experiment_path = base_path / experiment_pathname
+            experiment_path=Path(experiment_pathname)
             if experiment_path.exists():
                 time.sleep(1) # wait until next second to get a unique experiment ID
             else:
                 experiment_path.mkdir(parents=True) # create a new folder
-                self.experiment_ID = experiment_pathname
+                self.output_path = experiment_pathname
                 break
 
         self.recording_start_time = time.time()
 
         # save different sets of config data to the experiment output directory
 
-        # config 1/3: imaging channel settings
-        conf_json: Path = experiment_path / 'configurations.json'
-        # config 2/3: basic acquisition parameters (positions within grid, which autofocus used)
-        self.configurationManager.write_configuration(str(conf_json)) # save the configuration for the experiment
-        acq_json: Path = experiment_path / 'acquisition_parameters.json'
-        acq_json.write_text(json.dumps(self.acquisition_parameters))
-        # config 3/3: complete set of config used for the experiment (optional, externally provided)
-        if not complete_experiment_data is None:
-            complete_data_path = experiment_path / 'all_parameters.json'
-            complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
+        # config : complete set of config used for the experiment
+        complete_data_path = experiment_path / 'parameters.json'
+        complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
 
     @TypecheckFunction
     def set_selected_configurations(self, selected_configurations_name:List[str]):

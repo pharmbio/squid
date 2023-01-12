@@ -11,39 +11,18 @@ import control.utils_config as utils_config
 
 from typing import Optional, List, Union, Tuple, Any
 
+@TypecheckClass
 class Configuration:
     """ illumination channel configuration """
 
-    def __init__(self,
-        mode_id:str, # 'id' is a builtin function so it needs to be called mode_id
-        name:str,
-        camera_sn:str,
-        exposure_time:float,
-        analog_gain:float,
-        illumination_source:int,
-        illumination_intensity:float,
-        channel_z_offset:Optional[float]=None
-    ):
-        self.id = mode_id
-        
-        self.name = name
-        """ channel name """
-
-        self.exposure_time = exposure_time
-        """ exposure time in ms """
-
-        self.analog_gain = analog_gain
-        """ analog gain increases camera sensor sensitivity """
-
-        self.illumination_source = illumination_source
-        """ illumination source id used by microcontroller """
-        self.illumination_intensity = illumination_intensity
-        """ percent light source power/intensity """
-
-        self.camera_sn = camera_sn
-
-        self.channel_z_offset=channel_z_offset
-        """ relative z offset of the average object in this channel (e.g. used in multichannel acquisition) """
+    mode_id:int
+    name:str
+    camera_sn:str
+    exposure_time:float # in ms
+    analog_gain:float
+    illumination_source:int
+    illumination_intensity:float # percent light source power/intensity
+    channel_z_offset:Optional[float]=None
 
     def set_exposure_time(self,new_value:float):
         self.exposure_time=new_value
@@ -54,7 +33,6 @@ class Configuration:
     def set_illumination_intensity(self,new_value:float):
         self.illumination_intensity=new_value
 
-    @property
     def automatic_tooltip(self)->str:
         if self.name.startswith("Fluorescence"):
             excitation_wavelength=self.name.split(" ")[1]
@@ -64,7 +42,7 @@ class Configuration:
 
     def as_dict(self):
         return {
-            "ID":self.id,
+            "ID":self.mode_id,
             "Name":self.name,
             "IlluminationSource":self.illumination_source,
             "ExposureTime":self.exposure_time,
@@ -73,6 +51,18 @@ class Configuration:
             "CameraSN":self.camera_sn,
             "RelativeZOffsetUM":self.channel_z_offset,
         }
+
+    def from_json(s:dict)->"Configuration":
+        return Configuration(
+            mode_id=s["ID"],
+            name=s["Name"],
+            illumination_source=s["IlluminationSource"],
+            exposure_time=s["ExposureTime"],
+            analog_gain=s["AnalogGain"],
+            illumination_intensity=s["IlluminationIntensity"],
+            camera_sn=s["CameraSN"],
+            channel_z_offset=s["RelativeZOffsetUM"],
+        )
 
 class ConfigurationManager(QObject):
     @property
@@ -88,8 +78,7 @@ class ConfigurationManager(QObject):
     def save_configurations(self):
         self.write_configuration(self.config_filename)
 
-    @property
-    def configurations_list(self)->list:
+    def as_json(self)->list:
         return [
             config.as_dict() 
             for config 
@@ -97,7 +86,7 @@ class ConfigurationManager(QObject):
         ]
 
     def write_configuration(self,filename:str):
-        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'configurations':self.configurations_list })
+        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'channel_config':self.as_json() })
         with open(filename, mode="w", encoding="utf-8") as json_file:
             json_file.write(json_tree_string)
 
@@ -105,30 +94,16 @@ class ConfigurationManager(QObject):
         with open(filename,mode="r",encoding="utf-8") as json_file:
             json_tree=json.decoder.JSONDecoder().decode(json_file.read())
 
-        self.load_configuration_from_json_list(json_tree['configurations'])
+        self.load_configuration_from_json_list(json_tree['channel_config'])
 
-    def load_configuration_from_json_list(self,json_list):
-        self.configurations=[]
-
-        for mode in json_list:
-            self.configurations.append(
-                Configuration(
-                    mode_id =                       mode['ID'],
-                    name =                          mode['Name'],
-                    illumination_source =    int(   mode['IlluminationSource']),
-                    exposure_time =          float( mode['ExposureTime']),
-                    analog_gain =            float( mode['AnalogGain']),
-                    illumination_intensity = float( mode['IlluminationIntensity']),
-                    camera_sn =                     mode['CameraSN'],
-                    channel_z_offset =       float( mode['RelativeZOffsetUM']),
-                )
-            )
+    def load_configuration_from_json_list(self,json_list:List[dict]):
+        self.configurations=[Configuration.from_json(item) for item in json_list]
 
     def update_configuration(self,configuration_id:str,attribute_name:str,new_value:Any):
-        mode_to_update = [config for config in self.configurations if config.id==configuration_id][0]
+        mode_to_update = [config for config in self.configurations if config.mode_id==configuration_id][0]
         
         if attribute_name=="ID":
-            mode_to_update.id=new_value
+            mode_to_update.mode_id=new_value
         elif attribute_name=="Name":
             mode_to_update.name=new_value
         elif attribute_name=="IlluminationSource":

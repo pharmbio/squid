@@ -107,23 +107,6 @@ class ImageSaver(QObject):
         self.recording_time_limit = time_limit
 
     @TypecheckFunction
-    def prepare_folder_for_new_experiment(self,experiment_ID:str,add_timestamp:bool=True):
-        if add_timestamp:
-            # generate unique experiment ID
-            self.experiment_ID = experiment_ID + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%-S.%f')
-        else:
-            self.experiment_ID = experiment_ID
-        self.recording_start_time = time.time()
-        # create a new folder
-        try:
-            os.mkdir(os.path.join(self.base_path,self.experiment_ID))
-            # to do: save configuration
-        except:
-            pass
-        # reset the counter
-        self.counter = 0
-
-    @TypecheckFunction
     def close(self):
         self.queue.join()
         self.stop_signal_received = True

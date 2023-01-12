@@ -1,33 +1,34 @@
+# python libraries
+import time, os
+
+from pathlib import Path
+from typing import Union
+
 # qt libraries
 from qtpy.QtCore import Qt, QEvent, Signal, QItemSelectionModel
 from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange
 
+import pyqtgraph as pg
+import pyqtgraph.dockarea as dock
+
+# other libraries
 import numpy
+
+from PIL import ImageEnhance, Image
+
+from control.typechecker import TypecheckFunction
+
+from tqdm import tqdm
 
 # app specific libraries
 import control.widgets as widgets
 from control.camera import Camera
 import control.core as core
+from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig
 import control.microcontroller as microcontroller
-#from control.hcs import HCSController
 from control._def import *
 from control.core.displacement_measurement import DisplacementMeasurementController
 from control.gui import *
-
-import pyqtgraph as pg
-import pyqtgraph.dockarea as dock
-
-from PIL import ImageEnhance, Image
-import time
-
-from control.typechecker import TypecheckFunction
-from typing import Union
-
-from tqdm import tqdm
-
-import os
-
-from pathlib import Path
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
 LIVE_BUTTON_RUNNING_TEXT="Stop Live"
@@ -82,6 +83,12 @@ def seconds_to_long_time(sec:float)->str:
     sec-=minutes*60
     return f"{hours:3}h {minutes:2}m {sec:4.1f}s"
 
+
+TRIGGER_MODES_LIST=[
+    TriggerMode.SOFTWARE,
+    TriggerMode.HARDWARE,
+]
+
 class OctopiGUI(QMainWindow):
 
     @property
@@ -130,6 +137,13 @@ class OctopiGUI(QMainWindow):
     def laserAutofocusController(self)->core.LaserAutofocusController:
         return self.core.laserAutofocusController
 
+    @property
+    def project_name_str(self)->str:
+        return self.multiPointWidget.lineEdit_projectName.text()
+    @property
+    def plate_name_str(self)->str:
+        return self.multiPointWidget.lineEdit_plateName.text()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -164,7 +178,7 @@ class OctopiGUI(QMainWindow):
 
             imaging_modes_wide_widgets.extend([
                 GridItem(
-                    Label(config.name,tooltip=config.automatic_tooltip,text_color=CHANNEL_COLORS[config.illumination_source]).widget,
+                    Label(config.name,tooltip=config.automatic_tooltip(),text_color=CHANNEL_COLORS[config.illumination_source]).widget,
                     row=config_num*2,colSpan=2
                 ),
                 GridItem(
@@ -226,7 +240,7 @@ class OctopiGUI(QMainWindow):
                 ]
             ])
 
-            self.imaging_mode_config_managers[config.id]=config_manager
+            self.imaging_mode_config_managers[config.mode_id]=config_manager
 
         self.add_image_inspection()
 
@@ -330,25 +344,21 @@ class OctopiGUI(QMainWindow):
         # layout widgets
         
         # transfer the layout to the central widget
-        trigger_modes_list=[
-            TriggerMode.SOFTWARE,
-            TriggerMode.HARDWARE,
-        ]
         self.centralWidget:QWidget = VBox(
             HBox(
                 Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
                 self.named_widgets.trigger_mode_dropdown == Dropdown(
-                    items=trigger_modes_list,
+                    items=TRIGGER_MODES_LIST,
                     current_index=0,
-                    on_currentIndexChanged=lambda new_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_TRIGGER_MODE",trigger_modes_list[new_index])
-                ),
+                    on_currentIndexChanged=lambda new_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_TRIGGER_MODE",TRIGGER_MODES_LIST[new_index])
+                ).widget,
                 Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
                 self.named_widgets.pixel_format == Dropdown(
                     items=self.core.main_camera.pixel_formats,
                     current_index=0, # default pixel format is 8 bits
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                     tooltip="",
-                ),
+                ).widget,
             ),
             HBox(
                 self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=True, tooltip="not implemented yet."),
@@ -493,13 +503,6 @@ class OctopiGUI(QMainWindow):
         new_pixel_format=self.core.main_camera.pixel_formats[pixel_format_index]
         self.core.main_camera.camera.set_pixel_format(new_pixel_format)
 
-    @property
-    def project_name_str(self)->str:
-        return self.multiPointWidget.lineEdit_projectName.text()
-    @property
-    def plate_name_str(self)->str:
-        return self.multiPointWidget.lineEdit_plateName.text()
-
     @TypecheckFunction
     def get_selected_channel_names(self,ordered:bool)->List[str]:
         selected_channel_list:List[str]=[item.text() for item in self.multiPointWidget.list_configurations.selectedItems()]
@@ -551,35 +554,38 @@ class OctopiGUI(QMainWindow):
         return str(Path(base_dir_str)/project_name_str/plate_name_str)
 
 
-    def get_all_config(self)->dict:
-        experiment_data_target_folder:str=self.get_output_dir(require_names_present=False)
-        software_af_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None
-        well_list=self.wellSelectionWidget.currently_selected_well_indices
-        imaging_channel_list:List[str]=self.get_selected_channel_names(ordered=True)
+    def get_all_config(self)->AcquisitionConfig:
 
-        data={
-            "well_list":well_list,
-            "channels":imaging_channel_list,
-            "experiment_id":experiment_data_target_folder,
-            "project_name":self.project_name_str,
-            "plate_name":self.plate_name_str,
-            "plate_type":self.core.plate_type,
-            "grid_data":{
-                'x':{'d':self.multipointController.deltaX,'N':self.multipointController.NX},
-                'y':{'d':self.multipointController.deltaY,'N':self.multipointController.NY},
-                'z':{'d':self.multipointController.deltaZ,'N':self.multipointController.NZ},
-                't':{'d':self.multipointController.deltat,'N':self.multipointController.Nt},
-            },
-            "af_channel":software_af_channel,
+        config=AcquisitionConfig(
+            output_path=self.get_output_dir(require_names_present=False),
+            project_name=self.project_name_str,
+            plate_name=self.plate_name_str,
 
-            "laser_af_on":self.core.multipointController.do_reflection_af,
+            well_list=self.wellSelectionWidget.currently_selected_well_indices,
+            
+            grid_mask=self.multiPointWidget.well_grid_items_selected,
+            grid_config=WellGridConfig(
+                x=GridDimensionConfig(d=self.multipointController.deltaX,N=self.multipointController.NX,unit="mm"),
+                y=GridDimensionConfig(d=self.multipointController.deltaY,N=self.multipointController.NY,unit="mm"),
+                z=GridDimensionConfig(d=self.multipointController.deltaZ,N=self.multipointController.NZ,unit="mm"),
+                t=GridDimensionConfig(d=self.multipointController.deltat,N=self.multipointController.Nt,unit="s"),
+            ),
 
-            "grid_mask":self.multiPointWidget.well_grid_items_selected,
+            af_software_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None,
+            af_laser_on=self.core.multipointController.do_reflection_af,
 
-            #TODO camera_pixel_format, trigger_mode
-        }
+            channels_ordered=self.get_selected_channel_names(ordered=True),
+            channels_config=self.core.configurationManager.configurations,
 
-        return data
+            plate_type=self.core.plate_type,
+
+            trigger_mode=MACHINE_CONFIG.MUTABLE_STATE.DEFAULT_TRIGGER_MODE,
+            pixel_format=self.core.main_camera.camera.pixel_format.value.name,
+
+            image_file_format=Acquisition.IMAGE_FORMAT,
+        )
+
+        return config
 
     def save_all_config(self):
         file_path=FileDialog(mode="save",caption="File to save the whole config to",filter_type=FILTER_JSON).run()
@@ -588,53 +594,53 @@ class OctopiGUI(QMainWindow):
 
         if not file_path.endswith(".json"):
             file_path+=".json"
-        data=self.get_all_config()
+            
+        self.get_all_config().save_json(file_path=file_path,well_index_to_name=True)
 
-        data.update({
-            "software_af_on":not data['af_channel'] is None,
-            "software_af_channel":data['af_channel'] or "",
-            "channel_config":self.core.configurationManager.configurations_list,
-            "channels_order":data["channels"],
-            "grid":data["grid_data"],
-            "experiment_data_target_folder":data["experiment_id"],
-        })
-        del data['af_channel']
-        del data['channels']
-        del data['grid_data']
-        del data["experiment_id"]
-
-        json_tree_string=json.encoder.JSONEncoder(indent=2).encode(data)
-        with open(file_path, mode="w", encoding="utf-8") as json_file:
-            json_file.write(json_tree_string)
-
-        print(f"saved all config to {file_path}")
+        print(f"config i/o - saved to {file_path}")
 
     def load_all_config(self):
         file_path=FileDialog(mode="open",caption="File to load the whole config from",filter_type=FILTER_JSON).run()
         if file_path=="":
             return
         
-        with open(file_path,mode="r",encoding="utf-8") as json_file:
-            data=json.decoder.JSONDecoder().decode(json_file.read())
+        config:AcquisitionConfig=AcquisitionConfig.from_json(file_path=file_path)
+        
+        # load plate type (this will clear all selected wells)
+        MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT=config.plate_type
+
+        # load grid data (this will clear the grid mask)
+        self.multiPointWidget.entry_NX.setValue(config.grid_config.x.N)
+        self.multiPointWidget.entry_NY.setValue(config.grid_config.y.N)
+        self.multiPointWidget.entry_NZ.setValue(config.grid_config.z.N)
+        self.multiPointWidget.entry_Nt.setValue(config.grid_config.t.N)
+
+        self.multiPointWidget.entry_deltaX.setValue(config.grid_config.x.d)
+        self.multiPointWidget.entry_deltaY.setValue(config.grid_config.y.d)
+        self.multiPointWidget.entry_deltaZ.setValue(config.grid_config.z.d)
+        self.multiPointWidget.entry_dt.setValue(    config.grid_config.t.d)
 
         # load selected wells (and block the selectionChanged signal until it is done, which would redraw some gui components for every single selected well, which takes several seconds)
         self.wellSelectionWidget.blockSignals(True)
 
-        well_list:List[Union[Tuple[int,int],str]]=data["well_list"]
+        for well in self.wellSelectionWidget.selectedIndexes():
+            row=well.row()
+            column=well.column()
+
+            # self.wellSelectionWidget.itemAt(row,column).setSelected(True) # this does not work for some reason?! is replaced with the setCurrentCell call below (code preserved here for a more enlightened time)
+            self.wellSelectionWidget.setCurrentCell(row,column,QItemSelectionModel.Deselect)
+
+        well_list:List[Tuple[int,int]]=config.well_list
         for well in well_list:
-            if isinstance(well,str):
-                assert len(well)==3
-                assert well[0] in "ABCDEFGHIJKLMNOPQRSTUVW", well[0]
-                assert int(well[1:])>=0
-                row=ord(well[0])-ord("A")
-                column=int(well[1:])
-            else:
-                row,column=well
+            row,column=well
 
             # self.wellSelectionWidget.itemAt(row,column).setSelected(True) # this does not work for some reason?! is replaced with the setCurrentCell call below (code preserved here for a more enlightened time)
             self.wellSelectionWidget.setCurrentCell(row,column,QItemSelectionModel.Select)
 
         self.wellSelectionWidget.blockSignals(False)
+        self.wellSelectionWidget.itemSelectionChanged.emit()
+
+        QApplication.processEvents()
 
         # load channel selection
         # 1) unselect all currently selected items
@@ -643,23 +649,23 @@ class OctopiGUI(QMainWindow):
             currently_selected_item.setSelected(False)
         # 2) iterate over all items in list, and select the ones with a name in the list of selected items
         channel_items=[self.multiPointWidget.list_configurations.item(row) for row in range(self.multiPointWidget.list_configurations.count())]
-        for channel_name in data["channels_order"]:
+        for channel_name in config.channels_ordered:
             item_with_name=[item for item in channel_items if item.text()==channel_name][0]
             item_with_name.setSelected(True)
             # TODO change order of channels if required
 
         # load imaging channel configuration
-        self.configurationManager.load_configuration_from_json_list(data["channel_config"])
+        self.configurationManager.configurations=config.channels_config
         self.reload_configuration_into_gui(new_file_path=file_path)
 
         avoided_projectname_overwrite=False
         avoided_platename_overwrite=False
-        data_project_name:str=data["project_name"]
+        data_project_name:str=config.project_name
         if data_project_name!="" and self.multiPointWidget.lineEdit_projectName.text()=="":
             self.multiPointWidget.lineEdit_projectName.setText(data_project_name)
         else:
             avoided_projectname_overwrite=True
-        data_plate_name:str=data["plate_name"]
+        data_plate_name:str=config.plate_name
         if data_plate_name!="" and self.multiPointWidget.lineEdit_plateName.text()=="":
             self.multiPointWidget.lineEdit_plateName.setText(data_plate_name)
         else:
@@ -672,51 +678,48 @@ class OctopiGUI(QMainWindow):
             if data_plate_name!="" and avoided_platename_overwrite:
                 text+=f"Did not replace existing PLATE name with '{data_plate_name}' (from config file).\n\n"
             text+="Copy the project/plate name from this message box if you want to replace them. (manually)"
-            MessageBox(title="project/plate name not replaced",mode="information",text=text).run()
+            #MessageBox(title="project/plate name not replaced",mode="information",text=text).run()
         
-        plate_type:Union[str,int]=data["plate_type"]
-        if isinstance(plate_type,str):
-            plate_type=int(plate_type)
-        MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT=plate_type
-
-        # load grid data
-        self.multiPointWidget.entry_NX.setValue(data["grid"]["x"]["N"])
-        self.multiPointWidget.entry_NY.setValue(data["grid"]["y"]["N"])
-        self.multiPointWidget.entry_NZ.setValue(data["grid"]["z"]["N"])
-        self.multiPointWidget.entry_Nt.setValue(data["grid"]["t"]["N"])
-        self.multiPointWidget.entry_deltaX.setValue([v for k,v in data["grid"]["x"].items() if k[0]=="d"][0]) # in manually saved config file, the key is "d", in the project-directory saved config files the keys are "d(<physical unit>)"
-        self.multiPointWidget.entry_deltaY.setValue([v for k,v in data["grid"]["y"].items() if k[0]=="d"][0])
-        self.multiPointWidget.entry_deltaZ.setValue([v for k,v in data["grid"]["z"].items() if k[0]=="d"][0])
-        self.multiPointWidget.entry_dt.setValue(    [v for k,v in data["grid"]["t"].items() if k[0]=="d"][0])
-
         # load software af data
-        software_af_on:bool=data["software_af_on"]
+        software_af_on:bool=not config.af_software_channel is None
         if software_af_on:
             self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Checked)
         else:
             self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Unchecked)
 
         if software_af_on:
-            af_channel=data["software_af_channel"]
-            self.multiPointWidget.af_channel_dropdown.setCurrentIndex([m_i for m_i,microscope_configuration in enumerate(self.configurationManager.configurations) if microscope_configuration.name==af_channel][0])
+            af_channel=config.af_software_channel
+            for m_i,microscope_configuration in enumerate(self.configurationManager.configurations):
+                if microscope_configuration.name==af_channel:
+                    self.multiPointWidget.af_channel_dropdown.setCurrentIndex(m_i)
 
-        # TODO
-        data["laser_af_on"]
+                    break
+
+            raise ValueError(f"software af channel {af_channel} is not a valid imaging channel!")
+
+        if config.af_laser_on:
+            # TODO
+            MessageBox(title="turning laser AF on from config file not yet implemented",mode="information",text="Patrick has not yet implemented loading a config file that contains a flag to turn the laser AF on. It will not automatically be turned on. Turn laser AF on manually if you want to use it. (seeing this message means the config file does indicate laser AF should be used. all other settings have been read as intended)").run()
 
         # load grid item selection mask
-        data["grid_mask"]
-        for row_i,row in enumerate(data["grid_mask"]):
+        for row_i,row in enumerate(config.grid_mask):
             for column_i,mask in enumerate(row):
                 self.multiPointWidget.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=mask)
 
-        print(f"loaded config from {file_path}")
+        # load trigger mode and camera pixel format
+        self.named_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config.trigger_mode))
+        self.named_widgets.pixel_format.setCurrentIndex([i for i,pixel_format in enumerate(self.core.main_camera.pixel_formats) if pixel_format==config.pixel_format][0])
+
+        self.multiPointWidget.image_format_widget.setCurrentIndex(list(ImageFormat).index(config.image_file_format))
+
+        print(f"config i/o - loaded from {file_path}")
 
     # @TypecheckFunction # dont check because signal cannot yet be checked properly
     def start_experiment(self,additional_data:dict={})->Optional[Signal]:
         self.navigationViewer.register_preview_fovs()
 
         acquisition_thread=self.core.acquire(
-            **self.get_all_config(),
+            self.get_all_config(),
 
             set_num_acquisitions_callback=self.set_num_acquisitions,
             on_new_acquisition=self.on_step_completed,
@@ -904,15 +907,19 @@ class OctopiGUI(QMainWindow):
         if load_path!="":
             print(f"loading config from {load_path}")
 
-            self.configurationManager.read_configurations(load_path)
+            try:
+                self.configurationManager.read_configurations(load_path)
+            except KeyError as e:
+                MessageBox(title="invalid config",mode="warning",text="Config file contains invalid data. (Could not be automatically read, try opening in a text editor manually).").run()
+                print(str(e))
             self.reload_configuration_into_gui(new_file_path=load_path)
 
     def reload_configuration_into_gui(self,new_file_path:str):
         for config in self.configurationManager.configurations:
-            self.imaging_mode_config_managers[config.id].illumination_strength.setValue(config.illumination_intensity)
-            self.imaging_mode_config_managers[config.id].exposure_time.setValue(config.exposure_time)
-            self.imaging_mode_config_managers[config.id].analog_gain.setValue(config.analog_gain)
-            self.imaging_mode_config_managers[config.id].z_offset.setValue(config.channel_z_offset)
+            self.imaging_mode_config_managers[config.mode_id].illumination_strength.setValue(config.illumination_intensity)
+            self.imaging_mode_config_managers[config.mode_id].exposure_time.setValue(config.exposure_time)
+            self.imaging_mode_config_managers[config.mode_id].analog_gain.setValue(config.analog_gain)
+            self.imaging_mode_config_managers[config.mode_id].z_offset.setValue(config.channel_z_offset)
 
         self.set_illumination_config_path_display(new_path=new_file_path,set_config_changed=False)
 

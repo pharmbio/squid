@@ -104,7 +104,6 @@ class MultiPointWidget(QFrame):
             self.lineEdit_baseDir.setText('Choose a base saving directory')
 
             self.lineEdit_baseDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
-            self.multipointController.set_base_path(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
             self.base_path_is_set = True
 
             self.lineEdit_projectName = QLineEdit()
@@ -434,7 +433,6 @@ class MultiPointWidget(QFrame):
     def set_saving_dir(self,_state:Any=None):
         save_dir_base = FileDialog(mode="open_dir",caption="Select base directory").run()
         if save_dir_base!="":
-            self.multipointController.set_base_path(save_dir_base)
             self.lineEdit_baseDir.setText(save_dir_base)
             self.base_path_is_set = True
 

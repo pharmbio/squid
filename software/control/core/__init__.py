@@ -2,6 +2,12 @@
 import os 
 os.environ["QT_API"] = "pyqt5"
 
+from control._def import *
+from control.typechecker import TypecheckFunction, TypecheckClass
+from .configuration import Configuration, ConfigurationManager
+
+from typing import List, Tuple, Callable, Optional
+
 class StreamingCamera:
     def __init__(self,camera):
         self.camera=camera
@@ -35,33 +41,148 @@ class StreamingCamera:
 
             self.camera.in_a_state_to_be_used_directly=False
 
-            
+@TypecheckClass
+class GridDimensionConfig:
+    d:float
+    N:int
+    unit:str
+
+    def as_json(self)->dict:
+        return {
+            "d":self.d,
+            "N":self.N,
+            "unit":self.unit
+        }
+
+    def from_json(s:dict)->"GridDimensionConfig":
+        return GridDimensionConfig(
+            d=s["d"],
+            N=s["N"],
+            unit=s["unit"],
+        )
+
+@TypecheckClass
+class WellGridConfig:
+    x:GridDimensionConfig
+    y:GridDimensionConfig
+    z:GridDimensionConfig
+    t:GridDimensionConfig
+
+    def as_json(self)->dict:
+        return {
+            "x":self.x.as_json(),
+            "y":self.y.as_json(),
+            "z":self.z.as_json(),
+            "t":self.t.as_json(),
+        }
+
+    def from_json(s:dict)->"WellGridConfig":
+        return WellGridConfig(
+            x=GridDimensionConfig.from_json(s["x"]),
+            y=GridDimensionConfig.from_json(s["y"]),
+            z=GridDimensionConfig.from_json(s["z"]),
+            t=GridDimensionConfig.from_json(s["t"])
+        )
+
+@TypecheckClass
+class AcquisitionConfig:
+    output_path:str
+    project_name:str
+    plate_name:str
+    well_list:List[Tuple[int,int]]
+    grid_mask:List[List[bool]]
+    grid_config:WellGridConfig
+    af_software_channel:Optional[str]
+    af_laser_on:bool
+    trigger_mode:TriggerMode
+    pixel_format:str
+    plate_type:int
+    channels_ordered:List[str]
+    channels_config:List[Configuration]
+    image_file_format:ImageFormat
+
+    def from_json(file_path:Union[str,Path])->"AcquisitionConfig":
+        with open(str(file_path),mode="r",encoding="utf-8") as json_file:
+            data=json.decoder.JSONDecoder().decode(json_file.read())
+
+        well_list=data["well_list"]
+        for i in range(len(well_list)):
+            well=well_list[i]
+
+            if isinstance(well,str):
+                assert len(well)==3
+                row=ord(well[0])-ord('A')
+                assert row>=0
+                column=int(well[1:])
+                assert column>=0
+            else:
+                row,column=well
+
+            well_list[i]=(row,column-1) # column-1 because on the wellplates the column indices start at 1 (while in code they start at 0)
+
+        config=AcquisitionConfig(
+            output_path=data["output_path"],
+            project_name=data["project_name"],
+            plate_name=data["plate_name"],
+            well_list=well_list,
+            grid_mask=data["grid_mask"],
+            grid_config=WellGridConfig.from_json(data["grid_config"]),
+            af_software_channel=data["af_software_channel"],
+            af_laser_on=data["af_laser_on"],
+            trigger_mode=TriggerMode(data["trigger_mode"]),
+            pixel_format=data["pixel_format"],
+            plate_type=data["plate_type"],
+            channels_ordered=data["channels_ordered"],
+            channels_config=[Configuration.from_json(config_dict) for config_dict in data["channels_config"]],
+            image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0]
+        )
+
+        return config
+
+    def as_json(self,well_index_to_name:bool=False)->dict:
+        well_list=self.well_list
+        if well_index_to_name:
+            well_list=[f"{chr(w_row+ord('A'))}{w_column+1:02}" for w_row,w_column in well_list] # column+1 because on the wellplates the column indices start at 1 (while in code they start at 0)
+
+        return {
+            "output_path":self.output_path,
+            "project_name":self.project_name,
+            "plate_name":self.plate_name,
+            "well_list":well_list,
+            "grid_mask":self.grid_mask,
+            "grid_config":self.grid_config.as_json(),
+            "af_software_channel":self.af_software_channel,
+            "af_laser_on":self.af_laser_on,
+            "trigger_mode":self.trigger_mode,
+            "pixel_format":self.pixel_format,
+            "plate_type":self.plate_type,
+            "channels_ordered":self.channels_ordered,
+            "channels_config":[config.as_dict() for config in self.channels_config],
+            "image_file_format":self.image_file_format.name
+        }
+
+    def save_json(self,file_path:Union[str,Path],well_index_to_name:bool=False):
+        json_tree_string=json.encoder.JSONEncoder(indent=2).encode(self.as_json(well_index_to_name=well_index_to_name))
+
+        with open(str(file_path), mode="w", encoding="utf-8") as json_file:
+            json_file.write(json_tree_string)
 
 from .stream_handler import StreamHandler
 from .image_saver import ImageSaver
-from .configuration import Configuration, ConfigurationManager
 from .live import LiveController
 from .navigation import NavigationController
 from .autofocus import AutoFocusController
 from .multi_point import MultiPointController
 from .laser_autofocus import LaserAutofocusController
 
-from multiprocessing.sharedctypes import Value
 from qtpy.QtCore import Qt, QThread, QObject
 from qtpy.QtWidgets import QApplication
 
 # app specific libraries
-from control._def import *
 import control.camera as camera
 import control.core as core
 import control.microcontroller as microcontroller
 from control.core.displacement_measurement import DisplacementMeasurementController
-
-from control.typechecker import TypecheckFunction
-
-from typing import List, Tuple, Callable
-
-import numpy
 
 class CameraWrapper:
     def __init__(self,
@@ -262,36 +383,13 @@ class Core(QObject):
     @property
     def plate_type(self)->int:
         return MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
-        
-    #borrowed imageSaver functions
-    #borrowed autofocusController functions
-    #borrowed laserAutofocusController functions
 
     #@TypecheckFunction
     def acquire(self,
-        well_list:List[Tuple[int,int]],
-        channels:List[str],
-        experiment_id:str,
-        grid_data:Dict[str,dict]={
-            'x':{'d':0.9,'N':1},
-            'y':{'d':0.9,'N':1},
-            'z':{'d':0.9,'N':1},
-            't':{'d':0.9,'N':1},
-        },
-
-        af_channel:Optional[str]=None, # software AF
-        plate_type:ClosedSet[Optional[int]](None,6,12,24,96,384)=None,
+        config:AcquisitionConfig,
 
         set_num_acquisitions_callback:Optional[Callable[[int],None]]=None,
         on_new_acquisition:Optional[Callable[[str],None]]=None,
-
-        laser_af_on:bool=False,
-        laser_af_initial_override=None,# override settings after initialization (i think thats sensor crop region + um/px estimated value)
-
-        camera_pixel_format_override=None,
-        trigger_override=None,
-
-        grid_mask:Optional[Any]=None,
 
         headless:bool=True,
 
@@ -306,12 +404,12 @@ class Core(QObject):
         # set selection and order of channels to be imaged <- acquire.channels argument
 
         # calculate physical imaging positions on wellplate given plate type and well selection
-        plate_type=plate_type or self.plate_type
+        plate_type=config.plate_type
         wellplate_format=WELLPLATE_FORMATS[plate_type]
 
         # validate well positions (should be on the plate, given selected wellplate type)
         if wellplate_format.number_of_skip>0:
-            for well_row,well_column in well_list:
+            for well_row,well_column in config.well_list:
                 if well_row<0 or well_column<0:
                     raise ValueError(f"are you mad?! {well_row=} {well_column=}")
 
@@ -330,83 +428,56 @@ class Core(QObject):
                 if well_column>=(wellplate_format.columns-wellplate_format.number_of_skip):
                     raise ValueError(f"well {well_column=} out of bounds {wellplate_format}")
 
-        well_list_names:List[str]=[wellplate_format.well_name(*c) for c in well_list]
-        well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.convert_well_index(*c) for c in well_list]
-
-
-        acquisition_data={
-            "well_list":well_list_names,
-            "experiment_data_target_folder":experiment_id,
-            "grid":{
-                'x':{'d(mm)':grid_data['x']['d'],'N':grid_data['x']['N']},
-                'y':{'d(mm)':grid_data['y']['d'],'N':grid_data['y']['N']},
-                'z':{'d(um)':grid_data['z']['d']*1000,'N':grid_data['z']['N']},
-                't':{'d(s)':grid_data['t']['d'],'N':grid_data['t']['N']},
-            },
-            "plate_type":plate_type,
-
-            "channels_order":channels,
-            "channel_config":self.configurationManager.configurations_list,
-
-            "software_af_on":not af_channel is None,
-            "software_af_channel":af_channel or "",
-
-            "laser_af_on":laser_af_on,
-
-            "grid_mask":grid_mask,
-
-            #TODO camera_pixel_format_override, trigger_override
-        }
-        
-        additional_data.update(kwargs)
-        if not additional_data is None:
-            assert set(acquisition_data.keys()).isdisjoint(set(additional_data.keys())), "additional data provided to save as metadata overlaps primary data! (this is a bug)"
-            acquisition_data.update(additional_data)
+        well_list_names:List[str]=[wellplate_format.well_name(*c) for c in config.well_list]
+        well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.convert_well_index(*c) for c in config.well_list]
 
         # print well names as debug info
         #print("imaging wells: ",", ".join(well_list_names))
 
         # set autofocus parameters
-        if af_channel is None:
+        if config.af_software_channel is None:
             self.multipointController.set_software_af_flag(False)
         else:
-            assert af_channel in [c.name for c in self.configurationManager.configurations], f"{af_channel} is not a valid (AF) channel"
-            if af_channel!=MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL:
-                MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL=af_channel
+            assert config.af_software_channel in [c.name for c in self.configurationManager.configurations], f"{config.af_software_channel} is not a valid (AF) channel"
+            if config.af_software_channel!=MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL:
+                MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL=config.af_software_channel
             self.multipointController.set_software_af_flag(True)
 
-        self.multipointController.set_laser_af_flag(laser_af_on)
+        self.multipointController.set_laser_af_flag(config.af_laser_on)
 
         # set grid data per well
-        self.set_NX(grid_data['x']['N'])
-        self.set_NY(grid_data['y']['N'])
-        self.set_NZ(grid_data['z']['N'])
-        self.set_Nt(grid_data['t']['N'])
-        self.set_deltaX(grid_data['x']['d'])
-        self.set_deltaY(grid_data['y']['d'])
-        self.set_deltaZ(grid_data['z']['d'])
-        self.set_deltat(grid_data['t']['d'])
+        self.set_NX(config.grid_config.x.N)
+        self.set_NY(config.grid_config.y.N)
+        self.set_NZ(config.grid_config.z.N)
+        self.set_Nt(config.grid_config.t.N)
+        self.set_deltaX(config.grid_config.x.d)
+        self.set_deltaY(config.grid_config.y.d)
+        self.set_deltaZ(config.grid_config.z.d)
+        self.set_deltat(config.grid_config.t.d)
 
-        for i,(well_row,well_column) in enumerate(well_list):
+        for i,(well_row,well_column) in enumerate(config.well_list):
             well_x_mm,well_y_mm=well_list_physical_pos[i]
             for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(well_x_mm,well_y_mm):
                 if self.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
                     raise ValueError(f"at least one grid item is outside the bounds of the well! well size is {wellplate_format.well_size_mm}mm")
 
         # set list of imaging channels
-        self.set_selected_configurations(channels)
+        self.set_selected_configurations(config.channels_ordered)
 
         # set image saving location
-        self.multipointController.set_base_path(path=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
-        self.multipointController.prepare_folder_for_new_experiment(experiment_ID=experiment_id,complete_experiment_data=acquisition_data) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
+        acquisition_data=config.as_json(well_index_to_name=True)
+        acquisition_data.update(additional_data)
+        self.multipointController.prepare_folder_for_new_experiment(output_path=config.output_path,complete_experiment_data=acquisition_data) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
         return self.multipointController.run_experiment(
-            well_selection=(well_list_names,well_list_physical_pos),
-            set_num_acquisitions_callback=set_num_acquisitions_callback,
-            on_new_acquisition=on_new_acquisition,
-            grid_mask=grid_mask,
-            headless=headless,
+            well_selection = ( well_list_names, well_list_physical_pos ),
+            grid_mask = config.grid_mask,
+
+            set_num_acquisitions_callback = set_num_acquisitions_callback,
+            on_new_acquisition = on_new_acquisition,
+
+            headless = headless,
         )
 
     @TypecheckFunction
