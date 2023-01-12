@@ -299,7 +299,7 @@ class Camera(object):
             if not pixel_format_found:
                 assert False, f"pixel format {pixel_format} is not valid"
         else:
-            print("pixel format is not implemented or not writable")
+            raise RuntimeError("pixel format is not implemented or not writable")
 
         if was_streaming:
            self.start_streaming()
