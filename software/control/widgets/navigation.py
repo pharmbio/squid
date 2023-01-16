@@ -32,18 +32,21 @@ class NavigationWidget(QFrame):
         self.entry_dX = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaX).widget
         self.btn_moveX_forward = Button('Forward',on_clicked=self.move_x_forward).widget
         self.btn_moveX_backward = Button('Backward',on_clicked=self.move_x_backward).widget
+        self.real_pos_x:float=0.0 # real x position of objective/slide in mm
         
         self.label_Ypos = Label("0,0",text_selectable=True).widget
         self.label_Ypos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.entry_dY = SpinBoxDouble(minimum=0.0,maximum=25.0,step=0.2,default=1.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaY).widget
         self.btn_moveY_forward = Button('Forward',on_clicked=self.move_y_forward).widget
         self.btn_moveY_backward = Button('Backward',on_clicked=self.move_y_backward).widget
+        self.real_pos_y:float=0.0 # real y position of objective/slide in mm
 
         self.label_Zpos = Label("0,0",text_selectable=True).widget
         self.label_Zpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.entry_dZ = SpinBoxDouble(minimum=0.0,maximum=1000.0,step=0.2,default=10.0,num_decimals=3,keyboard_tracking=False,on_valueChanged=self.set_deltaZ).widget
         self.btn_moveZ_forward = Button('Forward',on_clicked=self.move_z_forward).widget
         self.btn_moveZ_backward = Button('Backward',on_clicked=self.move_z_backward).widget
+        self.real_pos_z:float=0.0 # real z position of objective/slide in mm
 
         self.btn_zero_Z = Button('Zero Z',checkable=True,on_clicked=self.zero_z).widget
         self.zero_z_offset=0.0

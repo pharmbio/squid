@@ -365,7 +365,9 @@ class Camera(object):
     def read_frame(self)->numpy.ndarray:
         assert not self.camera is None
 
-        raw_image = self.camera.data_stream[self.device_index].get_image()
+        raw_image=None
+        while raw_image is None:
+            raw_image = self.camera.data_stream[self.device_index].get_image()
 
         numpy_image = self.rescale_raw_image(raw_image)
 

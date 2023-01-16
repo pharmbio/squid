@@ -68,6 +68,20 @@ class HasWidget():
 
         super().__init__(**kwargs)
         
+class HasFramestyle(HasWidget):
+    def __init__(self,
+        frame_style:ClosedSet[Optional[str]](None,"raised","sunken")=None,
+
+        **kwargs,
+    ):
+        if not frame_style is None:
+            if frame_style=="raised":
+                self.widget.setFrameStyle(QFrame.Panel | QFrame.Raised)
+            elif frame_style=="sunken":
+                self.widget.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+
+        super().__init__()
+
 class HasToolTip(HasWidget):
     def __init__(self,
         tooltip:Optional[str]=None,
@@ -102,7 +116,14 @@ class HasCallbacks(HasWidget):
             # if setting callback was unsuccessfull (for whatever reason), forward argument to other constructors
             unused_kwargs[key]=value
 
-        super().__init__(**unused_kwargs)
+        try:
+            super().__init__(**unused_kwargs)
+        except TypeError as te:
+            if str(te)!="object.__init__() takes exactly one argument (the instance to initialize)":
+                raise te
+            else:
+                unused_arg_list=", ".join(unused_kwargs.keys())
+                print(f"one of these arguments was unused: {unused_arg_list}")
 
 class TextSelectable(HasWidget):
     def __init__(self,
@@ -185,6 +206,8 @@ class Grid(HasLayout,HasWidget):
                         try_add_member(self.layout, inner_arg, outer_index + row_offset, inner_index + col_offset)
             else:
                 try_add_member(self.layout, outer_arg, outer_index+row_offset, 0)
+
+        super().__init__(**kwargs)
 
     @property
     def widget(self):
@@ -308,6 +331,17 @@ class Button(HasCallbacks,HasToolTip,HasWidget):
 
         super().__init__(**kwargs)            
 
+class ItemList(HasCallbacks,HasToolTip,HasWidget):
+    def __init__(self,
+        items:List[Any],
+
+        **kwargs,
+    ):
+        self.widget=QListWidget()
+        self.widget.addItems(items)
+
+        super().__init__(**kwargs)
+
 class Dropdown(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,
         items:List[Any],
@@ -425,7 +459,7 @@ class MessageBox:
         self.mode=mode
         self.text=text
 
-    def run(self):
+    def run(self)->QMessageBox.StandardButton:
         if self.mode=='information':
             QMessageBox.information(None,self.title,self.text)
         elif self.mode=='critical':

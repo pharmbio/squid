@@ -85,6 +85,47 @@ class WellGridConfig:
         )
 
 @TypecheckClass
+class LaserAutofocusData:
+    x_reference:float
+    um_per_px:float
+
+    x_offset:int
+    y_offset:int
+    x_width:int
+    y_width:int
+
+    has_two_interfaces:bool
+    use_glass_top:bool
+
+    def as_json(self)->dict:
+        return {
+            "x_reference":self.x_reference,
+            "um_per_px":self.um_per_px,
+
+            "x_offset":self.x_offset,
+            "y_offset":self.y_offset,
+            "x_width":self.x_width,
+            "y_width":self.y_width,
+
+            "has_two_interfaces":self.has_two_interfaces,
+            "use_glass_top":self.use_glass_top,
+        }
+
+    def from_json(s:dict)->"LaserAutofocusData":
+        return LaserAutofocusData(
+            x_reference=s["x_reference"],
+            um_per_px=s["um_per_px"],
+
+            x_offset=s["x_offset"],
+            y_offset=s["y_offset"],
+            x_width=s["x_width"],
+            y_width=s["y_width"],
+
+            has_two_interfaces=s["has_two_interfaces"],
+            use_glass_top=s["use_glass_top"],
+        )
+
+@TypecheckClass
 class AcquisitionConfig:
     output_path:str
     project_name:str
@@ -92,8 +133,9 @@ class AcquisitionConfig:
     well_list:List[Tuple[int,int]]
     grid_mask:List[List[bool]]
     grid_config:WellGridConfig
-    af_software_channel:Optional[str]
+    af_software_channel:Optional[str]=None
     af_laser_on:bool
+    af_laser_reference:Optional[LaserAutofocusData]=None
     trigger_mode:TriggerMode
     pixel_format:str
     plate_type:int
@@ -120,6 +162,10 @@ class AcquisitionConfig:
 
             well_list[i]=(row,column-1) # column-1 because on the wellplates the column indices start at 1 (while in code they start at 0)
 
+        af_laser_reference=None
+        if "af_laser_reference" in data and not data["af_laser_reference"] is None:
+            af_laser_reference=LaserAutofocusData.from_json(data["af_laser_reference"])
+
         config=AcquisitionConfig(
             output_path=data["output_path"],
             project_name=data["project_name"],
@@ -129,6 +175,7 @@ class AcquisitionConfig:
             grid_config=WellGridConfig.from_json(data["grid_config"]),
             af_software_channel=data["af_software_channel"],
             af_laser_on=data["af_laser_on"],
+            af_laser_reference=af_laser_reference,
             trigger_mode=TriggerMode(data["trigger_mode"]),
             pixel_format=data["pixel_format"],
             plate_type=data["plate_type"],
@@ -148,17 +195,21 @@ class AcquisitionConfig:
             "output_path":self.output_path,
             "project_name":self.project_name,
             "plate_name":self.plate_name,
-            "well_list":well_list,
-            "grid_mask":self.grid_mask,
-            "grid_config":self.grid_config.as_json(),
-            "af_software_channel":self.af_software_channel,
-            "af_laser_on":self.af_laser_on,
+
+            "image_file_format":self.image_file_format.name,
             "trigger_mode":self.trigger_mode,
             "pixel_format":self.pixel_format,
             "plate_type":self.plate_type,
+
+            "af_software_channel":self.af_software_channel,
+            "af_laser_on":self.af_laser_on,
+            "af_laser_reference":self.af_laser_reference.as_json() if not self.af_laser_reference is None else None,
+
+            "grid_config":self.grid_config.as_json(),
+            "grid_mask":self.grid_mask,
             "channels_ordered":self.channels_ordered,
             "channels_config":[config.as_dict() for config in self.channels_config],
-            "image_file_format":self.image_file_format.name
+            "well_list":well_list,
         }
 
     def save_json(self,file_path:Union[str,Path],well_index_to_name:bool=False):
@@ -166,6 +217,27 @@ class AcquisitionConfig:
 
         with open(str(file_path), mode="w", encoding="utf-8") as json_file:
             json_file.write(json_tree_string)
+
+@TypecheckClass
+class ReferenceFile:
+    path:Union[Path,str]
+
+    plate_type:str
+    cell_line:str
+
+    def as_json(self)->dict:
+        return {
+            'path':str(self.path),
+            'plate_type':self.plate_type,
+            'cell_line':self.cell_line
+        }
+    def from_json(s:dict)->"ReferenceFile":
+        return ReferenceFile(
+            path=s["path"],
+            plate_type=s["plate_type"],
+            cell_line=s["cell_line"],
+        )
+
 
 from .stream_handler import StreamHandler
 from .image_saver import ImageSaver

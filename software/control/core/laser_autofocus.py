@@ -25,7 +25,7 @@ class LaserAutofocusController(QObject):
 
     def __init__(self,
         microcontroller:microcontroller.Microcontroller,
-        camera:camera.Camera, # focus camera (?)
+        camera:camera.Camera, # focus camera
         liveController:LiveController,
         navigationController:NavigationController,
         has_two_interfaces:bool=True,
@@ -37,37 +37,42 @@ class LaserAutofocusController(QObject):
         self.liveController = liveController
         self.navigation = navigationController
 
-        self.is_initialized = False
-        self.x_reference = None
-        self.pixel_to_um:float = 1.0
+        self.is_initialized:bool = False
+        self.x_reference:Optional[float] = None
+        self.um_per_px:float = 1.0
         self.x_offset:int = 0
         self.y_offset:int = 0
-        self.x_width:int = 3088
-        self.y_width:int = 2064
+        self.width:int = 3088
+        self.height:int = 2064
+        self.reference_z_height_mm:float=0.0
 
-        self.has_two_interfaces = has_two_interfaces # e.g. air-glass and glass water, set to false when (1) using oil immersion (2) using 1 mm thick slide (3) using metal coated slide or Si wafer
-        self.use_glass_top = use_glass_top
+        self.has_two_interfaces:bool = has_two_interfaces # e.g. air-glass and glass water, set to false when (1) using oil immersion (2) using 1 mm thick slide (3) using metal coated slide or Si wafer
+        self.use_glass_top:bool = use_glass_top
         self.spot_spacing_pixels = None # spacing between the spots from the two interfaces (unit: pixel)
 
-    def initialize_manual(self, x_offset:int, y_offset:int, width:int, height:int, pixel_to_um:float, x_reference:float):
+        self.reset_camera_sensor_crop() # camera crop is preserved between program restarts. mainly for debugging purposes, reset camera sensor crop so that full sensor is used on program startup
+
+    def initialize_manual(self, x_offset:int, y_offset:int, width:int, height:int, um_per_px:float, x_reference:float):
         # x_reference is relative to the full sensor
-        self.pixel_to_um = pixel_to_um
+        self.um_per_px = um_per_px
         self.x_offset = int((x_offset//8)*8)
         self.y_offset = int((y_offset//2)*2)
         self.width = int((width//8)*8)
         self.height = int((height//2)*2)
-        self.x_reference = x_reference - self.x_offset # self.x_reference is relative to the cropped region
+
         self.camera.set_ROI(self.x_offset,self.y_offset,self.width,self.height)
+
+        self.x_reference = x_reference - self.x_offset # self.x_reference is relative to the cropped region
         self.is_initialized = True
+
+    def reset_camera_sensor_crop(self):
+        self.camera.set_ROI(0,0,None,None) # set offset first
+        self.camera.set_ROI(0,0,3088,2064)
 
     def initialize_auto(self):
 
-        # first find the region to crop
-        # then calculate the convert factor
-
         # set camera to use full sensor
-        self.camera.set_ROI(0,0,None,None) # set offset first
-        self.camera.set_ROI(0,0,3088,2064)
+        self.reset_camera_sensor_crop()
 
         # update camera settings
         self.camera.set_exposure_time(MACHINE_CONFIG.FOCUS_CAMERA_EXPOSURE_TIME_MS)
@@ -85,21 +90,25 @@ class LaserAutofocusController(QObject):
             self.initialize_manual(x_offset, y_offset, MACHINE_CONFIG.LASER_AF_CROP_WIDTH, MACHINE_CONFIG.LASER_AF_CROP_HEIGHT, 1.0, x)
 
             # move z
-            self.navigation.move_z(-0.018,{})
-            self.navigation.move_z(0.012,{},True)
+            z_mm_movement_range=0.1
+            z_mm_backlash_counter=self.microcontroller.clear_z_backlash_mm
+            self.navigation.move_z(z_mm=-(z_mm_movement_range/2+z_mm_backlash_counter),wait_for_completion={},wait_for_stabilization=True)
+            self.navigation.move_z(z_mm=z_mm_backlash_counter,wait_for_completion={},wait_for_stabilization=True)
 
             x0,y0 = self._get_laser_spot_centroid()
 
-            self.navigation.move_z(0.006,{},True)
+            self.navigation.move_z(z_mm=z_mm_movement_range/2,wait_for_completion={},wait_for_stabilization=True)
 
             x1,y1 = self._get_laser_spot_centroid()
 
+            self.navigation.move_z(z_mm=z_mm_movement_range/2,wait_for_completion={},wait_for_stabilization=True)
+
+            x2,y2 = self._get_laser_spot_centroid()
+
+            self.navigation.move_z(z_mm=-(z_mm_movement_range/2),wait_for_completion={},wait_for_stabilization=True)
+
             # calculate the conversion factor
-            self.pixel_to_um = 6.0/(x1-x0)
-            #print(f'pixel to um conversion factor is {self.pixel_to_um:.3f} um/pixel')
-            # for simulation
-            if x1-x0 == 0:
-                self.pixel_to_um = 0.4
+            self.um_per_px = z_mm_movement_range*1000/(x2-x0)
 
             # set reference
             self.x_reference = x1
@@ -115,7 +124,7 @@ class LaserAutofocusController(QObject):
             x,y = self._get_laser_spot_centroid(num_images=override_num_images or MACHINE_CONFIG.LASER_AF_AVERAGING_N_FAST)
 
             # calculate displacement
-            displacement_um = (x - self.x_reference)*self.pixel_to_um
+            displacement_um = (x - self.x_reference)*self.um_per_px
         except:
             displacement_um=float('nan')
 
@@ -138,11 +147,12 @@ class LaserAutofocusController(QObject):
                 # limit the range of movement
                 um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
 
-                print(f"laser af - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
+                #print(f"laser af - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
 
-                self.navigation.move_z(um_to_move/1000,wait_for_completion={})
+                self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
 
-    def set_reference(self):
+    def set_reference(self,z_pos_mm:float):
         assert self.is_initialized
 
         self.microcontroller.turn_on_AF_laser(completion={})
@@ -150,6 +160,8 @@ class LaserAutofocusController(QObject):
         self.microcontroller.turn_off_AF_laser(completion={})
         self.x_reference = x
         self.signal_displacement_um.emit(0)
+
+        self.reference_z_height_mm=z_pos_mm
 
     def _get_laser_spot_centroid(self,num_images:Optional[int]=None):
         """
@@ -242,8 +254,10 @@ class LaserAutofocusController(QObject):
                 peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
             except IndexError:
                 raise Exception("did not find second peak in laser AF image. this is a bug.")
-            self.spot_spacing_pixels = peak_1_location-peak_0_location
+            
             '''
+            self.spot_spacing_pixels = peak_1_location-peak_0_location
+
             # find peaks - alternative
             if self.spot_spacing_pixels is not None:
                 peak_locations,_ = scipy.signal.find_peaks(tmp,distance=100)

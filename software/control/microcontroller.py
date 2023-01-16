@@ -731,3 +731,7 @@ class Microcontroller():
     @property
     def clear_z_backlash_usteps(self)->int:
         return max(160,20*MACHINE_CONFIG.MICROSTEPPING_DEFAULT_Z)
+        
+    @property
+    def clear_z_backlash_mm(self)->float:
+        return self.clear_z_backlash_usteps*self.mm_per_ustep_z

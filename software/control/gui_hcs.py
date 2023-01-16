@@ -24,11 +24,13 @@ from tqdm import tqdm
 import control.widgets as widgets
 from control.camera import Camera
 import control.core as core
-from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig
+from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile
 import control.microcontroller as microcontroller
 from control._def import *
 from control.core.displacement_measurement import DisplacementMeasurementController
 from control.gui import *
+
+LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
 LIVE_BUTTON_RUNNING_TEXT="Stop Live"
@@ -244,7 +246,7 @@ class OctopiGUI(QMainWindow):
 
         self.add_image_inspection()
 
-        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self.laserAutofocusController)
+        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self,self.laserAutofocusController)
         self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocs.setDisabled(False))
 
         self.named_widgets.live == ObjectManager()
@@ -359,6 +361,7 @@ class OctopiGUI(QMainWindow):
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                     tooltip="",
                 ).widget,
+                Button("testing",on_clicked=self.testing_function).widget
             ),
             HBox(
                 self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=True, tooltip="not implemented yet."),
@@ -452,9 +455,52 @@ class OctopiGUI(QMainWindow):
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
 
+    def testing_function(self):
+        somewidget=QMainWindow(self)
+        reference_files:List[ReferenceFile]=[
+            ReferenceFile(
+                path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                plate_type="generic 384",
+                cell_line="unknown cells"
+            ),
+            ReferenceFile(
+                path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                plate_type="generic 384",
+                cell_line="unknown cells"
+            )
+        ]
+
+        def reference_file_to_widget(reference_file)->QWidget:
+            def load_reference_file(_btn_state):
+                self.load_all_config_from(reference_file.path)
+            def load_and_close(_btn_state,somewidget):
+                self.load_all_config_from(reference_file.path)
+                self.layout().removeWidget(somewidget)
+                somewidget.hide()
+                somewidget.close()
+                del somewidget
+
+            return Grid(
+                [Label("Path:"),Label(str(reference_file.path))],
+                [Label("Plate type:"),Label(reference_file.plate_type)],
+                [Label("Cell line:"),Label(reference_file.cell_line)],
+                [Button("load as reference",on_clicked=load_reference_file),Button("load and close window",on_clicked=lambda x,w=somewidget: load_and_close(x,w))],
+                [None]
+            )
+
+        somewidget.setCentralWidget(VBox(
+            *[
+                reference_file_to_widget(reference_file)
+                for reference_file
+                in reference_files
+            ]
+        ).widget)
+        somewidget.show()
+
     def calibrate_displacement(self):
+        """ this is a debug function to the laser AF system """
         half_range=self.named_widgets.displacement_accuracy_halfrange.widget.value()
-        x=numpy.linspace(-half_range,half_range,50)
+        x=numpy.linspace(-half_range,half_range,100)
         y0=x.copy()
         y1=numpy.zeros_like(x)
 
@@ -468,35 +514,39 @@ class OctopiGUI(QMainWindow):
         except:
             self.named_widgets.displacement_graph_widget.plot=self.named_widgets.displacement_graph_widget.addPlot(0,0,title="displacement",viewBox=self.named_widgets.displacement_graph_widget.view)
 
+        um_to_mm=1e-3
+        z_mm_clear_backlash=self.microcontroller.clear_z_backlash_mm
+        displacement_measurement_granularity=self.named_widgets.displacement_accuracy_granularity.widget.value()
+
         total_moved_distance=0.0
         with core.StreamingCamera(self.core.focus_camera.camera):
             for i,x_i in enumerate(tqdm(x)):
                 if i==0:
                     move_z_distance_um=x_i
+                    assert move_z_distance_um==-half_range
+
+                    self.core.navigation.move_z(z_mm=-z_mm_clear_backlash+move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
+                    self.core.navigation.move_z(z_mm=z_mm_clear_backlash,wait_for_completion={},wait_for_stabilization=True)
                 else:
                     move_z_distance_um=x_i-x[i-1]
 
-                total_moved_distance+=move_z_distance_um
-                if i==0:
-                    self.core.navigation.move_z(move_z_distance_um*1e-3-1e-2,wait_for_completion={})
-                    self.core.navigation.move_z(1e-2,wait_for_completion={})
-                else:
-                    self.core.navigation.move_z(move_z_distance_um*1e-3,wait_for_completion={})
+                    self.core.navigation.move_z(z_mm=move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
                     
-                measured_displacement=self.core.laserAutofocusController.measure_displacement(self.named_widgets.displacement_accuracy_granularity.widget.value())
-                if i==0:
-                    measured_displacement=self.core.laserAutofocusController.measure_displacement(self.named_widgets.displacement_accuracy_granularity.widget.value())
+                measured_displacement=self.core.laserAutofocusController.measure_displacement(displacement_measurement_granularity)
 
                 y1[i]=measured_displacement
 
                 QApplication.processEvents()
 
+                total_moved_distance+=move_z_distance_um
+
         move_z_distance_um=-total_moved_distance
-        self.core.navigation.move_z(move_z_distance_um*1e-3,wait_for_completion={})
+        assert (move_z_distance_um+half_range)<1e-4
+        self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
 
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0,pen=pg.mkPen(color="green"))
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1,pen=pg.mkPen(color="orange"))
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1-y0,pen=pg.mkPen(color="red"))
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0-y1,pen=pg.mkPen(color="red"))
 
     @TypecheckFunction
     def set_main_camera_pixel_format(self,pixel_format_index:int):
@@ -554,7 +604,7 @@ class OctopiGUI(QMainWindow):
         return str(Path(base_dir_str)/project_name_str/plate_name_str)
 
 
-    def get_all_config(self)->AcquisitionConfig:
+    def get_all_config(self,include_laser_af_reference:bool=False)->AcquisitionConfig:
 
         config=AcquisitionConfig(
             output_path=self.get_output_dir(require_names_present=False),
@@ -585,6 +635,20 @@ class OctopiGUI(QMainWindow):
             image_file_format=Acquisition.IMAGE_FORMAT,
         )
 
+        if include_laser_af_reference and self.laserAutofocusController.is_initialized:
+            config.af_laser_reference=LaserAutofocusData(
+                x_reference=self.laserAutofocusController.x_reference,
+                um_per_px=self.laserAutofocusController.um_per_px,
+
+                x_offset=self.laserAutofocusController.x_offset,
+                y_offset=self.laserAutofocusController.y_offset,
+                x_width=self.laserAutofocusController.width,
+                y_width=self.laserAutofocusController.height,
+
+                has_two_interfaces=self.laserAutofocusController.has_two_interfaces,
+                use_glass_top=self.laserAutofocusController.use_glass_top,
+            )
+
         return config
 
     def save_all_config(self):
@@ -595,7 +659,7 @@ class OctopiGUI(QMainWindow):
         if not file_path.endswith(".json"):
             file_path+=".json"
             
-        self.get_all_config().save_json(file_path=file_path,well_index_to_name=True)
+        self.get_all_config(include_laser_af_reference=True).save_json(file_path=file_path,well_index_to_name=True)
 
         print(f"config i/o - saved to {file_path}")
 
@@ -603,7 +667,10 @@ class OctopiGUI(QMainWindow):
         file_path=FileDialog(mode="open",caption="File to load the whole config from",filter_type=FILTER_JSON).run()
         if file_path=="":
             return
-        
+
+        self.load_all_config_from(file_path=file_path)
+
+    def load_all_config_from(self,file_path):
         config:AcquisitionConfig=AcquisitionConfig.from_json(file_path=file_path)
         
         # load plate type (this will clear all selected wells)
@@ -697,10 +764,6 @@ class OctopiGUI(QMainWindow):
 
             raise ValueError(f"software af channel {af_channel} is not a valid imaging channel!")
 
-        if config.af_laser_on:
-            # TODO
-            MessageBox(title="turning laser AF on from config file not yet implemented",mode="information",text="Patrick has not yet implemented loading a config file that contains a flag to turn the laser AF on. It will not automatically be turned on. Turn laser AF on manually if you want to use it. (seeing this message means the config file does indicate laser AF should be used. all other settings have been read as intended)").run()
-
         # load grid item selection mask
         for row_i,row in enumerate(config.grid_mask):
             for column_i,mask in enumerate(row):
@@ -711,6 +774,36 @@ class OctopiGUI(QMainWindow):
         self.named_widgets.pixel_format.setCurrentIndex([i for i,pixel_format in enumerate(self.core.main_camera.pixel_formats) if pixel_format==config.pixel_format][0])
 
         self.multiPointWidget.image_format_widget.setCurrentIndex(list(ImageFormat).index(config.image_file_format))
+
+        if not config.af_laser_reference is None:
+            if self.laserAutofocusController.is_initialized:
+                MessageBox(title="laser af reference not loaded",mode="information",text="did not load laser autofocus reference from file because laser af is already intialized.").run()
+                
+            else:
+                self.laserAutofocusController.initialize_manual(
+                    x_offset=config.af_laser_reference.x_offset,
+                    y_offset=config.af_laser_reference.y_offset,
+                    width=config.af_laser_reference.x_width,
+                    height=config.af_laser_reference.y_width,
+                    um_per_px=config.af_laser_reference.um_per_px,
+                    x_reference=config.af_laser_reference.x_reference
+                )
+
+                self.laserAutofocusController.x_reference=config.af_laser_reference.x_reference # for some internal reasons needs to be overwritten after 'constructor' above
+
+                self.laserAutofocusController.has_two_interfaces=config.af_laser_reference.has_two_interfaces
+                self.laserAutofocusController.use_glass_top=config.af_laser_reference.use_glass_top
+
+                self.named_widgets.laserAutofocusControlWidget.call_after_initialization()
+                self.named_widgets.laserAutofocusControlWidget.call_after_set_reference()
+
+                self.multiPointWidget.checkbox_laserAutofocs.setEnabled(True)
+
+        if config.af_laser_on:
+            if self.laserAutofocusController.is_initialized:
+                self.multiPointWidget.checkbox_laserAutofocs.setCheckState(Qt.Checked)
+            else:
+                MessageBox(title="cannot turn on laser AF",mode="information",text="config file indicates laser AF should be turned on, but the laser AF is not initialized\n(it has not been initialized already, and config file contains no initialization data).\nPlease initialize the laser AF, then turn it on manually (or load the config file again after intialization).").run()
 
         print(f"config i/o - loaded from {file_path}")
 
@@ -1173,6 +1266,8 @@ class OctopiGUI(QMainWindow):
 
     @TypecheckFunction
     def closeEvent(self, event:QEvent):
+
+        self.get_all_config(include_laser_af_reference=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
         
         self.imageSaver.close()
         self.imageDisplay.close()
