@@ -199,14 +199,14 @@ class Camera(object):
     @TypecheckFunction
     def update_camera_exposure_time(self):
         assert not self.camera is None
-        use_strobe = (self.trigger_mode == TriggerMode.HARDWARE) # true if using hardware trigger
 
-        min_exposure_time=self.camera.ExposureTime.get_range()['min']
-        max_exposure_time=self.camera.ExposureTime.get_range()['max']
+        camera_exposure_time_range=self.camera.ExposureTime.get_range()
+        min_exposure_time=camera_exposure_time_range['min']
+        max_exposure_time=camera_exposure_time_range['max']
 
         camera_exposure_time=self.exposure_time * 1000
 
-        if not (use_strobe == False or self.is_global_shutter):
+        if (not self.is_global_shutter) and (self.trigger_mode == TriggerMode.HARDWARE):
             camera_exposure_time += self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
 
         if camera_exposure_time < min_exposure_time:

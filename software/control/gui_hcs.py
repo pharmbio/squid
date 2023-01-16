@@ -198,7 +198,7 @@ class OctopiGUI(QMainWindow):
                         default=config.illumination_intensity,
                         tooltip=ILLUMINATION_TOOLTIP,
                         on_valueChanged=[
-                            config.set_illumination_intensity,
+                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_illumination_intensity(val),
                             self.configurationManager.save_configurations,
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]
@@ -212,7 +212,7 @@ class OctopiGUI(QMainWindow):
                         default=config.exposure_time,
                         tooltip=EXPOSURE_TIME_TOOLTIP,
                         on_valueChanged=[
-                            config.set_exposure_time,
+                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_exposure_time(val),
                             self.configurationManager.save_configurations,
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]
@@ -223,7 +223,7 @@ class OctopiGUI(QMainWindow):
                         default=config.analog_gain,
                         tooltip=ANALOG_GAIN_TOOLTIP,
                         on_valueChanged=[
-                            config.set_analog_gain,
+                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_analog_gain(val),
                             self.configurationManager.save_configurations,
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]
@@ -234,7 +234,7 @@ class OctopiGUI(QMainWindow):
                         default=config.channel_z_offset,
                         tooltip=CHANNEL_OFFSET_TOOLTIP,
                         on_valueChanged=[
-                            config.set_offset,
+                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_offset(val),
                             self.configurationManager.save_configurations,
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]

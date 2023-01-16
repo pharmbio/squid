@@ -85,6 +85,13 @@ class ConfigurationManager(QObject):
             in self.configurations
         ]
 
+    def config_by_name(self,name:str)->Configuration:
+        print(f"got config for name {name}")
+        for config in self.configurations:
+            if config.name==name:
+                return config
+        raise ValueError(f"no config found with name {name}")
+
     def write_configuration(self,filename:str):
         json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'channel_config':self.as_json() })
         with open(filename, mode="w", encoding="utf-8") as json_file:
@@ -98,27 +105,3 @@ class ConfigurationManager(QObject):
 
     def load_configuration_from_json_list(self,json_list:List[dict]):
         self.configurations=[Configuration.from_json(item) for item in json_list]
-
-    def update_configuration(self,configuration_id:str,attribute_name:str,new_value:Any):
-        mode_to_update = [config for config in self.configurations if config.mode_id==configuration_id][0]
-        
-        if attribute_name=="ID":
-            mode_to_update.mode_id=new_value
-        elif attribute_name=="Name":
-            mode_to_update.name=new_value
-        elif attribute_name=="IlluminationSource":
-            mode_to_update.illumination_source=new_value
-        elif attribute_name=="ExposureTime":
-            mode_to_update.exposure_time=new_value
-        elif attribute_name=="AnalogGain":
-            mode_to_update.analog_gain=new_value
-        elif attribute_name=="IlluminationIntensity":
-            mode_to_update.illumination_intensity=new_value
-        elif attribute_name=="CameraSN":
-            mode_to_update.camera_sn=new_value
-        elif attribute_name=="RelativeZOffsetUM":
-            mode_to_update.channel_z_offset=new_value
-        else:
-            raise Exception(f"{attribute_name}")
-
-        self.save_configurations()

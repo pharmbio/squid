@@ -2,7 +2,6 @@
 from qtpy.QtCore import QObject, Signal, QThread, Qt # type: ignore
 from qtpy.QtWidgets import QApplication
 
-import control.utils as utils
 from control._def import *
 
 import os
@@ -20,7 +19,12 @@ import control.camera as camera
 from control.core import StreamingCamera, Configuration, NavigationController, LiveController, AutoFocusController, ConfigurationManager, ImageSaver #, LaserAutofocusController
 from control.typechecker import TypecheckFunction
 
-from tqdm import tqdm
+ENABLE_TQDM_STUFF:bool=False
+if ENABLE_TQDM_STUFF:
+    from tqdm import tqdm
+else:
+    def tqdm(iter,*args,**kwargs):
+        return iter
 
 from pathlib import Path
 
@@ -92,7 +96,9 @@ class MultiPointWorker(QObject):
             while self.time_point < self.Nt:
                 # continous acquisition
                 if self.dt == 0.0:
+                    QApplication.processEvents()
                     self.run_single_time_point()
+                    QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
@@ -101,7 +107,9 @@ class MultiPointWorker(QObject):
 
                 # timed acquisition
                 else:
+                    QApplication.processEvents()
                     self.run_single_time_point()
+                    QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
@@ -145,40 +153,49 @@ class MultiPointWorker(QObject):
         if 'USB Spectrometer' in config.name:
             raise Exception("usb spectrometer not supported")
 
-        # update the current configuration
-        self.signal_current_configuration.emit(config)
-        self.microcontroller.wait_till_operation_is_completed()
+        class Timer:
+            def __init__(self,name:str):
+                self.name=name
 
-        # move to channel specific offset (if required)
-        target_um=config.channel_z_offset or 0.0
-        um_to_move=target_um-self.movement_deviation_from_focusplane
-        if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-            #print(f"moving to relative offset {target_um}µm")
-            self.movement_deviation_from_focusplane=target_um
-            self.navigation.move_z(um_to_move/1000,wait_for_completion={},wait_for_stabilization=True)
+            def __enter__(self):
+                self.start_time=time.monotonic()
+                QApplication.processEvents()
+            def __exit__(self,_a,_b,_c):
+                pass#print(f"{self.name}: {((time.monotonic()-self.start_time)*1000):.3f}ms")
 
-        image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
+        with Timer("total"):
+            # move to channel specific offset (if required)
+            target_um=config.channel_z_offset or 0.0
+            um_to_move=target_um-self.movement_deviation_from_focusplane
+            if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
+                #print(f"moving to relative offset {target_um}µm")
+                self.movement_deviation_from_focusplane=target_um
+                self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={}) # dont wait for stabilization. hopefully movement is small enough to not require this
 
-        # process the image -  @@@ to move to camera
-        self.image_to_display.emit(image)
-        self.image_to_display_multi.emit(image,config.illumination_source)
+            image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
 
-        QApplication.processEvents()
-            
-        if self.camera.is_color:
-            if 'BF LED matrix' in config.name:
-                if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+            # process the image -  @@@ to move to camera
+            self.image_to_display.emit(image)
+            self.image_to_display_multi.emit(image,config.illumination_source)
+
+            QApplication.processEvents()
+                
+            if self.camera.is_color:
+                if 'BF LED matrix' in config.name:
+                    if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+                        image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
+                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
+                        image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
+                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
+                        image = image[:,:,1]
+                else:
                     image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
-                    image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
-                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
-                    image = image[:,:,1]
-            else:
-                image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
 
-        ImageSaver.save_image(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
+            with Timer("save"):
+                ImageSaver.save_image(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
 
-        QApplication.processEvents()
+                QApplication.processEvents()
 
         self.signal_new_acquisition.emit('c')
 
@@ -203,19 +220,23 @@ class MultiPointWorker(QObject):
                 if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter==0):
                     self.perform_software_autofocus()
                 # set the current plane as reference
-                self.laserAutofocusController.set_reference()
+                self.laserAutofocusController.set_reference(z_pos_mm=0.0) # z pos does not matter here
                 self.reflection_af_initialized = True
             else:
                 self.laserAutofocusController.move_to_target(0.0)
+
+        QApplication.processEvents()
 
         if (self.NZ > 1):
             # move to bottom of the z stack
             if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
                 base_z=-self.deltaZ_usteps*round((self.NZ-1)/2)
-                self.navigation.move_z_usteps(base_z,wait_for_completion={},wait_for_stabilization=True)
+                self.navigation.move_z_usteps(base_z,wait_for_completion={})
             # maneuver for achiving uniform step size and repeatability when using open-loop control
-            self.navigation.move_z_usteps(-160,wait_for_completion={})
-            self.navigation.move_z_usteps(160,wait_for_completion={},wait_for_stabilization=True)
+            self.navigation.move_z_usteps(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+            self.navigation.move_z_usteps(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+
+        QApplication.processEvents()
 
         # z-stack
         for k in range(self.NZ):
@@ -231,6 +252,8 @@ class MultiPointWorker(QObject):
 
             self.movement_deviation_from_focusplane=0.0
 
+            QApplication.processEvents()
+
             # iterate through selected modes
             for config in tqdm(self.selected_configurations,desc="channel",unit="channel",leave=False):
                 saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
@@ -238,7 +261,11 @@ class MultiPointWorker(QObject):
                 if self.multiPointController.abort_acqusition_requested:
                     raise AbortAcquisitionException()
                     
+                time_start=time.monotonic()
                 self.image_config(config=config,saving_path=saving_path)
+                print(f"imaging config {config.name} took {(time.monotonic()-time_start):.2f}s even though exposure time is only {config.exposure_time:.2f}s")
+
+            QApplication.processEvents()
 
             # add the coordinate of the current location
             ret_coords.append({
@@ -251,6 +278,8 @@ class MultiPointWorker(QObject):
             # register the current fov in the navigationViewer 
             self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
 
+            QApplication.processEvents()
+
             # check if the acquisition should be aborted
             if self.multiPointController.abort_acqusition_requested:
                 raise AbortAcquisitionException()
@@ -262,6 +291,8 @@ class MultiPointWorker(QObject):
                     self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
 
             self.signal_new_acquisition.emit('z')
+
+            QApplication.processEvents()
         
         if self.NZ > 1:
             # move z back
@@ -271,6 +302,8 @@ class MultiPointWorker(QObject):
 
             self.on_abort_dz_usteps += latest_offset
             self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
+
+        QApplication.processEvents()
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
@@ -335,10 +368,14 @@ class MultiPointWorker(QObject):
                 # along y
                 for i in range(self.NY):
 
+                    QApplication.processEvents()
+
                     self.FOV_counter = 0 # so that AF at the beginning of each new row
 
                     # along x
                     for j in range(self.NX):
+
+                        QApplication.processEvents()
 
                         j_actual = j if self.x_scan_direction==1 else self.NX-1-j
                         site_index = 1 + j_actual + i * self.NX
@@ -351,17 +388,20 @@ class MultiPointWorker(QObject):
 
                         if image_position:
                             try:
+                                QApplication.processEvents()
                                 imaged_coords_dict_list=self.image_well_at_position(
                                     x=j,y=i,
                                     coordinate_name=coordinate_name,
                                 )
+                                QApplication.processEvents()
 
                                 coordinates_pd = pd.concat([
                                     coordinates_pd,
                                     pd.DataFrame(imaged_coords_dict_list)
                                 ])
                             except AbortAcquisitionException:
-                                self.well_tqdm_iter.close()
+                                if ENABLE_TQDM_STUFF:
+                                    self.well_tqdm_iter.close()
 
                                 self.liveController.turn_off_illumination()
                                 self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
@@ -381,6 +421,8 @@ class MultiPointWorker(QObject):
                                 self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
                                 self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
 
+                        QApplication.processEvents()
+
                     # instead of move back, reverse scan direction (12/29/2021)
                     self.x_scan_direction = -self.x_scan_direction
 
@@ -396,6 +438,8 @@ class MultiPointWorker(QObject):
                 if self.num_positions_per_well>1:
                     _=next(self.well_tqdm_iter,0)
 
+                QApplication.processEvents()
+
                 if n_regions == 1:
                     # only move to the start position if there's only one region in the scan
                     if self.NY > 1:
@@ -410,6 +454,8 @@ class MultiPointWorker(QObject):
                     # move z back
                     self.navigation.microcontroller.move_z_to_usteps(z_pos)
                     self.navigation.microcontroller.wait_till_operation_is_completed()
+
+                QApplication.processEvents()
 
             coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
             self.navigation.enable_joystick_button_action = True
@@ -628,29 +674,44 @@ class MultiPointController(QObject):
 
             # run the acquisition
             self.timestamp_acquisition_started = time.time()
-            self.thread = QThread()
 
             self.multiPointWorker = MultiPointWorker(self,image_positions)
-            self.multiPointWorker.moveToThread(self.thread)
+            RUN_WORKER_ASYNC=True
+            if RUN_WORKER_ASYNC:
+                self.thread = QThread()
+                self.multiPointWorker.moveToThread(self.thread)
 
-            # connect signals and slots
-            self.thread.started.connect(self.multiPointWorker.run)
-            if not on_new_acquisition is None:
-                self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
+                # connect signals and slots
+                self.thread.started.connect(self.multiPointWorker.run)
+                if not on_new_acquisition is None:
+                    self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
 
-            self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
-            self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
-            self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
-            self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration,type=Qt.BlockingQueuedConnection)
-            self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
+                self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
+                self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
+                self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
+                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration,type=Qt.BlockingQueuedConnection)
+                self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
 
-            self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
+                self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
 
-            self.thread.finished.connect(self.on_thread_finished)
-            
-            self.thread.start()
+                self.thread.finished.connect(self.on_thread_finished)
+                
+                self.thread.start()
 
-            return self.thread
+                return self.thread
+            else:
+                if not on_new_acquisition is None:
+                    self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
+
+                self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
+                self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
+                self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
+                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration)#,type=Qt.BlockingQueuedConnection)
+                self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
+
+                self.multiPointWorker.finished.connect(self._on_acquisition_completed)
+                    
+                self.multiPointWorker.run()
 
     def on_multipointworker_finished(self):
         self._on_acquisition_completed()
