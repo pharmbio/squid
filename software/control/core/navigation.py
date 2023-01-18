@@ -39,36 +39,46 @@ class NavigationController(QObject):
         # to be moved to gui for transparency
         self.microcontroller.set_callback(self.update_pos)
 
-        # self.timer_read_pos = QTimer()
-        # self.timer_read_pos.setInterval(PosUpdate.INTERVAL_MS)
-        # self.timer_read_pos.timeout.connect(self.update_pos)
-        # self.timer_read_pos.start()
-
         self.is_in_loading_position:bool=False
 
     @TypecheckFunction
     def move_x(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_x_usteps(int(x_mm/self.microcontroller.mm_per_ustep_x))
+        self.move_x_usteps(int(x_mm/self.microcontroller.mm_per_ustep_x),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+
+    @TypecheckFunction
+    def move_y(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+        self.move_y_usteps(int(y_mm/self.microcontroller.mm_per_ustep_y),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+
+    @TypecheckFunction
+    def move_z(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+        """ this takes 210 ms ?! """
+        self.move_z_usteps(int(z_mm/self.microcontroller.mm_per_ustep_z),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+
+    @TypecheckFunction
+    def move_x_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+        self.microcontroller.move_x_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_X/1000)
 
     @TypecheckFunction
-    def move_y(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_y_usteps(int(y_mm/self.microcontroller.mm_per_ustep_y))
+    def move_y_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+        self.microcontroller.move_y_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Y/1000)
 
     @TypecheckFunction
-    def move_z(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_z_usteps(int(z_mm/self.microcontroller.mm_per_ustep_z))
+    def move_z_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+        """ this takes 210 ms ?! """
+
+        self.microcontroller.move_z_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
-            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)        
+            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
 
     @TypecheckFunction
     def move_x_to(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
@@ -89,30 +99,6 @@ class NavigationController(QObject):
     @TypecheckFunction
     def move_z_to(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_z_to_usteps(int(z_mm/self.microcontroller.mm_per_ustep_z))
-        if not wait_for_completion is None:
-            self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
-        if wait_for_stabilization:
-            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
-
-    @TypecheckFunction
-    def move_x_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_x_usteps(usteps)
-        if not wait_for_completion is None:
-            self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
-        if wait_for_stabilization:
-            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_X/1000)
-
-    @TypecheckFunction
-    def move_y_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_y_usteps(usteps)
-        if not wait_for_completion is None:
-            self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
-        if wait_for_stabilization:
-            time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Y/1000)
-
-    @TypecheckFunction
-    def move_z_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_z_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:

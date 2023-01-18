@@ -43,7 +43,7 @@ class ImageSaver(QObject):
         p=os.path.join(base_path,experiment_ID,str(folder_ID),str(file_ID) + '_' + str(frame_ID))
         return p
 
-    #@TypecheckFunction
+    @TypecheckFunction
     def save_image(path:str,image:numpy.ndarray,file_format:ImageFormat):
         if image.dtype == np.uint16 and file_format != ImageFormat.TIFF_COMPRESSED:
             file_format=ImageFormat.TIFF
@@ -51,9 +51,9 @@ class ImageSaver(QObject):
         # need to use tiff when saving 16 bit images
         if file_format in (ImageFormat.TIFF_COMPRESSED,ImageFormat.TIFF):
             if file_format==ImageFormat.TIFF_COMPRESSED:
-                tifffile.imwrite(path + '.tiff',image,compression=8) # adobe deflate / zlib compression
+                tifffile.imwrite(path + '.tiff',image,compression=8) # adobe deflate / zlib compression # takes 200ms (!)
             else:
-                iio.imwrite(path + '.tiff',image)
+                iio.imwrite(path + '.tiff',image) # takes 7ms
         else:
             assert file_format==ImageFormat.BMP
             iio.imwrite(path + '.bmp',image)

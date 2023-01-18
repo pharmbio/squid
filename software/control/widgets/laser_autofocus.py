@@ -65,11 +65,10 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.deinitialize(require_confirmation=False)
 
-    def deinitialize(self,require_confirmation:bool=True):
+    def deinitialize(self,_btn_state=None,require_confirmation:bool=True):
         if require_confirmation:
-            answer=MessageBox(title="Deinitialize laser AF?",mode="question",text="are you sure you want to deinitialize the laser AF?\nthis will require you to perform the initialization procedure again (or to load reference data from a file)\nClick OK to clear the laser af initialization data.").run()
-            print(f"answered question messagebox with: {answer}")
-            if answer!=QMessageBox.Ok:
+            answer=MessageBox(title="Deinitialize laser AF?",mode="question",text="are you sure you want to deinitialize the laser AF?\nthis will require you to perform the initialization procedure again (or to load reference data from a file)\nClick Yes to clear the laser af initialization data.").run()
+            if answer!=QMessageBox.Yes:
                 return
 
         self.laserAutofocusController.is_initialized=False

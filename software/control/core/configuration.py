@@ -86,7 +86,6 @@ class ConfigurationManager(QObject):
         ]
 
     def config_by_name(self,name:str)->Configuration:
-        print(f"got config for name {name}")
         for config in self.configurations:
             if config.name==name:
                 return config

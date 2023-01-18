@@ -19,6 +19,8 @@ import control.camera as camera
 from control.core import StreamingCamera, Configuration, NavigationController, LiveController, AutoFocusController, ConfigurationManager, ImageSaver #, LaserAutofocusController
 from control.typechecker import TypecheckFunction
 
+from cProfile import Profile
+
 ENABLE_TQDM_STUFF:bool=False
 if ENABLE_TQDM_STUFF:
     from tqdm import tqdm
@@ -92,12 +94,17 @@ class MultiPointWorker(QObject):
         self.scan_coordinates_name,self.scan_coordinates_mm = scan_coordinates
 
     def run(self):
+        prof=Profile()
+        prof.enable()
+
         try:
             while self.time_point < self.Nt:
                 # continous acquisition
                 if self.dt == 0.0:
                     QApplication.processEvents()
+
                     self.run_single_time_point()
+
                     QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
@@ -108,7 +115,9 @@ class MultiPointWorker(QObject):
                 # timed acquisition
                 else:
                     QApplication.processEvents()
+
                     self.run_single_time_point()
+
                     QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
@@ -132,6 +141,11 @@ class MultiPointWorker(QObject):
                         
         except AbortAcquisitionException:
             pass
+
+
+        prof.disable()
+        dump_stats_filename="profiled_single_timepoint.prof"
+        prof.dump_stats(dump_stats_filename)
             
         self.finished.emit()
         QApplication.processEvents()
@@ -153,49 +167,38 @@ class MultiPointWorker(QObject):
         if 'USB Spectrometer' in config.name:
             raise Exception("usb spectrometer not supported")
 
-        class Timer:
-            def __init__(self,name:str):
-                self.name=name
+        
+        # move to channel specific offset (if required)
+        target_um=config.channel_z_offset or 0.0
+        um_to_move=target_um-self.movement_deviation_from_focusplane
+        if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
+            #print(f"moving to relative offset {target_um}µm")
+            self.movement_deviation_from_focusplane=target_um
+            self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+            self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={}) # dont wait for stabilization. hopefully movement is small enough to not require this
 
-            def __enter__(self):
-                self.start_time=time.monotonic()
-                QApplication.processEvents()
-            def __exit__(self,_a,_b,_c):
-                pass#print(f"{self.name}: {((time.monotonic()-self.start_time)*1000):.3f}ms")
+        image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
 
-        with Timer("total"):
-            # move to channel specific offset (if required)
-            target_um=config.channel_z_offset or 0.0
-            um_to_move=target_um-self.movement_deviation_from_focusplane
-            if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-                #print(f"moving to relative offset {target_um}µm")
-                self.movement_deviation_from_focusplane=target_um
-                self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={}) # dont wait for stabilization. hopefully movement is small enough to not require this
+        # process the image -  @@@ to move to camera
+        self.image_to_display.emit(image)
+        self.image_to_display_multi.emit(image,config.illumination_source)
 
-            image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
-
-            # process the image -  @@@ to move to camera
-            self.image_to_display.emit(image)
-            self.image_to_display_multi.emit(image,config.illumination_source)
-
-            QApplication.processEvents()
-                
-            if self.camera.is_color:
-                if 'BF LED matrix' in config.name:
-                    if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
-                        image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
-                        image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
-                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
-                        image = image[:,:,1]
-                else:
+        QApplication.processEvents()
+            
+        if self.camera.is_color:
+            if 'BF LED matrix' in config.name:
+                if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
                     image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
+                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
+                    image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
+                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
+                    image = image[:,:,1]
+            else:
+                image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
 
-            with Timer("save"):
-                ImageSaver.save_image(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
+        ImageSaver.save_image(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
 
-                QApplication.processEvents()
+        QApplication.processEvents()
 
         self.signal_new_acquisition.emit('c')
 
@@ -247,8 +250,6 @@ class MultiPointWorker(QObject):
                 file_ID = f'{coordinate_name}_z{k}'
             else:
                 file_ID = f'{coordinate_name}'
-            # metadata = dict(x = self.navigation.x_pos_mm, y = self.navigation.y_pos_mm, z = self.navigation.z_pos_mm)
-            # metadata = json.dumps(metadata)
 
             self.movement_deviation_from_focusplane=0.0
 
@@ -261,9 +262,7 @@ class MultiPointWorker(QObject):
                 if self.multiPointController.abort_acqusition_requested:
                     raise AbortAcquisitionException()
                     
-                time_start=time.monotonic()
                 self.image_config(config=config,saving_path=saving_path)
-                print(f"imaging config {config.name} took {(time.monotonic()-time_start):.2f}s even though exposure time is only {config.exposure_time:.2f}s")
 
             QApplication.processEvents()
 
@@ -311,7 +310,7 @@ class MultiPointWorker(QObject):
         return ret_coords
 
     def run_single_time_point(self):
-        with StreamingCamera(self.camera):
+        with StreamingCamera(self.camera), StreamingCamera(self.autofocusController.camera):
 
             # disable joystick button action
             self.navigation.enable_joystick_button_action = False

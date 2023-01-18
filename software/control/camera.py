@@ -47,8 +47,8 @@ class Camera(object):
         self.rotate_image_angle = rotate_image_angle
         self.flip_image = flip_image
 
-        self.exposure_time = 1 # unit: ms
-        self.analog_gain = 0
+        self.exposure_time = 0 # unit: ms
+        self.analog_gain = -1
         self.frame_ID = -1
         self.frame_ID_software = -1
         self.frame_ID_offset_hardware_trigger = 0
@@ -193,8 +193,10 @@ class Camera(object):
 
     @TypecheckFunction
     def set_exposure_time(self,exposure_time:float):
-        self.exposure_time = exposure_time
-        self.update_camera_exposure_time()
+        assert not self.camera is None
+        if self.exposure_time!=exposure_time: # takes 10ms, so avoid if possible
+            self.exposure_time = exposure_time
+            self.update_camera_exposure_time()
 
     @TypecheckFunction
     def update_camera_exposure_time(self):
@@ -219,8 +221,9 @@ class Camera(object):
     @TypecheckFunction
     def set_analog_gain(self,analog_gain:float):
         assert not self.camera is None
-        self.analog_gain = analog_gain
-        self.camera.Gain.set(analog_gain)
+        if self.analog_gain!=analog_gain: # takes 10ms, so avoid if possible
+            self.analog_gain = analog_gain
+            self.camera.Gain.set(analog_gain)
 
     @TypecheckFunction
     def get_awb_ratios(self):

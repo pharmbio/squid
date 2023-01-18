@@ -459,15 +459,17 @@ class MessageBox:
         self.mode=mode
         self.text=text
 
-    def run(self)->QMessageBox.StandardButton:
+    @TypecheckFunction
+    def run(self)->Optional[QMessageBox.StandardButton]:
         if self.mode=='information':
-            QMessageBox.information(None,self.title,self.text)
+            return QMessageBox.information(None,self.title,self.text)
         elif self.mode=='critical':
-            QMessageBox.critical(None,self.title,self.text)
+            return QMessageBox.critical(None,self.title,self.text)
         elif self.mode=='warning':
-            QMessageBox.warning(None,self.title,self.text)
+            return QMessageBox.warning(None,self.title,self.text)
         elif self.mode=='question':
-            QMessageBox.question(None,self.title,self.text)
+            question_answer:ClosedSet[int](QMessageBox.Yes,QMessageBox.No)=QMessageBox.question(None,self.title,self.text)
+            return question_answer
         else:
             assert False
 

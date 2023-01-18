@@ -155,6 +155,10 @@ class LaserAutofocusController(QObject):
     def set_reference(self,z_pos_mm:float):
         assert self.is_initialized
 
+        # counter backlash
+        self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+        self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+
         self.microcontroller.turn_on_AF_laser(completion={})
         x,y = self._get_laser_spot_centroid()
         self.microcontroller.turn_off_AF_laser(completion={})

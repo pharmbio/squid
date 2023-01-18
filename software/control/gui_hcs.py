@@ -6,7 +6,7 @@ from typing import Union
 
 # qt libraries
 from qtpy.QtCore import Qt, QEvent, Signal, QItemSelectionModel
-from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange
+from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange, QMessageBox
 
 import pyqtgraph as pg
 import pyqtgraph.dockarea as dock
@@ -184,7 +184,9 @@ class OctopiGUI(QMainWindow):
                     row=config_num*2,colSpan=2
                 ),
                 GridItem(
-                    config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,on_clicked=lambda btn_state,config=config:self.snap_single(btn_state,config)).widget,
+                    config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,
+                        on_clicked=lambda btn_state,c=config: self.snap_single(btn_state,config=self.configurationManager.config_by_name(c.name))
+                    ).widget,
                     row=config_num*2,column=2,colSpan=2
                 )
             ])
@@ -361,11 +363,10 @@ class OctopiGUI(QMainWindow):
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                     tooltip="",
                 ).widget,
-                Button("testing",on_clicked=self.testing_function).widget
             ),
             HBox(
-                self.named_widgets.save_all_config == Button("save all config",on_clicked=self.save_all_config, enabled=True, tooltip="not implemented yet."),
-                self.named_widgets.load_all_config == Button("load all config",on_clicked=self.load_all_config, enabled=True, tooltip="not implemented yet."),
+                self.named_widgets.save_all_config == Button("Save configuration",on_clicked=self.save_all_config),
+                self.named_widgets.load_all_config == Button("Load configuration",on_clicked=self.open_config_load_popup),
             ),
             self.recordTabWidget
         ).widget
@@ -455,7 +456,77 @@ class OctopiGUI(QMainWindow):
         self.setCentralWidget(main_dockArea)
         self.setMinimumSize(width_min,height_min)
 
-    def testing_function(self):
+    def add_image_inspection(self,
+        brightness_adjust_min:float=0.1,
+        brightness_adjust_max:float=5.0,
+
+        contrast_adjust_min:float=0.1,
+        contrast_adjust_max:float=5.0,
+
+        histogram_log_display_default:bool=True
+    ):
+        self.histogramWidget=pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
+        self.histogramWidget.view=self.histogramWidget.addViewBox()
+
+        # add panel to change image settings
+        self.imageBrightnessAdjust=HBox(
+            Label("View Brightness:"),
+            SpinBoxDouble(
+                minimum=brightness_adjust_min,
+                maximum=brightness_adjust_max,
+                default=1.0,
+                step=0.1,
+                on_valueChanged=self.set_brightness,
+            )
+        ).layout
+        self.imageBrightnessAdjust.value=1.0
+
+        self.imageContrastAdjust=HBox(
+            Label("View Contrast:"),
+            SpinBoxDouble(
+                minimum=contrast_adjust_min,
+                maximum=contrast_adjust_max,
+                default=1.0,
+                step=0.1,
+                on_valueChanged=self.set_contrast,
+            )
+        ).layout
+        self.imageContrastAdjust.value=1.0
+
+        self.histogram_log_scale=histogram_log_display_default
+        self.histogramLogScaleCheckbox=Checkbox(
+            label="Histogram Log scale",
+            checked=self.histogram_log_scale*2, # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
+            tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
+            on_stateChanged=self.setHistogramLogScale,
+        )
+
+        self.imageEnhanceWidget=HBox(
+            self.imageBrightnessAdjust,
+            self.imageContrastAdjust,
+            self.histogramLogScaleCheckbox,
+        ).layout
+        self.last_raw_image=None
+        self.last_image_data=None
+
+        self.backgroundSlider=QSlider(Qt.Horizontal)
+        self.backgroundSlider.setTickPosition(QSlider.TicksBelow)
+        self.backgroundSlider.setRange(1,255)
+        self.backgroundSlider.setSingleStep(1)
+        self.backgroundSlider.setTickInterval(16)
+        self.backgroundSlider.valueChanged.connect(self.set_background)
+        self.backgroundSlider.setValue(10)
+
+        self.backgroundSNRValueText=QLabel("SNR: undefined")
+
+        self.backgroundHeader=HBox( QLabel("Background"), self.backgroundSNRValueText ).layout
+
+        self.backgroundSliderContainer=VBox(
+            self.backgroundHeader,
+            self.backgroundSlider
+        ).layout        
+
+    def open_config_load_popup(self):
         somewidget=QMainWindow(self)
         reference_files:List[ReferenceFile]=[
             ReferenceFile(
@@ -463,11 +534,6 @@ class OctopiGUI(QMainWindow):
                 plate_type="generic 384",
                 cell_line="unknown cells"
             ),
-            ReferenceFile(
-                path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
-                plate_type="generic 384",
-                cell_line="unknown cells"
-            )
         ]
 
         def reference_file_to_widget(reference_file)->QWidget:
@@ -485,24 +551,29 @@ class OctopiGUI(QMainWindow):
                 [Label("Plate type:"),Label(reference_file.plate_type)],
                 [Label("Cell line:"),Label(reference_file.cell_line)],
                 [Button("load as reference",on_clicked=load_reference_file),Button("load and close window",on_clicked=lambda x,w=somewidget: load_and_close(x,w))],
-                [None]
             )
 
-        somewidget.setCentralWidget(VBox(
+        vbox_widgets=[
+            Button("Browse to load config file",on_clicked=self.load_all_config),
+            Label(""),
+            Label("Load config as it was when program was last closed:"),
             *[
                 reference_file_to_widget(reference_file)
                 for reference_file
                 in reference_files
-            ]
-        ).widget)
+            ],
+        ]
+        somewidget.setCentralWidget(VBox(*vbox_widgets).widget)
         somewidget.show()
 
     def calibrate_displacement(self):
         """ this is a debug function to the laser AF system """
         half_range=self.named_widgets.displacement_accuracy_halfrange.widget.value()
-        x=numpy.linspace(-half_range,half_range,100)
+        num_measurements=101
+        x=numpy.linspace(-half_range,half_range,num_measurements)
         y0=x.copy()
         y1=numpy.zeros_like(x)
+        y2=numpy.zeros_like(x)
 
         try:
             _=self.named_widgets.displacement_graph_widget.view
@@ -523,7 +594,6 @@ class OctopiGUI(QMainWindow):
             for i,x_i in enumerate(tqdm(x)):
                 if i==0:
                     move_z_distance_um=x_i
-                    assert move_z_distance_um==-half_range
 
                     self.core.navigation.move_z(z_mm=-z_mm_clear_backlash+move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
                     self.core.navigation.move_z(z_mm=z_mm_clear_backlash,wait_for_completion={},wait_for_stabilization=True)
@@ -541,12 +611,41 @@ class OctopiGUI(QMainWindow):
                 total_moved_distance+=move_z_distance_um
 
         move_z_distance_um=-total_moved_distance
-        assert (move_z_distance_um+half_range)<1e-4
+        self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
+
+        total_moved_distance=0.0
+        with core.StreamingCamera(self.core.focus_camera.camera):
+            for i,x_i in enumerate(tqdm(x)):
+                if i==0:
+                    move_z_distance_um=x_i
+
+                    self.core.navigation.move_z(z_mm=z_mm_clear_backlash-move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
+                    self.core.navigation.move_z(z_mm=-z_mm_clear_backlash,wait_for_completion={},wait_for_stabilization=True)
+                else:
+                    move_z_distance_um=x_i-x[i-1]
+
+                    self.core.navigation.move_z(z_mm=-move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
+                    
+                measured_displacement=self.core.laserAutofocusController.measure_displacement(displacement_measurement_granularity)
+
+                y2[num_measurements-1-i]=measured_displacement
+
+                QApplication.processEvents()
+
+                total_moved_distance+=move_z_distance_um
+
+        move_z_distance_um=total_moved_distance
         self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
 
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0,pen=pg.mkPen(color="green"))
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1,pen=pg.mkPen(color="orange"))
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y2,pen=pg.mkPen(color="yellow"))
         self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0-y1,pen=pg.mkPen(color="red"))
+        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0-y2,pen=pg.mkPen(color="purple"))
+
+        y1rmsd=numpy.sqrt(numpy.sum((y0-y1)**2))
+        y2rmsd=numpy.sqrt(numpy.sum((y0-y2)**2))
+        print(f"{y1rmsd=}, {y2rmsd=}")
 
     @TypecheckFunction
     def set_main_camera_pixel_format(self,pixel_format_index:int):
@@ -602,7 +701,6 @@ class OctopiGUI(QMainWindow):
                 raise RuntimeError("forbidden character in wellplate name")
 
         return str(Path(base_dir_str)/project_name_str/plate_name_str)
-
 
     def get_all_config(self,include_laser_af_reference:bool=False)->AcquisitionConfig:
 
@@ -725,6 +823,7 @@ class OctopiGUI(QMainWindow):
         self.configurationManager.configurations=config.channels_config
         self.reload_configuration_into_gui(new_file_path=file_path)
 
+        # for project and plate names respectively: if file contains a name, and gui item was empty, load names. otherwise, don't.
         avoided_projectname_overwrite=False
         avoided_platename_overwrite=False
         data_project_name:str=config.project_name
@@ -1036,76 +1135,6 @@ class OctopiGUI(QMainWindow):
             for config in self.configurationManager.configurations:
                 self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True)
 
-    def add_image_inspection(self,
-        brightness_adjust_min:float=0.1,
-        brightness_adjust_max:float=5.0,
-
-        contrast_adjust_min:float=0.1,
-        contrast_adjust_max:float=5.0,
-
-        histogram_log_display_default:bool=True
-    ):
-        self.histogramWidget=pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
-        self.histogramWidget.view=self.histogramWidget.addViewBox()
-
-        # add panel to change image settings
-        self.imageBrightnessAdjust=HBox(
-            Label("View Brightness:"),
-            SpinBoxDouble(
-                minimum=brightness_adjust_min,
-                maximum=brightness_adjust_max,
-                default=1.0,
-                step=0.1,
-                on_valueChanged=self.set_brightness,
-            )
-        ).layout
-        self.imageBrightnessAdjust.value=1.0
-
-        self.imageContrastAdjust=HBox(
-            Label("View Contrast:"),
-            SpinBoxDouble(
-                minimum=contrast_adjust_min,
-                maximum=contrast_adjust_max,
-                default=1.0,
-                step=0.1,
-                on_valueChanged=self.set_contrast,
-            )
-        ).layout
-        self.imageContrastAdjust.value=1.0
-
-        self.histogram_log_scale=histogram_log_display_default
-        self.histogramLogScaleCheckbox=Checkbox(
-            label="Histogram Log scale",
-            checked=self.histogram_log_scale*2, # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
-            tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
-            on_stateChanged=self.setHistogramLogScale,
-        )
-
-        self.imageEnhanceWidget=HBox(
-            self.imageBrightnessAdjust,
-            self.imageContrastAdjust,
-            self.histogramLogScaleCheckbox,
-        ).layout
-        self.last_raw_image=None
-        self.last_image_data=None
-
-        self.backgroundSlider=QSlider(Qt.Horizontal)
-        self.backgroundSlider.setTickPosition(QSlider.TicksBelow)
-        self.backgroundSlider.setRange(1,255)
-        self.backgroundSlider.setSingleStep(1)
-        self.backgroundSlider.setTickInterval(16)
-        self.backgroundSlider.valueChanged.connect(self.set_background)
-        self.backgroundSlider.setValue(10)
-
-        self.backgroundSNRValueText=QLabel("SNR: undefined")
-
-        self.backgroundHeader=HBox( QLabel("Background"), self.backgroundSNRValueText ).layout
-
-        self.backgroundSliderContainer=VBox(
-            self.backgroundHeader,
-            self.backgroundSlider
-        ).layout        
-
     def set_background(self,new_background_value:int):
         self.backgroundSlider.value=new_background_value
         self.processLiveImage()
@@ -1238,6 +1267,7 @@ class OctopiGUI(QMainWindow):
             self.imageDisplayWindow.display_image(image)
 
         # if there is neither a new nor an old image, only brightness/contrast settings have been changed but there is nothing to display
+        pass
 
     def on_well_selection_change(self):
         # clear display

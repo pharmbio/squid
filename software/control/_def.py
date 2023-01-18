@@ -483,7 +483,7 @@ class MachineConfiguration:
     LASER_AF_CROP_WIDTH:int = 1536
     LASER_AF_CROP_HEIGHT:int = 256
     HAS_TWO_INTERFACES:bool = True
-    USE_GLASS_TOP:bool = True
+    USE_GLASS_TOP:bool = True # use right dot instead of left
     SHOW_LEGACY_DISPLACEMENT_MEASUREMENT_WINDOWS:bool = False
     LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:float = 0.3 # when moving to target, if absolute measured displacement after movement is larger than this value, repeat move to target (repeat max once) - note that the usual um/pixel value is 0.4
     LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER:float=-160.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value

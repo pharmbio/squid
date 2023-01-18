@@ -13,16 +13,6 @@ import control.camera as camera
 from control.core import ConfigurationManager, Configuration, StreamHandler, StreamingCamera
 import control.utils as utils
 
-class Timer:
-    def __init__(self,name:str):
-        self.name=name
-
-    def __enter__(self):
-        self.start_time=time.monotonic()
-        QApplication.processEvents()
-    def __exit__(self,_a,_b,_c):
-        pass#print(f"{self.name}: {((time.monotonic()-self.start_time)*1000):.3f}ms")
-
 class LiveController(QObject):
 
     start_live_signal=Signal()
@@ -91,50 +81,48 @@ class LiveController(QObject):
         if 'crop' is True, the image will be cropped to the streamhandlers requested height and width. 'override_crop_[height,width]' override the respective value
         """
 
-        with Timer("total snap"):
-            with StreamingCamera(self.camera):
-                """ prepare camera and lights """
+        with StreamingCamera(self.camera):
+            """ prepare camera and lights """
 
-                self.set_microscope_mode(config)
+            self.set_microscope_mode(config)
 
-                """ take image """
-                image=None
-                start_time=time.monotonic()
-                while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
-                    try:
-                        self.trigger_acquisition()
-                        with Timer("read frame"):
-                            image = self.camera.read_frame()
-                        self.end_acquisition()
-                        break
-                    except AttributeError as a:
-                        if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
-                            raise a
-                        continue
+            """ take image """
+            image=None
+            start_time=time.monotonic()
+            while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
+                try:
+                    self.trigger_acquisition()
+                    image = self.camera.read_frame()
+                    self.end_acquisition()
+                    break
+                except AttributeError as a:
+                    if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
+                        raise a
+                    continue
 
-                if image is None:
-                    raise ValueError(f"! error - could not take an image in config {config.name} !")
+            if image is None:
+                raise ValueError(f"! error - could not take an image in config {config.name} !")
 
-            """ de-prepare camera and lights """
+        """ de-prepare camera and lights """
 
-            if False:
-                max_value={
-                    numpy.dtype('uint8'):2**8-1,
-                    numpy.dtype('uint16'):2**12-1,
-                }[image.dtype]
-                print(f"recorded image in channel {config.name} with {config.exposure_time:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
+        if False:
+            max_value={
+                numpy.dtype('uint8'):2**8-1,
+                numpy.dtype('uint16'):2**12-1,
+            }[image.dtype]
+            print(f"recorded image in channel {config.name} with {config.exposure_time:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
 
-            # cropping etc. takes about 3.5ms
-            crop_height=override_crop_height or self.stream_handler.crop_height
-            crop_width=override_crop_width or self.stream_handler.crop_width
+        # cropping etc. takes about 3.5ms
+        crop_height=override_crop_height or self.stream_handler.crop_height
+        crop_width=override_crop_width or self.stream_handler.crop_width
 
-            image_cropped=image
-            if crop:
-                image_cropped = utils.crop_image(image_cropped,crop_width,crop_height)
-            image_cropped = numpy.squeeze(image_cropped)
-            image_cropped = utils.rotate_and_flip_image(image_cropped,rotate_image_angle=self.camera.rotate_image_angle,flip_image=self.camera.flip_image)
-            if crop:
-                image_cropped = utils.crop_image(image_cropped,round(crop_width), round(crop_height))
+        image_cropped=image
+        if crop:
+            image_cropped = utils.crop_image(image_cropped,crop_width,crop_height)
+        image_cropped = numpy.squeeze(image_cropped)
+        image_cropped = utils.rotate_and_flip_image(image_cropped,rotate_image_angle=self.camera.rotate_image_angle,flip_image=self.camera.flip_image)
+        if crop:
+            image_cropped = utils.crop_image(image_cropped,round(crop_width), round(crop_height))
 
         return image_cropped
 
@@ -296,26 +284,20 @@ class LiveController(QObject):
             self._set_trigger_fps(fps)
     
     def set_microscope_mode(self,configuration:Configuration):
-        if self.currentConfiguration is configuration:
-            return
-
-        self.currentConfiguration = configuration
-        
         # temporarily stop live while changing mode
         if self.is_live is True:
             self.timer_trigger.stop()
             if self.control_illumination:
                 self.turn_off_illumination()
 
-        with Timer("change camera exposure time and analog gain"): # this takes nearly 20ms (all the time in this function is spent here...)
-            # set camera exposure time and analog gain
-            self.camera.set_exposure_time(self.currentConfiguration.exposure_time)
-            self.camera.set_analog_gain(self.currentConfiguration.analog_gain)
+        # set camera exposure time and analog gain # this takes nearly 20ms (all the time in this function is spent here...)
+        self.camera.set_exposure_time(configuration.exposure_time)
+        self.camera.set_analog_gain(configuration.analog_gain)
 
         # set illumination
         if self.control_illumination:
-            illumination_source=self.currentConfiguration.illumination_source
-            intensity=self.currentConfiguration.illumination_intensity
+            illumination_source=configuration.illumination_source
+            intensity=configuration.illumination_intensity
 
             if illumination_source < 10: # LED matrix
                 self.microcontroller.set_illumination_led_matrix(illumination_source,r=(intensity/100)*MACHINE_CONFIG.LED_MATRIX_R_FACTOR,g=(intensity/100)*MACHINE_CONFIG.LED_MATRIX_G_FACTOR,b=(intensity/100)*MACHINE_CONFIG.LED_MATRIX_B_FACTOR)
@@ -328,6 +310,8 @@ class LiveController(QObject):
                 self.turn_on_illumination()
 
             self.timer_trigger.start()
+
+        self.currentConfiguration = configuration
 
     def get_trigger_mode(self):
         return self.trigger_mode
