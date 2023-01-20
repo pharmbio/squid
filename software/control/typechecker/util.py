@@ -8,6 +8,9 @@ from inspect import signature, Parameter, getmro
 def type_name(t)->str:
     if t is None:
         return "None"
+
+    if isinstance(t,TypeAlias):
+        return type_name(t.aliased_type)
         
     try:
         if t.__module__!="builtins":
@@ -26,3 +29,7 @@ class TypeCheckResult:
         self.msg=msg
     def __bool__(self)->bool:
         return self.val
+
+class TypeAlias:
+    def __init__(self,aliased_type:type):
+        self.aliased_type=aliased_type

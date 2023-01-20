@@ -5,11 +5,18 @@ from dataclasses import Field, field, dataclass, _MISSING_TYPE
 from functools import wraps
 from inspect import signature, Parameter, getmro
 
-from .util import *
+try:
+    from .util import *
+except:
+    from util import *
 
 # compared expected to value type
 # param _vt is used for recursion as part of inheritence check
 def type_match(et,v,_vt=None):
+
+    if isinstance(et,TypeAlias):
+        return type_match(et.aliased_type,v,_vt)
+
     if not _vt is None:
         vt=_vt
     else:
@@ -59,7 +66,7 @@ def type_match(et,v,_vt=None):
 
     if et_type_is_union:
         for arg in et.__args__:
-            if type_match(arg,v):
+            if type_match(arg,v,vt):
                 return TypeCheckResult(True)
 
         return TypeCheckResult(False,msg=f"{v}:{type_name(vt)} not in union ({','.join([type_name(t_arg) for t_arg in et.__args__])})")

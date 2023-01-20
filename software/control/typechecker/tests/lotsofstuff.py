@@ -120,3 +120,28 @@ class Configuration:
             return f"Imaging mode where the sample is excited with light at a wavelength of {excitation_wavelength}nm. The camera then records all the light that is emitted from the sample (e.g. via fluorescence)."
         else:
             return "no description for this channel"
+
+import typechecker as tc
+
+import import_me
+import math
+
+import typing
+
+@tc.module_checker.annotation_block
+class annotate:
+    class import_me:
+        class Person:
+            def __init__(self,name:str):pass
+            def get_age(self)->int:pass
+
+    class math:
+        @tc.module_checker.private
+        class private:
+            IntegralType=typing.Union[int,float]
+
+        def acos(n:private.IntegralType)->private.IntegralType: pass
+
+im_peter=import_me.Person(name="peter")
+im_peter_age:int=im_peter.get_age()
+num=math.acos(3)

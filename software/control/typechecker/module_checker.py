@@ -4,10 +4,22 @@
 
 import ast, sys, typing, os
 from pathlib import Path
+import importlib
 
 from typing import Union, List, Optional, Tuple, Any, Dict, Set
 
-from util import type_name, TypeCheckResult
+try:
+    from . import util
+    from .util import TypeCheckResult, TypeAlias
+except:
+    import util
+    from util import TypeCheckResult, TypeAlias
+
+def type_name(t)->str:
+    if isinstance(t,ClassChecker):
+        return t.scope.full_name
+
+    return util.type_name(t)
 
 def op_name(op)->str:
     if isinstance(op,ast.Add):
@@ -20,6 +32,13 @@ def op_name(op)->str:
         return "div"
     elif isinstance(op,ast.FloorDiv):
         return "floordiv"
+
+def private(cls):
+    """ this is just used as decorator for a scope that contains private symbols """
+    return cls
+def annotation_block(b):
+    """ because of how python decorators work, a class containing module annotations can be wrapped in this"""
+    pass
 
 class FunctionHeader:
     def __init__(self,
@@ -139,10 +158,15 @@ class SymbolAlreadyExists(TypeCheckError):
         self.new_node=new_node
         self.old_node=old_node
     def __str__(self):
-        if self.old_node is None:
-            return f"{self.new_node.id} already exists"
+        if isinstance(self.new_node,ast.ClassDef):
+            node_name=self.new_node.name
         else:
-            return f"{self.new_node.id} already exists, previous definition in line {self.old_node.lineno}"
+            node_name=self.new_node.id
+
+        if self.old_node is None:
+            return f"{node_name} already exists"
+        else:
+            return f"{node_name} already exists, previous definition in line {self.old_node.lineno}"
 class MissingReturn(TypeCheckError):
     def __init__(self,node):
         super().__init__(node=node)
@@ -161,7 +185,7 @@ class CannotDiscardValueImplicitely(TypeCheckError):
         return f"cannot discard value of type {type_name(self.expression_type)} implicitely."
 
 class UnknownAttribute(TypeCheckError):
-    def __init__(self,node,container_type):
+    def __init__(self,node,container_type:type):
         super().__init__(node=node)
         self.container_type=container_type
     def __str__(self):
@@ -176,9 +200,20 @@ class MissingTypeAnnotation(TypeCheckError):
         super().__init__(node=node)
     def __str__(self):
         return "missing type annotation."
+class AnnotationForUnknownModule(TypeCheckError):
+    def __init__(self,module_name:str,node):
+        super().__init__(node=node)
+        self.module_name=module_name
+    def __str__(self):
+        return f"provided annotation for unknown (not yet imported?) module: {self.module_name} ."
+
+try:
+    from .type_match import type_match
+except:
+    from type_match import type_match
 
 def typecheck_assignment(node,left_type,right_type)->TypeCheckResult:
-    if left_type==right_type:
+    if type_match(left_type,None,right_type):
         return TypeCheckResult(True)
 
     raise TypesUnequal(node,left_type,right_type)
@@ -243,6 +278,7 @@ class Scope:
         in_loop:bool=False,
         location:Optional[str]=None,
         known_symbol_types:Optional[dict]=None,
+        name:Optional[str]=None,
 
         code_str:Optional[str]=None,
         is_class:bool=False,
@@ -254,6 +290,8 @@ class Scope:
         self.return_type=return_type
         self.in_loop=in_loop
         self.location=location
+        self.name=name
+
         if self.parent is None:
             assert not code_str is None, "the topmost scope must have the source code attached"
             self.code_str=code_str
@@ -262,6 +300,21 @@ class Scope:
             self.code_str=self.parent.code_str
 
         self.is_class=is_class
+
+    @property
+    def full_name(self)->str:
+        self_name=(self.name or "")
+        ret=""
+        if not self.parent is None:
+            if len(self.parent.full_name)>0:
+                ret=self.parent.full_name
+        if len(self_name)>0:
+            if len(ret)>0:
+                ret+="."+self_name
+            else:
+                ret=self_name
+
+        return ret
 
     @property
     def full_location(self)->str:
@@ -287,8 +340,9 @@ class Scope:
 
         return f"{self.full_location}\n{statement_code_location}{statement_code_text}\n{code_highlight}"
 
-    def resolve_symbol_name_to_type(self,symbol)->type:
+    def resolve_symbol_name_to_type(self,symbol:Union[str,ast.Name])->type:
         """ resolve symbol _name_ to a type (only applicable to alone standing symbol names) """
+
         if isinstance(symbol,str):
             name=symbol
         elif isinstance(symbol,ast.Name):
@@ -309,11 +363,18 @@ class Scope:
         if isinstance(value,ast.Constant):
             return type(value.value)
 
-        elif isinstance(value,ast.Name):
-            name=value.id
-            if name in self.known_symbol_types:
-                return self.known_symbol_types[name]
-            elif name in BUILTIN_FUNCTION_ANNOTATIONS:
+        elif isinstance(value,(ast.Name,str)):
+            if isinstance(value,str):
+                name=value
+            else:
+                name=value.id
+
+            try:
+                return self.resolve_symbol_name_to_type(value)
+            except UnknownSymbol:
+                pass
+
+            if name in BUILTIN_FUNCTION_ANNOTATIONS:
                 return BUILTIN_FUNCTION_ANNOTATIONS[name]
             elif name in __builtins__.__dict__.keys():
                 assert False, f"did not implement anntations for builtin function {name}"
@@ -372,10 +433,16 @@ class Scope:
                 raise UnknownAttribute(node=value,container_type=container_type)
             elif isinstance(container_type,ClassChecker):
                 class_type=container_type
-                if value.attr in class_type.scope.known_symbol_types:
-                    return class_type.scope.known_symbol_types[value.attr]
-            
-                raise UnknownAttribute(node=value,container_type=container_type.node.name)
+                try:
+                    return class_type.scope.resolve_symbol_name_to_type(value.attr)
+                except UnknownSymbol:
+                    pass
+
+                raise UnknownAttribute(node=value,container_type=container_type)
+
+            # container is module annotation
+            elif isinstance(container_type,Module):
+                return container_type.scope.eval_value_type(value.attr)
 
         elif isinstance(value,ast.FormattedValue):
             value_type=self.eval_value_type(value.value) # check value type to ensure the value exists
@@ -400,6 +467,13 @@ class Scope:
                     raise TypesUnequal(left_type=str,right_type=segment_value_type,node=value)
 
             return str
+
+        else:
+            try:
+                type_type=self.type_annotation_to_type(value)
+                return TypeAlias(aliased_type=type_type)
+            except Exception as e:
+                raise e
         
         assert False,f"unknown type {ast.dump(value)}"
     
@@ -420,6 +494,9 @@ class Scope:
             
             raise UnknownSymbol(type_annotation.id,node=type_annotation)
 
+        elif isinstance(type_annotation,ast.Attribute):
+            return self.eval_value_type(type_annotation)
+
         elif isinstance(type_annotation,ast.Constant):
             if type_annotation.value is None:
                 return None
@@ -435,13 +512,25 @@ class Scope:
                         return Optional[inner_type]
                     else:
                         assert False, f"unreachable: {type_annotation.slice}"
+                elif type_annotation.value.id=="Union":
+                    inner_types=tuple([
+                        self.type_annotation_to_type(element)
+                        for element
+                        in type_annotation.slice.value.elts
+                    ])
+                    
+                    t=typing._GenericAlias(typing.Union,inner_types)
+
+                    assert typecheck_assignment(None,typing._GenericAlias(typing.Union,(int,float)),int)
+
+                    return t
                 else:
                     assert False, f"unreachable: {type_annotation.value.id}"
             else:
-                assert False, "unreachable"
+                assert False, f"unreachable: {type_annotation.value}"
 
         else:
-            assert False,f"unknown type {ast.dump(type_annotation)}"
+            assert False,f"could not resolve type annotation {ast.dump(type_annotation)}"
 
     def validate_function_call(self, 
         called_node, # currently implemented as FunctionChecker
@@ -526,7 +615,7 @@ class Scope:
         return return_type
 
 
-    def validate_statements(self,nodes,allow_docstring:bool=False):
+    def validate_statements(self,nodes,allow_docstring:bool=False,verify_annotation_accuracy:bool=True):
         remaining_nodes=nodes
         try:
             if allow_docstring and len(nodes)>=1:
@@ -539,16 +628,16 @@ class Scope:
                 remaining_nodes=nodes[1:]
 
             for node in remaining_nodes:
-                self.validate_statement(node)
+                self.validate_statement(node,verify_annotation_accuracy=verify_annotation_accuracy)
 
-            if len(remaining_nodes)>=1:
+            if len(remaining_nodes)>=1 and verify_annotation_accuracy:
                 if self.can_return and (not self.return_type is None) and self.must_return and not isinstance(remaining_nodes[-1],ast.Return):
                     raise MissingReturn(node)
 
         except TypeCheckError as t:
             raise ValueError(self.highlighted_error_location(t.node)+"\n"+str(t))
 
-    def validate_statement(self,statement):
+    def validate_statement(self,statement,verify_annotation_accuracy:bool=True):
         if isinstance(statement,ast.Return):
             """ e.g. return 3; or return a """
             if not self.can_return:
@@ -615,7 +704,23 @@ class Scope:
 
         elif isinstance(statement,ast.Import):
             """ e.g. import math; or impart math as m """
-            raise Exception(f"importing modules is not supported (importing module(s) '{','.join([i.name for i in statement.names])}' here)")
+            for module in statement.names:
+                module_name=module.name
+
+                print(importlib.util.find_spec("util"))
+
+                if module_name=="typechecker":
+                    pass
+                else:
+                    pass
+
+                if module_name in self.known_symbol_types:
+                    raise SymbolAlreadyExists(new_node=statement)
+
+                print(f"imported module {module_name}")
+                self.known_symbol_types[module_name]=Module(real_name=module_name,alias_name=module_name,scope=Scope(parent=self))
+            
+            #raise Exception(f"importing modules is not supported (importing module(s) '{','.join([i.name for i in statement.names])}' here)")
 
         elif isinstance(statement,ast.FunctionDef):
             if self.is_class:
@@ -669,16 +774,35 @@ class Scope:
         elif isinstance(statement,ast.ClassDef):
             class_name=statement.name
 
-            if class_name in self.known_symbol_types:
-                raise SymbolAlreadyExists(new_node=statement)
-
-            class_scope=Scope(parent=self)
-            class_checker_object=ClassChecker(statement,class_scope)
-
-            self.known_symbol_types[class_name]=class_checker_object
-
             for decorator in statement.decorator_list:
-                print(f"found decorator {decorator} for classdef")
+                decorator_name=""
+                inner_decorator=decorator
+                while True:
+                    if isinstance(inner_decorator,ast.Name):
+                        decorator_name=inner_decorator.id+decorator_name
+                        break
+                    elif isinstance(inner_decorator,ast.Attribute):
+                        decorator_name="."+inner_decorator.attr+decorator_name
+                        inner_decorator=inner_decorator.value
+                    else:
+                        assert False, str(inner_decorator)
+
+                if decorator_name=="tc.module_checker.annotation_block" or decorator_name=="typechecker.module_checker.annotation_block":
+                    for statement in statement.body:
+                        if isinstance(statement,ast.ClassDef):
+                            class_name=statement.name
+
+                            if not class_name in self.known_symbol_types:
+                                raise AnnotationForUnknownModule(class_name,node=statement)
+
+                            module=self.known_symbol_types[class_name]
+                            module.scope.validate_statements(statement.body,verify_annotation_accuracy=False)
+                        else:
+                            assert False, f"statement is not classdef, is instead: {statement}"
+
+                    return
+
+                print(f"found decorator {decorator_name} for classdef")
 
             for base_class in statement.bases:
                 print(f"found base class {base_class} for class {class_name}")
@@ -695,15 +819,36 @@ class Scope:
             except:
                 pass
 
+            if class_name in self.known_symbol_types:
+                raise SymbolAlreadyExists(new_node=statement)
+
+            class_scope=Scope(parent=self)
+            class_checker_object=ClassChecker(statement,class_scope)
+
+            self.known_symbol_types[class_name]=class_checker_object
+
+
             class_scope.validate_statements(statement.body,allow_docstring=True)
 
         else:
             assert False, f"unimplemented {statement}"
 
+class Module:
+    """ module annotation """
+    real_name:str
+    alias_name:str
+    scope:Scope
+    def __init__(self,real_name:str,alias_name:str,scope:Scope):
+        self.real_name=real_name
+        self.alias_name=alias_name
+        self.scope=scope
+        self.scope.name=self.alias_name
+
 class ClassChecker:
     def __init__(self,class_def_node,class_scope):
         self.node=class_def_node
         self.scope=class_scope
+        self.scope.name=self.node.name
 
         assert not self.scope.is_class
         self.scope.is_class=True
@@ -730,7 +875,7 @@ class FunctionChecker:
         for arg in function.args.args:
             arg_type=self.scope.type_annotation_to_type(arg.annotation,node=arg)
             if arg_type is None:
-                print(ast.dump(function))
+                assert False, f"resolving type_annotation returned None? in FunctionChecker.__init__(): {ast.dump(function)}"
             self.scope.known_symbol_types[arg.arg]=arg_type
 
         for arg in function.args.kwonlyargs:
@@ -806,6 +951,7 @@ class ModuleChecker:
             print(ast.dump(target_ast))
 
         self.scope.validate_statements(target_ast.body)
+
 
 CONSTRUCTOR_NAME="__init__"
 BUILTIN_TYPE_NAMES={
