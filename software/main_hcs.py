@@ -1,6 +1,7 @@
 # set QT_API environment variable
 import os
 os.environ["QT_API"] = "pyqt5"
+
 import sys
 
 # qt libraries
@@ -10,8 +11,12 @@ from qtpy.QtWidgets import QApplication
 import control.gui_hcs as gui
 import control.core as core
 
+class HcsApplication(QApplication):
+    def __init__(self):
+        super().__init__([])
+
 if __name__ == "__main__":
-    app = QApplication([])
+    app = HcsApplication()
 
     if True:
         app.setStyle('Fusion')

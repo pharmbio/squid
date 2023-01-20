@@ -9,6 +9,8 @@ from typing import Optional, Any
 
 from control.typechecker import TypecheckFunction
 
+from qtpy.QtWidgets import QApplication
+
 def get_sn_by_model(model_name:str)->Optional[Any]:
     try:
         device_manager = gx.DeviceManager()
@@ -370,6 +372,8 @@ class Camera(object):
 
         raw_image=None
         while raw_image is None:
+            time.sleep(0.005)
+            QApplication.processEvents()
             raw_image = self.camera.data_stream[self.device_index].get_image()
 
         numpy_image = self.rescale_raw_image(raw_image)

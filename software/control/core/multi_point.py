@@ -81,6 +81,7 @@ class MultiPointWorker(QObject):
         self.selected_configurations = self.multiPointController.selected_configurations
         self.grid_mask=self.multiPointController.grid_mask
         self.output_path:str=self.multiPointController.output_path
+        self.plate_type=self.multiPointController.plate_type
 
         if not self.grid_mask is None:
             assert len(self.grid_mask)==self.NY
@@ -156,7 +157,7 @@ class MultiPointWorker(QObject):
         """ run software autofocus to focus on current fov """
 
         configuration_name_AF = MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL
-        config_AF = next((config for config in self.configurationManager.configurations if config.name == configuration_name_AF))
+        config_AF = self.configurationManager.config_by_name(configuration_name_AF)
         self.signal_current_configuration.emit(config_AF)
         self.autofocusController.autofocus()
         self.autofocusController.wait_till_autofocus_has_completed()
@@ -203,9 +204,6 @@ class MultiPointWorker(QObject):
         self.signal_new_acquisition.emit('c')
 
     def image_well_at_position(self,x:int,y:int,coordinate_name:str):
-
-        j=x # todo actually rename the variables in this code
-        i=y # todo actually rename the variables in this code
 
         ret_coords=[]
 
@@ -268,7 +266,7 @@ class MultiPointWorker(QObject):
 
             # add the coordinate of the current location
             ret_coords.append({
-                'i':i,'j':j,'k':k,
+                'i':y,'j':x,'k':k,
                 'x (mm)':self.navigation.x_pos_mm,
                 'y (mm)':self.navigation.y_pos_mm,
                 'z (um)':self.navigation.z_pos_mm*1000
@@ -309,6 +307,91 @@ class MultiPointWorker(QObject):
 
         return ret_coords
 
+    @TypecheckFunction
+    def image_grid(self,coordinates_pd:pd.DataFrame,base_coordinate_name:str)->pd.DataFrame:
+
+        if self.num_positions_per_well>1:
+            # show progress when iterating over all well positions (do not differentiatte between xyz in this progress bar, it's too quick for that)
+            well_tqdm=tqdm(range(self.num_positions_per_well),desc="pos in well", unit="pos",leave=False)
+            self.well_tqdm_iter=iter(well_tqdm)
+
+        # along y
+        for i in range(self.NY):
+
+            QApplication.processEvents()
+
+            self.FOV_counter = 0 # so that AF at the beginning of each new row
+
+            # along x
+            for j in range(self.NX):
+
+                QApplication.processEvents()
+
+                j_actual = j if self.x_scan_direction==1 else self.NX-1-j
+                site_index = 1 + j_actual + i * self.NX
+                coordinate_name = f'{base_coordinate_name}_s{site_index}_x{j_actual}_y{i}' # _z{k} added later (if needed)
+
+                do_image_this_position=True
+
+                if not self.grid_mask is None:
+                    do_image_this_position=self.grid_mask[i][j_actual]
+
+                if do_image_this_position:
+                    try:
+                        QApplication.processEvents()
+                        imaged_coords_dict_list=self.image_well_at_position(
+                            x=j,y=i,
+                            coordinate_name=coordinate_name,
+                        )
+                        QApplication.processEvents()
+
+                        coordinates_pd = pd.concat([
+                            coordinates_pd,
+                            pd.DataFrame(imaged_coords_dict_list)
+                        ])
+                    except AbortAcquisitionException:
+                        if ENABLE_TQDM_STUFF:
+                            self.well_tqdm_iter.close()
+
+                        self.liveController.turn_off_illumination()
+                        # do not actually move back after abortion. current position is physically valid, moving in a straight line to an assumed safe location may cross invalid space!
+                        if False:
+                            self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
+                            self.navigation.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
+                            self.navigation.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
+
+                        coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
+                        self.navigation.enable_joystick_button_action = True
+
+                        raise AbortAcquisitionException()
+
+                self.signal_new_acquisition.emit('x')
+
+                if self.NX > 1:
+                    # move x
+                    if j < self.NX - 1:
+                        self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
+                        self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
+
+                QApplication.processEvents()
+
+            # move along rows in alternating directions (instead of always starting on left side of row)
+            self.x_scan_direction = -self.x_scan_direction
+
+            if self.NY > 1:
+                # move y
+                if i < self.NY - 1:
+                    self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={},wait_for_stabilization=True)
+                    self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
+
+            self.signal_new_acquisition.emit('y')
+
+        # exhaust tqdm iterator
+        if self.num_positions_per_well>1:
+            _=next(self.well_tqdm_iter,0)
+
+        return coordinates_pd
+
     def run_single_time_point(self):
         with StreamingCamera(self.camera), StreamingCamera(self.autofocusController.camera):
 
@@ -346,96 +429,55 @@ class MultiPointWorker(QObject):
                 base_y=coordinate_mm[1]-self.deltaY*(self.NY-1)/2
 
                 # move to the specified coordinate
-                self.navigation.move_x_to(base_x,wait_for_completion={},wait_for_stabilization=True)
-                self.navigation.move_y_to(base_y,wait_for_completion={},wait_for_stabilization=True)
+                #   imaging well usually ends in bottom right of well (assuming e.g. 3x3 grid.)
+                #   moving to base of next well then means moving to top left of new well
+                #   i.e. completely different location -> move length in x and y is 'never' 0
+                # TODO important: check if all wells that will be moved over during this transition below are valid places to be at!
+                coordinate_name=self.scan_coordinates_name[coordinate_id]
+                wellplate_format=WELLPLATE_FORMATS[self.plate_type]
+                row,column=wellplate_format.well_name_to_index(coordinate_name)
+
+                # when moving to new position... make sure that in the target row/column, the objective is not moved into an invalid well
+                # and also make sure that in the current row/column, it does not move into an invalid well
+                #
+                # new valid area is still concave, but not square. -> moving in a strictly horizontal/vertical (cannot move diagonally) line between two positions cannot pass over/through invalid wells
+                # but with movement possibilities as (move x, then move y) and (move y, then move x), one of the choices can pass through invalid wells
+
+                move_y_before_x=None
+                # if current row has invalid wells, move y before x
+                # TODO
+                # if target row has invalid wells, move x before y
+                if wellplate_format.row_has_invalid_wells(row=row):
+                    move_y_before_x=False
+                # if current and target rows have invalid wells, dont care (either is fine)
+
+                # if current column has invalid wells, move x before y
+                # TODO
+                # if target column has invalid wells, move y before x
+                if wellplate_format.column_has_invalid_wells(column=column):
+                    move_y_before_x=True
+                # if current and target column have invalid wells, dont care (either is fine)
+
+                # only current row or current column can have invalid wells
+                # only target row or target column can have invalid wells
+
+                if move_y_before_x:
+                    self.navigation.move_y_to(base_y,wait_for_completion={})
+                    self.navigation.move_x_to(base_x,wait_for_completion={},wait_for_stabilization=True)
+                else:
+                    self.navigation.move_x_to(base_x,wait_for_completion={})
+                    self.navigation.move_y_to(base_y,wait_for_completion={},wait_for_stabilization=True)
 
                 self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
                 self.on_abort_dx_usteps = 0
                 self.on_abort_dy_usteps = 0
                 self.on_abort_dz_usteps = 0
-                z_pos = self.navigation.z_pos
 
                 # z stacking config
                 if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM TOP':
                     self.deltaZ_usteps = -abs(self.deltaZ_usteps)
 
-                if self.num_positions_per_well>1:
-                    # show progress when iterating over all well positions (do not differentiatte between xyz in this progress bar, it's too quick for that)
-                    well_tqdm=tqdm(range(self.num_positions_per_well),desc="pos in well", unit="pos",leave=False)
-                    self.well_tqdm_iter=iter(well_tqdm)
-
-                # along y
-                for i in range(self.NY):
-
-                    QApplication.processEvents()
-
-                    self.FOV_counter = 0 # so that AF at the beginning of each new row
-
-                    # along x
-                    for j in range(self.NX):
-
-                        QApplication.processEvents()
-
-                        j_actual = j if self.x_scan_direction==1 else self.NX-1-j
-                        site_index = 1 + j_actual + i * self.NX
-                        coordinate_name = f'{base_coordinate_name}_s{site_index}_x{j_actual}_y{i}' # _z{k} added later (if needed)
-
-                        image_position=True
-
-                        if not self.grid_mask is None:
-                            image_position=self.grid_mask[i][j_actual]
-
-                        if image_position:
-                            try:
-                                QApplication.processEvents()
-                                imaged_coords_dict_list=self.image_well_at_position(
-                                    x=j,y=i,
-                                    coordinate_name=coordinate_name,
-                                )
-                                QApplication.processEvents()
-
-                                coordinates_pd = pd.concat([
-                                    coordinates_pd,
-                                    pd.DataFrame(imaged_coords_dict_list)
-                                ])
-                            except AbortAcquisitionException:
-                                if ENABLE_TQDM_STUFF:
-                                    self.well_tqdm_iter.close()
-
-                                self.liveController.turn_off_illumination()
-                                self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
-                                self.navigation.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
-                                self.navigation.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
-
-                                coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
-                                self.navigation.enable_joystick_button_action = True
-
-                                raise AbortAcquisitionException()
-
-                        self.signal_new_acquisition.emit('x')
-
-                        if self.NX > 1:
-                            # move x
-                            if j < self.NX - 1:
-                                self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
-                                self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
-
-                        QApplication.processEvents()
-
-                    # instead of move back, reverse scan direction (12/29/2021)
-                    self.x_scan_direction = -self.x_scan_direction
-
-                    if self.NY > 1:
-                        # move y
-                        if i < self.NY - 1:
-                            self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={},wait_for_stabilization=True)
-                            self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
-
-                    self.signal_new_acquisition.emit('y')
-
-                # exhaust tqdm iterator
-                if self.num_positions_per_well>1:
-                    _=next(self.well_tqdm_iter,0)
+                coordinates_pd=self.image_grid(coordinates_pd=coordinates_pd,base_coordinate_name=base_coordinate_name)
 
                 QApplication.processEvents()
 
@@ -451,7 +493,7 @@ class MultiPointWorker(QObject):
                         self.navigation.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
 
                     # move z back
-                    self.navigation.microcontroller.move_z_to_usteps(z_pos)
+                    self.navigation.microcontroller.move_z_to_usteps(self.navigation.z_pos_usteps)
                     self.navigation.microcontroller.wait_till_operation_is_completed()
 
                 QApplication.processEvents()
@@ -511,6 +553,8 @@ class MultiPointController(QObject):
         self.selected_configurations = []
         self.thread:Optional[QThread]=None
         self.parent = parent
+
+        self.plate_type=None
 
         # set some default values to avoid introducing new attributes outside constructor
         self.abort_acqusition_requested = False
@@ -607,13 +651,14 @@ class MultiPointController(QObject):
     def set_selected_configurations(self, selected_configurations_name:List[str]):
         self.selected_configurations = []
         for configuration_name in selected_configurations_name:
-            self.selected_configurations.append(next((config for config in self.configurationManager.configurations if config.name == configuration_name)))
+            self.selected_configurations.append(self.configurationManager.config_by_name(configuration_name))
         
     @TypecheckFunction
     def run_experiment(self,
         well_selection:Tuple[List[str],List[Tuple[float,float]]],
         set_num_acquisitions_callback:Optional[Callable[[int],None]],
         on_new_acquisition:Optional[Callable[[str],None]],
+        plate_type:int,
 
         grid_mask:Optional[Any]=None,
         headless:bool=True
@@ -636,6 +681,7 @@ class MultiPointController(QObject):
         self.camera_callback_was_enabled_before_multipoint = False
         self.configuration_before_running_multipoint = self.liveController.currentConfiguration
         self.grid_mask=grid_mask
+        self.plate_type=plate_type
 
         if num_wells==0:
             warning_text="No wells have been selected, so nothing to acquire. Consider selecting some wells before starting the multi point acquisition."
@@ -705,7 +751,7 @@ class MultiPointController(QObject):
                 self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
                 self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
                 self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
-                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration)#,type=Qt.BlockingQueuedConnection)
+                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration) # using a blocking queue here deadlocks
                 self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
 
                 self.multiPointWorker.finished.connect(self._on_acquisition_completed)

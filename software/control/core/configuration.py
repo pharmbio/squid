@@ -73,6 +73,7 @@ class ConfigurationManager(QObject):
         QObject.__init__(self)
         self.config_filename:str = filename
         self.configurations:List[Configuration] = []
+
         self.read_configurations(self.config_filename)
         
     def save_configurations(self):
@@ -92,7 +93,7 @@ class ConfigurationManager(QObject):
         raise ValueError(f"no config found with name {name}")
 
     def write_configuration(self,filename:str):
-        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'channel_config':self.as_json() })
+        json_tree_string=json.encoder.JSONEncoder(indent=2).encode({ 'channels_config':self.as_json() })
         with open(filename, mode="w", encoding="utf-8") as json_file:
             json_file.write(json_tree_string)
 
@@ -100,7 +101,24 @@ class ConfigurationManager(QObject):
         with open(filename,mode="r",encoding="utf-8") as json_file:
             json_tree=json.decoder.JSONDecoder().decode(json_file.read())
 
-        self.load_configuration_from_json_list(json_tree['channel_config'])
+        self.load_configuration_from_json_list(json_tree['channels_config'])
+
+    def replace_config_with(self,new_config):
+        for config_i,config in enumerate(self.configurations):
+            if config.mode_id==new_config.mode_id:
+                self.configurations[config_i]=new_config
+                return
+
+        raise ValueError(f"trying to load config {new_config.mode_id=} {new_config.name=} that does not exist?!")
 
     def load_configuration_from_json_list(self,json_list:List[dict]):
-        self.configurations=[Configuration.from_json(item) for item in json_list]
+        initializing=False
+        if len(self.configurations)==0:
+            initializing=True
+
+        for item in json_list:
+            new_config=Configuration.from_json(item)
+            if initializing:
+                self.configurations.append(new_config)
+            else:
+                self.replace_config_with(new_config)

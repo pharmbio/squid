@@ -20,26 +20,39 @@ class NavigationController(QObject):
     xPos = Signal(float)
     yPos = Signal(float)
     zPos = Signal(float)
+    
     thetaPos = Signal(float)
     xyPos = Signal(float,float)
     signal_joystick_button_pressed = Signal()
 
     @TypecheckFunction
-    def __init__(self,microcontroller:microcontroller.Microcontroller):
+    def __init__(self,
+        microcontroller:microcontroller.Microcontroller,
+    ):
         QObject.__init__(self)
         self.microcontroller = microcontroller
 
         self.x_pos_mm = 0
         self.y_pos_mm = 0
         self.z_pos_mm = 0
-        self.z_pos = 0
+
+        self.well_pos_is_stale:bool=True
+        self.well_pos_row:int=0
+        self.well_pos_column:int=0
+
+        self.z_pos_usteps = 0
         self.theta_pos_rad = 0
+
         self.enable_joystick_button_action:bool = True
 
         # to be moved to gui for transparency
         self.microcontroller.set_callback(self.update_pos)
 
         self.is_in_loading_position:bool=False
+
+    @property
+    def plate_type(self)->WellplateFormatPhysical:
+        return WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
     @TypecheckFunction
     def move_x(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
@@ -104,11 +117,46 @@ class NavigationController(QObject):
         if wait_for_stabilization:
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
 
+    
+    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,row:Optional[int]=None,column:Optional[int]=None):
+        if not x_mm is None:
+            self.move_x(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
+        if not y_mm is None:
+            self.move_y(y_mm,wait_for_completion={},wait_for_stabilization=True)
+        if not z_mm is None:
+            self.move_y(y_mm,wait_for_completion={},wait_for_stabilization=True)
+
+        self.well_pos_is_stale=not(x_mm is None and y_mm is None)
+
+        if not row is None:
+            self.well_pos_row=row
+        if not column is None:
+            self.well_pos_column=column
+
+        self.well_pos_is_stale=not(column is None and row is None)
+
+    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,row:Optional[int]=None,column:Optional[int]=None):
+        if not x_mm is None:
+            self.move_x_to(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
+        if not y_mm is None:
+            self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
+        if not z_mm is None:
+            self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
+
+        self.well_pos_is_stale=not(x_mm is None and y_mm is None)
+
+        if not row is None:
+            self.well_pos_row=row
+        if not column is None:
+            self.well_pos_column=column
+
+        self.well_pos_is_stale=not(column is None and row is None)
+
     @TypecheckFunction
     def update_pos(self,microcontroller:microcontroller.Microcontroller):
         # get position from the microcontroller
         x_pos, y_pos, z_pos, theta_pos = microcontroller.get_pos()
-        self.z_pos = z_pos
+        self.z_pos_usteps = z_pos
         
         # calculate position in mm or rad
         if MACHINE_CONFIG.USE_ENCODER_X:
@@ -269,7 +317,3 @@ class NavigationController(QObject):
         u_steps_factor=1 if MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Z > 0 else MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Z
 
         self.microcontroller.set_lim(limit_code,u_steps_factor*u_steps)
-    
-    def move_to(self,x_mm,y_mm):
-        self.move_x_to(x_mm)
-        self.move_y_to(y_mm)

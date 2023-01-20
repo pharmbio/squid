@@ -147,16 +147,15 @@ class AcquisitionConfig:
         with open(str(file_path),mode="r",encoding="utf-8") as json_file:
             data=json.decoder.JSONDecoder().decode(json_file.read())
 
+        plate_type=data["plate_type"]
+
         well_list=data["well_list"]
         for i in range(len(well_list)):
             well=well_list[i]
 
             if isinstance(well,str):
-                assert len(well)==3
-                row=ord(well[0])-ord('A')
-                assert row>=0
-                column=int(well[1:])
-                assert column>=0
+                physical_plate_format=WELLPLATE_FORMATS[plate_type]
+                row,column=physical_plate_format.well_name_to_index(well)
             else:
                 row,column=well
 
@@ -178,7 +177,7 @@ class AcquisitionConfig:
             af_laser_reference=af_laser_reference,
             trigger_mode=TriggerMode(data["trigger_mode"]),
             pixel_format=data["pixel_format"],
-            plate_type=data["plate_type"],
+            plate_type=plate_type,
             channels_ordered=data["channels_ordered"],
             channels_config=[Configuration.from_json(config_dict) for config_dict in data["channels_config"]],
             image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0]
@@ -189,7 +188,8 @@ class AcquisitionConfig:
     def as_json(self,well_index_to_name:bool=False)->dict:
         well_list=self.well_list
         if well_index_to_name:
-            well_list=[f"{chr(w_row+ord('A'))}{w_column+1:02}" for w_row,w_column in well_list] # column+1 because on the wellplates the column indices start at 1 (while in code they start at 0)
+            physical_plate_format=WELLPLATE_FORMATS[self.plate_type]
+            well_list=[physical_plate_format.well_index_to_name(w_row,w_column) for w_row,w_column in well_list] # column+1 because on the wellplates the column indices start at 1 (while in code they start at 0)
 
         return {
             "output_path":self.output_path,
@@ -327,6 +327,23 @@ class Core(QObject):
     def liveController_focus_camera(self):
         return self.focus_camera.live_controller
 
+    microcontroller:microcontroller.Microcontroller
+    main_camera:CameraWrapper
+    focus_camera:CameraWrapper
+    navigation:NavigationController
+    autofocusController:AutoFocusController
+    displacementMeasurementController:Optional[DisplacementMeasurementController]
+    laserAutofocusController:Optional[LaserAutofocusController]
+    multipointController:MultiPointController
+    imageSaver:ImageSaver
+    home_on_startup:bool
+    num_running_experiments:int
+
+    last_known_pos_x_mm:Optional[float]
+    last_known_pos_y_mm:Optional[float]
+    last_known_pos_well_row:Optional[int]
+    last_known_pos_well_column:Optional[int]
+
     def __init__(self,home:bool=True):
         super().__init__()
 
@@ -380,22 +397,30 @@ class Core(QObject):
             for_displacement_measurement=True,
         )
 
-        self.navigation:    core.NavigationController    = core.NavigationController(self.microcontroller)
-        self.autofocusController:     core.AutoFocusController     = core.AutoFocusController(self.camera,self.navigation,self.liveController)
+        self.navigation:          core.NavigationController = core.NavigationController(self.microcontroller)
+        self.autofocusController: core.AutoFocusController  = core.AutoFocusController(self.camera,self.navigation,self.liveController)
 
         LASER_AF_ENABLED=True
         if LASER_AF_ENABLED:
             self.displacementMeasurementController = DisplacementMeasurementController()
-            self.laserAutofocusController = core.LaserAutofocusController(self.microcontroller,self.focus_camera.camera,self.liveController_focus_camera,self.navigation,has_two_interfaces=MACHINE_CONFIG.HAS_TWO_INTERFACES,use_glass_top=MACHINE_CONFIG.USE_GLASS_TOP)
+            self.laserAutofocusController          = core.LaserAutofocusController(self.microcontroller,self.focus_camera.camera,self.liveController_focus_camera,self.navigation,has_two_interfaces=MACHINE_CONFIG.HAS_TWO_INTERFACES,use_glass_top=MACHINE_CONFIG.USE_GLASS_TOP)
+        else:
+            self.displacementMeasurementController=None
+            self.laserAutofocusController=None
 
-        self.multipointController:    core.MultiPointController    = core.MultiPointController(self.camera,self.navigation,self.liveController,self.autofocusController,self.laserAutofocusController, self.configurationManager)
-        self.imageSaver:              core.ImageSaver              = core.ImageSaver()
+        self.multipointController: core.MultiPointController = core.MultiPointController(self.camera,self.navigation,self.liveController,self.autofocusController,self.laserAutofocusController, self.configurationManager)
+        self.imageSaver:           core.ImageSaver           = core.ImageSaver()
 
         self.home_on_startup=home
         if home:
             self.navigation.home(home_x=MACHINE_CONFIG.HOMING_ENABLED_X,home_y=MACHINE_CONFIG.HOMING_ENABLED_Y,home_z=MACHINE_CONFIG.HOMING_ENABLED_Z)
 
         self.num_running_experiments=0
+
+        self.last_known_pos_x_mm=None
+        self.last_known_pos_y_mm=None
+        self.last_known_pos_well_row=None
+        self.last_known_pos_well_column=None
 
     # borrowed multipointController functions
     @property
@@ -466,7 +491,6 @@ class Core(QObject):
         headless:bool=True,
 
         additional_data:Optional[dict]=None,
-        **kwargs
     )->Optional[QThread]:
 
         # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
@@ -500,7 +524,7 @@ class Core(QObject):
                 if well_column>=(wellplate_format.columns-wellplate_format.number_of_skip):
                     raise ValueError(f"well {well_column=} out of bounds {wellplate_format}")
 
-        well_list_names:List[str]=[wellplate_format.well_name(*c) for c in config.well_list]
+        well_list_names:List[str]=[wellplate_format.well_index_to_name(*c) for c in config.well_list]
         well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.convert_well_index(*c) for c in config.well_list]
 
         # print well names as debug info
@@ -548,6 +572,8 @@ class Core(QObject):
 
             set_num_acquisitions_callback = set_num_acquisitions_callback,
             on_new_acquisition = on_new_acquisition,
+
+            plate_type=config.plate_type,
 
             headless = headless,
         )

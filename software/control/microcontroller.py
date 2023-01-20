@@ -11,6 +11,8 @@ from control._def import *
 from control.typechecker import TypecheckFunction, ClosedRange, ClosedSet
 from typing import Union, Any, Tuple, List
 
+from qtpy.QtWidgets import QApplication
+
 # add user to the dialout group to avoid the need to use sudo
 
 # done (7/20/2021) - remove the time.sleep in all functions (except for __init__) to 
@@ -667,6 +669,7 @@ class Microcontroller():
 
         timestamp_start = time.time()
         while self.is_busy():
+            QApplication.processEvents()
             time.sleep(time_step)
             if not timeout_limit_s is None:
                 if time.time() - timestamp_start > timeout_limit_s:

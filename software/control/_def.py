@@ -26,6 +26,7 @@ class CameraPixelFormat:
     num_bytes_per_pixel:int
     gx_pixel_format:Union[gx.GxPixelFormatEntry,int] # instances of gx.GxPixelFormatEntry are represented as an int
 
+CORNERS_ARE_INVALID=False
 
 class CAMERA_PIXEL_FORMATS(Enum):
     MONO8=CameraPixelFormat(
@@ -557,9 +558,88 @@ class WellplateFormatPhysical:
         return (x_mm,y_mm)
 
     @TypecheckFunction
-    def well_name(self,row:int,column:int)->str:
-        return chr(ord('A')+row)+f'{column+1:02}' # A01
+    def well_index_to_name(self,row:int,column:int,check_valid:bool=True)->str:
+        if check_valid:
+            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), f"{row=} {column=}"
+            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), f"{row=} {column=}"
 
+        well_name=chr(ord('A')+row)+f'{column+1:02}' # e.g. A01
+        return well_name
+
+    @TypecheckFunction
+    def well_name_to_index(self,name:str,check_valid:bool=True)->Tuple[int,int]:
+        assert len(name)==3, name # first character must be letter denoting the row, second and third character must be integer representing the column index (the latter starting at 1, not 0, and single digit numbers must be preceded by a 0)
+
+        row=ord(name[0])-ord('A')
+        column=int(name[1:])-1 # because column numbering starts at 1, but indices start at 0
+
+        if check_valid:
+            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), name
+            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), name
+
+        return row,column
+
+    @TypecheckFunction
+    def is_well_reachable(self,row:int,column:int)->bool:
+        row_lower_bound=0 + self.number_of_skip
+        row_upper_bound=self.rows-1-self.number_of_skip
+        column_lower_bound=0 + self.number_of_skip
+        column_upper_bound=self.columns-1-self.number_of_skip
+
+        well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
+        
+        if CORNERS_ARE_INVALID:
+            is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
+            is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
+            is_in_top_right_corner    = ( row == row_lower_bound ) and ( column == column_upper_bound )
+            is_in_bottom_right_corner = ( row == row_upper_bound ) and ( column == column_upper_bound )
+            well_reachable=well_reachable and not (is_in_top_left_corner or is_in_bottom_left_corner or is_in_top_right_corner or is_in_bottom_right_corner)
+
+        return well_reachable
+
+    @TypecheckFunction
+    def row_has_invalid_wells(self,row:int)->bool:
+        """
+        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
+        """
+        for c in range(self.columns):
+            if not self.is_well_reachable(row=row,column=c):
+                if CORNERS_ARE_INVALID:
+                    row_lower_bound=0 + self.number_of_skip
+                    row_upper_bound=self.rows-1-self.number_of_skip
+                    column_lower_bound=0 + self.number_of_skip
+                    column_upper_bound=self.columns-1-self.number_of_skip
+
+                    # this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area should be ignored here
+                    is_outside_skip_boundary=(row >= row_lower_bound and row <= row_upper_bound ) and ( c >= column_lower_bound and c <= column_upper_bound )
+                    if is_outside_skip_boundary:
+                        return True
+                else:
+                    return True
+
+        return False
+
+    @TypecheckFunction
+    def column_has_invalid_wells(self,column:int)->bool:
+        """
+        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
+        """
+        for r in range(self.rows):
+            if not self.is_well_reachable(row=r,column=column):
+                if CORNERS_ARE_INVALID:
+                    row_lower_bound=0 + self.number_of_skip
+                    row_upper_bound=self.rows-1-self.number_of_skip
+                    column_lower_bound=0 + self.number_of_skip
+                    column_upper_bound=self.columns-1-self.number_of_skip
+
+                    # this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area should be ignored here
+                    is_outside_skip_boundary=(r >= row_lower_bound and r <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
+                    if is_outside_skip_boundary:
+                        return True
+                else:
+                    return True
+
+        return False
 
 WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
     6:WellplateFormatPhysical(
@@ -612,3 +692,8 @@ WELLPLATE_NAMES:Dict[int,str]={
     i:f"{i} well plate"
     for i in WELLPLATE_FORMATS.keys()
 }
+
+assert WELLPLATE_FORMATS[384].well_name_to_index("A01",check_valid=False)==(0,0)
+assert WELLPLATE_FORMATS[384].well_name_to_index("B02",check_valid=False)==(1,1)
+assert WELLPLATE_FORMATS[384].well_index_to_name(row=0,column=0,check_valid=False)=="A01"
+assert WELLPLATE_FORMATS[384].well_index_to_name(row=1,column=1,check_valid=False)=="B02"

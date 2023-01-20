@@ -1,11 +1,11 @@
 {
-  "channel_config": [
+  "channels_config": [
     {
       "ID": 5,
       "Name": "Fluorescence 405 nm Ex",
       "IlluminationSource": 11,
-      "ExposureTime": 5.0,
-      "AnalogGain": 3.0,
+      "ExposureTime": 20.0,
+      "AnalogGain": 3.7000000000000006,
       "IlluminationIntensity": 100.0,
       "CameraSN": "",
       "RelativeZOffsetUM": 0.0
@@ -18,7 +18,7 @@
       "AnalogGain": 15.0,
       "IlluminationIntensity": 100.0,
       "CameraSN": "",
-      "RelativeZOffsetUM": 0.0
+      "RelativeZOffsetUM": -4.0
     },
     {
       "ID": 7,
@@ -28,7 +28,7 @@
       "AnalogGain": 0.0,
       "IlluminationIntensity": 100.0,
       "CameraSN": "",
-      "RelativeZOffsetUM": 6.47
+      "RelativeZOffsetUM": -4.0
     },
     {
       "ID": 8,
@@ -47,6 +47,36 @@
       "ExposureTime": 20.0,
       "AnalogGain": 2.0,
       "IlluminationIntensity": 100.0,
+      "CameraSN": "",
+      "RelativeZOffsetUM": 0.0
+    },
+    {
+      "ID": 1,
+      "Name": "BF LED matrix full",
+      "IlluminationSource": 0,
+      "ExposureTime": 200.0,
+      "AnalogGain": 0.0,
+      "IlluminationIntensity": 5.0,
+      "CameraSN": "",
+      "RelativeZOffsetUM": 0.0
+    },
+    {
+      "ID": 2,
+      "Name": "BF LED matrix left half",
+      "IlluminationSource": 1,
+      "ExposureTime": 195.0,
+      "AnalogGain": 0.0,
+      "IlluminationIntensity": 5.0,
+      "CameraSN": "",
+      "RelativeZOffsetUM": 0.0
+    },
+    {
+      "ID": 3,
+      "Name": "BF LED matrix right half",
+      "IlluminationSource": 2,
+      "ExposureTime": 194.0,
+      "AnalogGain": 0.0,
+      "IlluminationIntensity": 5.0,
       "CameraSN": "",
       "RelativeZOffsetUM": 0.0
     }

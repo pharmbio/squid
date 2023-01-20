@@ -1,5 +1,5 @@
 # python libraries
-import time, os
+import time, os, sys, traceback
 
 from pathlib import Path
 from typing import Union
@@ -29,6 +29,17 @@ import control.microcontroller as microcontroller
 from control._def import *
 from control.core.displacement_measurement import DisplacementMeasurementController
 from control.gui import *
+
+# setup hook to catch exception and display them 
+def excepthook(exc_type, exc_value, exc_tb):
+    tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    print(tb)
+    MessageBox(title="Exception occured!",mode="warning",text=f"An exception occured in the code somwhere:\n\n{tb}").run()
+
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+# this makes qt crash all the damn time
+#sys.excepthook = excepthook
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
@@ -71,6 +82,9 @@ more bits can capture more detail (8bit can capture 2^8 intensity values, 12bit 
 FPS_TOOLTIP="Maximum number of frames per second that are recorded while live (capped by exposure time, e.g. 5 images with 300ms exposure time each dont fit into a single second)"
 
 CHANNEL_COLORS={
+    0:"grey", # bf led full
+    1:"grey", # bf led left half
+    2:"grey", # bf led right half
     15:"darkRed", # 730
     13:"red", # 638
     14:"green", # 561
@@ -165,7 +179,7 @@ class OctopiGUI(QMainWindow):
         # load widgets
         self.imageDisplay           = widgets.ImageDisplay()
         self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
-        self.wellSelectionWidget    = widgets.WellSelectionWidget(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
+        self.wellSelectionWidget    = widgets.WellSelectionWidget(self,MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
         self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
         self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
         self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
@@ -423,8 +437,6 @@ class OctopiGUI(QMainWindow):
         self.autofocusController.image_to_display.connect(self.imageDisplayWindow.display_image)
 
         self.multipointController.signal_register_current_fov.connect(self.navigationViewer.register_fov)
-
-        self.wellSelectionWidget.signal_wellSelectedPos.connect(self.navigation.move_to)
 
         # if well selection changes, or dx/y or Nx/y change, redraw preview
         self.wellSelectionWidget.itemSelectionChanged.connect(self.on_well_selection_change)
@@ -820,7 +832,9 @@ class OctopiGUI(QMainWindow):
             # TODO change order of channels if required
 
         # load imaging channel configuration
-        self.configurationManager.configurations=config.channels_config
+        for new_config in config.channels_config:
+            self.configurationManager.replace_config_with(new_config)
+            
         self.reload_configuration_into_gui(new_file_path=file_path)
 
         # for project and plate names respectively: if file contains a name, and gui item was empty, load names. otherwise, don't.

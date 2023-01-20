@@ -201,7 +201,11 @@ class ImageArrayDisplayWindow(QMainWindow):
             14:2,
             13:3,
             15:4,
-        },num_rows=2,num_columns=3)
+
+            0:6,
+            1:7,
+            2:8,
+        },num_rows=3,num_columns=3)
 
         self.setCentralWidget(self.widget)
 
@@ -213,7 +217,13 @@ class ImageArrayDisplayWindow(QMainWindow):
 
     @TypecheckFunction
     def set_image_displays(self,channel_mappings:Dict[int,int],num_rows:int,num_columns:int):
-        self.num_image_displays=len(channel_mappings)
+        reverse_channel_mappings={
+            value:key
+            for key,value
+            in channel_mappings.items()
+        }
+            
+        self.num_image_displays=num_rows*num_columns
         self.channel_mappings=channel_mappings
         self.graphics_widgets=[]
         image_display_layout = QGridLayout()
@@ -252,11 +262,16 @@ class ImageArrayDisplayWindow(QMainWindow):
                 next_graphics_widget.view.setYLink(self.graphics_widgets[0].view)
 
             next_graphics_widget_wrapper=QVBoxLayout()
-            illumination_source_code=list(channel_mappings.keys())[i]
+            
+            if i in reverse_channel_mappings:
+                illumination_source_code=reverse_channel_mappings[i]
 
-            for c in self.configurationManager.configurations:
-                if c.illumination_source==illumination_source_code:
-                    channel_name=c.name
+                for c in self.configurationManager.configurations:
+                    if c.illumination_source==illumination_source_code:
+                        channel_name=c.name
+
+            else:
+                channel_name="<intentionally empty>"
 
             next_graphics_widget_wrapper.addWidget(QLabel(channel_name))
             next_graphics_widget_wrapper.addWidget(next_graphics_widget)

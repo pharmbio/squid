@@ -31,7 +31,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_deinitialize = Button(DEINITIALIZE_BUTTON_TEXT,checkable=False,tooltip=BTN_DEINITIALIZE_TOOLTIP,on_clicked=self.deinitialize).widget
 
         self.label_displacement = QLabel()
-        self.laserAutofocusController.signal_displacement_um.connect(self.label_displacement.setNum)
+        self.laserAutofocusController.signal_displacement_um.connect(lambda displacement_um:self.label_displacement.setText(f"{displacement_um:9.3f}"))
 
         self.btn_measure_displacement = Button(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_MEASURE_DISPLACEMENT_TOOLTIP,on_clicked=self.measure_displacement).widget
 

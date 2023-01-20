@@ -1,5 +1,5 @@
 {
-  "channel_config": [
+  "channels_config": [
     {
       "ID": 1,
       "Name": "BF LED matrix full",

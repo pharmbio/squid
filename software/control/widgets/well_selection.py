@@ -3,6 +3,7 @@ from qtpy.QtCore import Qt, Signal # type: ignore
 from qtpy.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem, QAbstractItemView
 
 from control._def import *
+from control.gui import *
 
 from typing import Optional, Union, List, Tuple
 
@@ -17,7 +18,8 @@ class WellSelectionWidget(QTableWidget):
     currently_selected_well_indices:List[Tuple[int,int]]=[]
 
     @TypecheckFunction
-    def __init__(self, format: int):
+    def __init__(self, gui:Any, format: int):
+        self.gui=gui
         self.was_initialized=False
         self.set_wellplate_type(format)
         self.setSelectionMode(QAbstractItemView.MultiSelection)
@@ -69,7 +71,7 @@ class WellSelectionWidget(QTableWidget):
 
                 for column in columns:
                     well_coords=WELLPLATE_FORMATS[self.format].convert_well_index(int(row),int(column))
-                    well_name=WELLPLATE_FORMATS[self.format].well_name(int(row),int(column))
+                    well_name=WELLPLATE_FORMATS[self.format].well_index_to_name(int(row),int(column))
 
                     self.coordinates_mm.append(well_coords)
                     self.name.append(well_name)
@@ -92,7 +94,7 @@ class WellSelectionWidget(QTableWidget):
  
         if self.was_initialized:
             old_layout=WELLPLATE_FORMATS[self.format]
-            self.set_selectable_widgets(layout=old_layout,is_selectable=True,exhaustive=True)
+            self.set_selectable_widgets(layout=old_layout)
  
             self.format:int=wellplate_type_int
  
@@ -114,39 +116,35 @@ class WellSelectionWidget(QTableWidget):
             self.cellDoubleClicked.connect(self.onDoubleClick)
  
         # size
+        well_side_length=int(22*16*26/24)/self.rows # magic numbers from side_length=5*wellplate_type_format.well_spacing_mm, when using a 384 wellplate -> side length varies between plate types. use this line to set constant height (then scale by a small factor of 26/24 to make better use the horizontal space)
         self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.verticalHeader().setDefaultSectionSize(int(5*self.spacing_mm))
+        self.verticalHeader().setMinimumSectionSize(0)
+        self.verticalHeader().setDefaultSectionSize(well_side_length)
         self.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.horizontalHeader().setMinimumSectionSize(int(5*self.spacing_mm))
+        self.horizontalHeader().setMinimumSectionSize(0)
+        self.horizontalHeader().setDefaultSectionSize(well_side_length) # this is intentionally setMinimumSectionSize instead of setDefaultSectionSize
  
-        self.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Minimum)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff) # type: ignore
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff) # type: ignore
-        self.resizeColumnsToContents()
-        self.setFixedSize(
-            self.horizontalHeader().length() + self.verticalHeader().width(),
-            self.verticalHeader().length() + self.horizontalHeader().height()
-        )
+        self.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Maximum)
+
+        self.setFixedHeight(self.verticalHeader().length() + self.horizontalHeader().height()+2) # set fixed height because well overview widget will take up more space than it should otherwise
  
     @TypecheckFunction
-    def set_selectable_widgets(self,layout:WellplateFormatPhysical,is_selectable:bool,exhaustive:bool=False):
+    def set_selectable_widgets(self,layout:WellplateFormatPhysical):
+        """ exhaustive flag means going through all items in the whole widget. otherwise, just the outer ones (on the edge) """
+
         # item.flags is a bitvector, so changing the IsSelectable flag is bit manipulating magic
- 
-        if not is_selectable:
-            assert not exhaustive, "cannot exhaustively disable only outer ring"
- 
+
+        def set_selectable(flags:Any,selectable:bool)->Any:
+            if selectable:
+                return flags | Qt.ItemIsSelectable
+            else:
+                return flags & ~Qt.ItemIsSelectable
+        
         for i in range(layout.rows):
-            for j in (range(layout.columns) if exhaustive else [0,layout.columns-1]):
-                item = QTableWidgetItem()
-                item.setFlags((item.flags() | Qt.ItemIsSelectable) if is_selectable else (item.flags() & ~Qt.ItemIsSelectable)) # type: ignore
-                self.setItem(i,j,item)
- 
-        if not exhaustive:
             for j in range(layout.columns):
-                for i in [0,layout.rows-1]:
-                    item = QTableWidgetItem()
-                    item.setFlags((item.flags() | Qt.ItemIsSelectable) if is_selectable else (item.flags() & ~Qt.ItemIsSelectable)) # type: ignore
-                    self.setItem(i,j,item)
+                item = QTableWidgetItem()
+                item.setFlags(set_selectable(item.flags(),selectable=layout.is_well_reachable(row=i,column=j)))
+                self.setItem(i,j,item)
  
     @TypecheckFunction
     def setData(self):
@@ -156,23 +154,15 @@ class WellSelectionWidget(QTableWidget):
             row_headers.append(chr(ord('A')+i))
         self.setVerticalHeaderLabels(row_headers)
  
-        # make the outer cells not selectable if using 96 and 384 well plates
-        wellplate_format=WELLPLATE_FORMATS[self.format]
- 
-        if wellplate_format.number_of_skip==1:
-            self.set_selectable_widgets(layout=wellplate_format,is_selectable=False)
-        elif wellplate_format.number_of_skip>1:
-            assert False, "more than one layer of disabled outer wells is currently unimplemented"
- 
+        self.set_selectable_widgets(layout=WELLPLATE_FORMATS[self.format])
+
     @TypecheckFunction
     def onDoubleClick(self,row:int,col:int):
         wellplate_format=WELLPLATE_FORMATS[self.format]
- 
-        row_lower_bound=0 + wellplate_format.number_of_skip
-        row_upper_bound=self.rows-1-wellplate_format.number_of_skip
-        column_lower_bound=0 + wellplate_format.number_of_skip
-        column_upper_bound=self.columns-1-wellplate_format.number_of_skip
 
-        if (row >= row_lower_bound and row <= row_upper_bound ) and ( col >= column_lower_bound and col <= column_upper_bound ):
-            x_mm,y_mm=WELLPLATE_FORMATS[self.format].convert_well_index(int(row),int(col))
-            self.signal_wellSelectedPos.emit(x_mm,y_mm)
+        if wellplate_format.is_well_reachable(row=row,column=col):
+            x_mm,y_mm=wellplate_format.convert_well_index(row,col)
+
+            self.gui.core.navigation.move_to_mm(x_mm,y_mm,row=row,column=col)
+        else:
+            MessageBox(title="well inaccessible",mode="warning",text=f"The selected well at {col=}, {row=} is not accessible because of physical restrictions.").run()
