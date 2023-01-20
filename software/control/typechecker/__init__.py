@@ -8,11 +8,15 @@ from inspect import signature, Parameter, getmro
 from qtpy.QtCore import Signal, QObject
 
 from .util import *
-#from .type_match import type_match
+from . import module_checker
 
-# compared expected to value type
-# param _vt is used for recursion as part of inheritence check
-def type_match(et,v,_vt=None):
+def type_match(et,v,_vt:Any=None)->TypeCheckResult:
+    """
+    compared expected to value type
+
+    param _vt is used for recursion as part of inheritence check (_vt is type(v) override)
+    """
+
     if not _vt is None:
         vt=_vt
     else:
@@ -24,7 +28,7 @@ def type_match(et,v,_vt=None):
 
     # check inheritence hierarchy
     try:
-        # avoid double checking the leaf type
+        # avoid double checking the leaf type (which is the first entry in the mro list)
         inheritence_hierarchy=getmro(vt)[1:]
     except:
         inheritence_hierarchy=[]
@@ -33,7 +37,6 @@ def type_match(et,v,_vt=None):
         if type_match(et,v,cls):
             return TypeCheckResult(True)
 
-    # this is currently not implemented (blindly accept)
     if vt==Field:
         if type(v.default) != _MISSING_TYPE:
             tmr=type_match(et,v.default)
@@ -80,6 +83,9 @@ def type_match(et,v,_vt=None):
         if tuple!=vt:
             return TypeCheckResult(False,msg=f"{type_name(vt)} is not a list")
 
+        if len(v)!=len(et.__args__):
+            return TypeCheckResult(False,msg=f"tuple length mismatch is:{len(v)} != expected:{len(et.__args__)}")
+            
         for i,v in enumerate(v):
             et_tuple_item_type=et.__args__[i]
             if not type_match(et_tuple_item_type,v):
