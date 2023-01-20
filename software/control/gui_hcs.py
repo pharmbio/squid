@@ -24,7 +24,7 @@ from tqdm import tqdm
 import control.widgets as widgets
 from control.camera import Camera
 import control.core as core
-from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile
+from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile, Configuration
 import control.microcontroller as microcontroller
 from control._def import *
 from control.core.displacement_measurement import DisplacementMeasurementController
@@ -184,6 +184,8 @@ class OctopiGUI(QMainWindow):
         self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
         self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
+
+        self.core.multipointController.image_to_display_multi.connect(self.display_in_image_array)
 
         self.imaging_mode_config_managers={}
 
@@ -834,7 +836,7 @@ class OctopiGUI(QMainWindow):
         # load imaging channel configuration
         for new_config in config.channels_config:
             self.configurationManager.replace_config_with(new_config)
-            
+
         self.reload_configuration_into_gui(new_file_path=file_path)
 
         # for project and plate names respectively: if file contains a name, and gui item was empty, load names. otherwise, don't.
@@ -1062,7 +1064,7 @@ class OctopiGUI(QMainWindow):
                 while True:
                     current_time=time.monotonic()
                     if current_time-last_imaging_time > 1/fps:
-                        self.snap_single(_button_state=True,config=config,display_in_image_array_display=False,preserve_existing_histogram=False)
+                        self.snap_single(_button_state=True,config=config,display_in_image_array_display=True,preserve_existing_histogram=False)
                         last_imaging_time=current_time
 
                     QApplication.processEvents()
@@ -1141,8 +1143,16 @@ class OctopiGUI(QMainWindow):
         QApplication.processEvents()
 
         if display_in_image_array_display:
-            self.imageArrayDisplayWindow.display_image(image,config.illumination_source)
+            self.display_in_image_array(image,config)
             QApplication.processEvents()
+
+    def display_in_image_array(self,image,source:Union[Configuration,int]):
+        if isinstance(source,Configuration):
+            illumination_source=source.illumination_source
+        else:
+            illumination_source=source
+
+        self.imageArrayDisplayWindow.display_image(image,illumination_source)
 
     def snap_all(self,_button_state):
         with core.StreamingCamera(self.camera):
