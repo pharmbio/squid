@@ -60,43 +60,30 @@ class ImageSaver(QObject):
 
     @TypecheckFunction
     def process_queue(self):
-        while True:
-            # stop the thread if stop signal is received
-            if self.stop_signal_received:
-                return
+        while True:            
             # process the queue
             try:
-                [image,frame_ID,timestamp] = self.queue.get(timeout=0.1)
+                [path,image,file_format] = self.queue.get(timeout=0.1)
                 self.image_lock.acquire(True)
-                folder_ID = int(self.counter/self.max_num_image_per_folder)
-                file_ID = int(self.counter%self.max_num_image_per_folder)
-                # create a new folder
-                if file_ID == 0:
-                    os.mkdir(os.path.join(self.base_path,self.experiment_ID,str(folder_ID)))
 
-                saving_path = ImageSaver.path_from(
-                    base_path=self.base_path,
-                    experiment_ID=self.experiment_ID,
-                    folder_ID=str(folder_ID),
-                    file_ID=str(file_ID),
-                    frame_ID=str(frame_ID))
-
-                ImageSaver.save_image(saving_path,image,self.image_format)
+                ImageSaver.save_image(path,image,file_format)
 
                 self.counter = self.counter + 1
                 self.queue.task_done()
+
                 self.image_lock.release()
             except:
-                pass
+                # if queue is empty, and signal was received, terminate the thread
+                if self.stop_signal_received:
+                    return
                             
-    def enqueue(self,image,frame_ID:int,timestamp):
+    def enqueue(self,path:str,image:numpy.ndarray,file_format:ImageFormat):
+        if self.stop_signal_received:
+            print('! critical - attempted to save image even though stop signal was received!')
         try:
-            self.queue.put_nowait([image,frame_ID,timestamp])
-            if ( self.recording_time_limit>0 ) and ( time.time()-self.recording_start_time >= self.recording_time_limit ):
-                self.stop_recording.emit()
-            # when using self.queue.put(str_), program can be slowed down despite multithreading because of the block and the GIL
+            self.queue.put_nowait([path,image,file_format])
         except:
-            print('imageSaver queue is full, image discarded')
+            print('! critical - imageSaver queue is full, image discarded!')
 
     @TypecheckFunction
     def set_base_path(self,path:str):

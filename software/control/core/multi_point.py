@@ -82,6 +82,7 @@ class MultiPointWorker(QObject):
         self.grid_mask=self.multiPointController.grid_mask
         self.output_path:str=self.multiPointController.output_path
         self.plate_type=self.multiPointController.plate_type
+        self.image_saver=self.multiPointController.image_saver
 
         if not self.grid_mask is None:
             assert len(self.grid_mask)==self.NY
@@ -197,7 +198,7 @@ class MultiPointWorker(QObject):
             else:
                 image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
 
-        ImageSaver.save_image(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
+        self.image_saver.enqueue(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
 
         QApplication.processEvents()
 
@@ -521,6 +522,7 @@ class MultiPointController(QObject):
         autofocusController:AutoFocusController,
         laserAutofocusController,#:LaserAutofocusController,
         configurationManager:ConfigurationManager,
+        image_saver:ImageSaver,
         parent:Optional[Any]=None,
     ):
         QObject.__init__(self)
@@ -532,6 +534,7 @@ class MultiPointController(QObject):
         self.autofocusController = autofocusController
         self.laserAutofocusController = laserAutofocusController
         self.configurationManager = configurationManager
+        self.image_saver=image_saver
 
         self.NX:int = DefaultMultiPointGrid.DEFAULT_Nx
         self.NY:int = DefaultMultiPointGrid.DEFAULT_Ny

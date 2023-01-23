@@ -408,8 +408,16 @@ class Core(QObject):
             self.displacementMeasurementController=None
             self.laserAutofocusController=None
 
-        self.multipointController: core.MultiPointController = core.MultiPointController(self.camera,self.navigation,self.liveController,self.autofocusController,self.laserAutofocusController, self.configurationManager)
         self.imageSaver:           core.ImageSaver           = core.ImageSaver()
+        self.multipointController: core.MultiPointController = core.MultiPointController(
+            self.camera,
+            self.navigation,
+            self.liveController,
+            self.autofocusController,
+            self.laserAutofocusController,
+            configurationManager = self.configurationManager,
+            image_saver = self.imageSaver,
+        )
 
         self.home_on_startup=home
         if home:
