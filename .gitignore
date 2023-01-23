@@ -1,3 +1,5 @@
 .DS_Store
 *.pyc
 .mypy_cache
+last_program_state.json
+*.prof

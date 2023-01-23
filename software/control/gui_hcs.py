@@ -1304,8 +1304,9 @@ class OctopiGUI(QMainWindow):
             x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].convert_well_index(well_row,well_column)
             for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(x_well,y_well):
                 LIGHT_GREY=(160,)*3
+                RED_ISH=(255,50,140)
                 if self.core.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
-                    grid_item_color=(255,50,140)
+                    grid_item_color=RED_ISH
                 else:
                     grid_item_color=LIGHT_GREY
 

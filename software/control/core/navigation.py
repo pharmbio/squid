@@ -249,17 +249,16 @@ class NavigationController(QObject):
             assert self.is_in_loading_position
 
             if home_z and home_y and home_x:
-                # move to (20 mm, 20 mm)
-                self.move_x(20.0)
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-                self.move_y(20.0)
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+                # move by (from home to) (20 mm, 20 mm)
+                self.move_x(x_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+                self.move_y(y_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
             
                 self.set_x_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_POSITIVE)
                 self.set_x_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_NEGATIVE)
                 self.set_y_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_POSITIVE)
                 self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
                 self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
+                
                 print("homing - left loading position")
 
 			# move the objective back

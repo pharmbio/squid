@@ -1033,8 +1033,8 @@ void loop() {
             switch(buffer_rx[2])
             {
               case AXIS_X:
-                tmc4361A_disableVirtualLimitSwitch(&tmc4361[x],-1);
-                tmc4361A_disableVirtualLimitSwitch(&tmc4361[x],1);
+                tmc4361A_disableVirtualLimitSwitch( /*axis*/ &tmc4361[x], /*direction*/ -1);
+                tmc4361A_disableVirtualLimitSwitch( /*axis*/ &tmc4361[x], /*direction*/ 1);
                 homing_direction_X = buffer_rx[3];
                 home_X_found = false;
                 if(homing_direction_X==HOME_NEGATIVE) // use the left limit switch for homing
