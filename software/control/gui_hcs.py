@@ -272,7 +272,7 @@ class OctopiGUI(QMainWindow):
             # snap and channel config section
             HBox(
                 self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_all),
-                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label="incl. offset",tooltip="not implemented yet.",enabled=False),#move to channel-specific offset from reference plane on snap"),
+                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label="incl. offset",tooltip="move to specified offset for all imaging channels. requires laser autofocus to be initialized.").widget,
             ),
 
             Label(""),
@@ -993,7 +993,7 @@ class OctopiGUI(QMainWindow):
             self.named_widgets.load_all_config,
 
             self.named_widgets.snap_all_button,
-            #self.named_widgets.snap_all_with_offset_checkbox, # currently disabled because they are not implemented
+            self.named_widgets.snap_all_with_offset_checkbox, # currently disabled because they are not implemented
 
             self.named_widgets.save_config_button,
             self.named_widgets.load_config_button,
@@ -1135,6 +1135,7 @@ class OctopiGUI(QMainWindow):
         config:core.Configuration,
         display_in_image_array_display:bool=True,
         preserve_existing_histogram:bool=False,
+        move_to_target:bool=False,
     ):
         image=self.liveController.snap(config)
         QApplication.processEvents()
@@ -1155,9 +1156,11 @@ class OctopiGUI(QMainWindow):
         self.imageArrayDisplayWindow.display_image(image,illumination_source)
 
     def snap_all(self,_button_state):
+        move_to_target=bool(self.named_widgets.snap_all_with_offset_checkbox.checkState()) # can be 0 (unchecked) or 1(partially checked) or 2(checked)
+
         with core.StreamingCamera(self.camera):
             for config in self.configurationManager.configurations:
-                self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True)
+                self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True,move_to_target=move_to_target)
 
     def set_background(self,new_background_value:int):
         self.backgroundSlider.value=new_background_value
@@ -1301,7 +1304,7 @@ class OctopiGUI(QMainWindow):
         self.wellSelectionWidget.itemselectionchanged()
         preview_fov_list=[]
         for well_row,well_column in self.wellSelectionWidget.currently_selected_well_indices:
-            x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].convert_well_index(well_row,well_column)
+            x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].well_index_to_mm(well_row,well_column)
             for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(x_well,y_well):
                 LIGHT_GREY=(160,)*3
                 RED_ISH=(255,50,140)

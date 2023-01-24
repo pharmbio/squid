@@ -163,48 +163,55 @@ class MultiPointWorker(QObject):
         self.autofocusController.autofocus()
         self.autofocusController.wait_till_autofocus_has_completed()
 
-    def image_config(self,config:Configuration,saving_path:str):
+    def image_config(self,config:Configuration,saving_path:str,profiler:Optional[Profiler]=None,counter_backlash:bool=True):
         """ take image for specified configuration and save to specified path """
 
         if 'USB Spectrometer' in config.name:
             raise Exception("usb spectrometer not supported")
 
-        
-        # move to channel specific offset (if required)
-        target_um=config.channel_z_offset or 0.0
-        um_to_move=target_um-self.movement_deviation_from_focusplane
-        if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-            #print(f"moving to relative offset {target_um}µm")
-            self.movement_deviation_from_focusplane=target_um
-            self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-            self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={}) # dont wait for stabilization. hopefully movement is small enough to not require this
+        with Profiler("move to channel offset",parent=profiler) as move_to_offset:
+            # move to channel specific offset (if required)
+            target_um=config.channel_z_offset or 0.0
+            um_to_move=target_um-self.movement_deviation_from_focusplane
+            if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
+                #print(f"moving to relative offset {target_um}µm")
+                self.movement_deviation_from_focusplane=target_um
+                if counter_backlash:
+                    self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                    self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})#,wait_for_stabilization=True)
+                else:
+                    self.navigation.move_z(um_to_move/1000,wait_for_completion={})#,wait_for_stabilization=True)
 
-        image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width)
+        with Profiler("snap",parent=profiler) as snap:
+            image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width,profiler=snap)
 
-        # process the image -  @@@ to move to camera
-        self.image_to_display.emit(image)
-        self.image_to_display_multi.emit(image,config.illumination_source)
+        with Profiler("display images",parent=profiler) as displayimage:
+            # process the image -  @@@ to move to camera
+            self.image_to_display.emit(image)
+            self.image_to_display_multi.emit(image,config.illumination_source)
 
-        QApplication.processEvents()
-            
-        if self.camera.is_color:
-            if 'BF LED matrix' in config.name:
-                if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+            QApplication.processEvents()
+
+        with Profiler("enqueue image saving",parent=profiler) as enqueuesaveimages:
+            if self.camera.is_color:
+                if 'BF LED matrix' in config.name:
+                    if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+                        image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
+                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
+                        image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
+                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
+                        image = image[:,:,1]
+                else:
                     image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
-                    image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
-                elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
-                    image = image[:,:,1]
-            else:
-                image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
 
-        self.image_saver.enqueue(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
+            self.image_saver.enqueue(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
 
-        QApplication.processEvents()
+            QApplication.processEvents()
 
         self.signal_new_acquisition.emit('c')
 
-    def image_well_at_position(self,x:int,y:int,coordinate_name:str):
+    def image_zstack_here(self,x:int,y:int,coordinate_name:str,profiler:Optional[Profiler]=None):
+        """ x and y are for internal naming stuff only, not for anything position dependent """
 
         ret_coords=[]
 
@@ -230,15 +237,16 @@ class MultiPointWorker(QObject):
         QApplication.processEvents()
 
         if (self.NZ > 1):
-            # move to bottom of the z stack
-            if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
-                base_z=-self.deltaZ_usteps*round((self.NZ-1)/2)
-                self.navigation.move_z_usteps(base_z,wait_for_completion={})
-            # maneuver for achiving uniform step size and repeatability when using open-loop control
-            self.navigation.move_z_usteps(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-            self.navigation.move_z_usteps(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+            with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
+                # move to bottom of the z stack
+                if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
+                    base_z=-self.deltaZ_usteps*round((self.NZ-1)/2)
+                    self.navigation.move_z_usteps(base_z,wait_for_completion={})
+                # maneuver for achiving uniform step size and repeatability when using open-loop control
+                self.navigation.move_z_usteps(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                self.navigation.move_z_usteps(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
 
-        QApplication.processEvents()
+                QApplication.processEvents()
 
         # z-stack
         for k in range(self.NZ):
@@ -254,24 +262,32 @@ class MultiPointWorker(QObject):
 
             QApplication.processEvents()
 
-            # iterate through selected modes
-            for config in tqdm(self.selected_configurations,desc="channel",unit="channel",leave=False):
-                saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
+            with Profiler("image all configs",parent=profiler) as image_all_configs:
 
-                if self.multiPointController.abort_acqusition_requested:
-                    raise AbortAcquisitionException()
-                    
-                self.image_config(config=config,saving_path=saving_path)
+                # iterate through selected modes
+                for config_i,config in tqdm(enumerate(self.selected_configurations),desc="channel",unit="channel",leave=False):
+                    saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
 
-            QApplication.processEvents()
+                    if self.multiPointController.abort_acqusition_requested:
+                        raise AbortAcquisitionException()
+                        
+                    counter_backlash=True
+                    if config_i>0:
+                        previous_channel_z_offset=self.selected_configurations[config_i-1].channel_z_offset
+                        current_channel_offset=self.selected_configurations[config_i-1].channel_z_offset
+                        counter_backlash=previous_channel_z_offset<current_channel_offset
+                    self.image_config(config=config,saving_path=saving_path,profiler=image_all_configs,counter_backlash=counter_backlash)
 
-            # add the coordinate of the current location
-            ret_coords.append({
-                'i':y,'j':x,'k':k,
-                'x (mm)':self.navigation.x_pos_mm,
-                'y (mm)':self.navigation.y_pos_mm,
-                'z (um)':self.navigation.z_pos_mm*1000
-            })
+                QApplication.processEvents()
+
+            with Profiler("ret coords append",parent=profiler) as retcoordsappend:
+                # add the coordinate of the current location
+                ret_coords.append({
+                    'i':y,'j':x,'k':k,
+                    'x (mm)':self.navigation.x_pos_mm,
+                    'y (mm)':self.navigation.y_pos_mm,
+                    'z (um)':self.navigation.z_pos_mm*1000
+                })
 
             # register the current fov in the navigationViewer 
             self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
@@ -309,7 +325,8 @@ class MultiPointWorker(QObject):
         return ret_coords
 
     @TypecheckFunction
-    def image_grid(self,coordinates_pd:pd.DataFrame,base_coordinate_name:str)->pd.DataFrame:
+    def image_grid_here(self,coordinates_pd:pd.DataFrame,base_coordinate_name:str,profiler:Optional[Profiler]=None)->pd.DataFrame:
+        """ image xyz grid starting at current position """
 
         if self.num_positions_per_well>1:
             # show progress when iterating over all well positions (do not differentiatte between xyz in this progress bar, it's too quick for that)
@@ -339,17 +356,22 @@ class MultiPointWorker(QObject):
 
                 if do_image_this_position:
                     try:
-                        QApplication.processEvents()
-                        imaged_coords_dict_list=self.image_well_at_position(
-                            x=j,y=i,
-                            coordinate_name=coordinate_name,
-                        )
-                        QApplication.processEvents()
+                        with Profiler("image z stack",parent=profiler) as imagezstack:
+                            QApplication.processEvents()
+                            imaged_coords_dict_list=self.image_zstack_here(
+                                x=j,y=i,
+                                coordinate_name=coordinate_name,
+                                profiler=imagezstack,
+                            )
 
-                        coordinates_pd = pd.concat([
-                            coordinates_pd,
-                            pd.DataFrame(imaged_coords_dict_list)
-                        ])
+                        with Profiler("concat pd",parent=profiler) as concat_pd:
+                            QApplication.processEvents()
+
+                            coordinates_pd = pd.concat([
+                                coordinates_pd,
+                                pd.DataFrame(imaged_coords_dict_list)
+                            ])
+
                     except AbortAcquisitionException:
                         if ENABLE_TQDM_STUFF:
                             self.well_tqdm_iter.close()
@@ -371,19 +393,21 @@ class MultiPointWorker(QObject):
                 if self.NX > 1:
                     # move x
                     if j < self.NX - 1:
-                        self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={},wait_for_stabilization=True)
-                        self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
+                        with Profiler("move to next column",parent=profiler) as movetonextcolumn:
+                            self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={})#,wait_for_stabilization=True)
+                            self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
 
                 QApplication.processEvents()
 
             # move along rows in alternating directions (instead of always starting on left side of row)
             self.x_scan_direction = -self.x_scan_direction
 
-            if self.NY > 1:
-                # move y
-                if i < self.NY - 1:
-                    self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={},wait_for_stabilization=True)
-                    self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
+            with Profiler("move to next row",parent=profiler) as after_x_prof:
+                if self.NY > 1:
+                    # move y
+                    if i < self.NY - 1:
+                        self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={})#,wait_for_stabilization=True)
+                        self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
 
             self.signal_new_acquisition.emit('y')
 
@@ -394,115 +418,81 @@ class MultiPointWorker(QObject):
         return coordinates_pd
 
     def run_single_time_point(self):
-        with StreamingCamera(self.camera), StreamingCamera(self.autofocusController.camera):
+        with Profiler("run_single_time_point") as profiler:
+            with StreamingCamera(self.camera), StreamingCamera(self.autofocusController.camera):
 
-            # disable joystick button action
-            self.navigation.enable_joystick_button_action = False
+                # disable joystick button action
+                self.navigation.enable_joystick_button_action = False
 
-            self.FOV_counter = 0
+                self.FOV_counter = 0
 
-            print('multipoint acquisition - time point ' + str(self.time_point+1))
+                print('multipoint acquisition - time point ' + str(self.time_point+1))
 
-            if self.Nt > 1:
-                # for each time point, create a new folder
-                current_path = str(self.output_path/self.time_point)
-                self.current_path=current_path
-                os.mkdir(current_path)
-            else:
-                # only one time point, save it directly in the experiment folder
-                self.current_path=str(self.output_path)
-
-            # create a dataframe to save coordinates
-            coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
-
-            if not self.grid_mask is None:
-                self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
-            else:
-                self.num_positions_per_well=self.NX*self.NY*self.NZ
-
-            # each region is a well
-            n_regions = len(self.scan_coordinates_name)
-            for coordinate_id in range(n_regions) if n_regions==1 else tqdm(range(n_regions),desc="well on plate",unit="well"):
-                coordinate_mm = self.scan_coordinates_mm[coordinate_id]
-                base_coordinate_name = self.scan_coordinates_name[coordinate_id]
-
-                base_x=coordinate_mm[0]-self.deltaX*(self.NX-1)/2
-                base_y=coordinate_mm[1]-self.deltaY*(self.NY-1)/2
-
-                # move to the specified coordinate
-                #   imaging well usually ends in bottom right of well (assuming e.g. 3x3 grid.)
-                #   moving to base of next well then means moving to top left of new well
-                #   i.e. completely different location -> move length in x and y is 'never' 0
-                # TODO important: check if all wells that will be moved over during this transition below are valid places to be at!
-                coordinate_name=self.scan_coordinates_name[coordinate_id]
-                wellplate_format=WELLPLATE_FORMATS[self.plate_type]
-                row,column=wellplate_format.well_name_to_index(coordinate_name)
-
-                # when moving to new position... make sure that in the target row/column, the objective is not moved into an invalid well
-                # and also make sure that in the current row/column, it does not move into an invalid well
-                #
-                # new valid area is still concave, but not square. -> moving in a strictly horizontal/vertical (cannot move diagonally) line between two positions cannot pass over/through invalid wells
-                # but with movement possibilities as (move x, then move y) and (move y, then move x), one of the choices can pass through invalid wells
-
-                move_y_before_x=None
-                # if current row has invalid wells, move y before x
-                # TODO
-                # if target row has invalid wells, move x before y
-                if wellplate_format.row_has_invalid_wells(row=row):
-                    move_y_before_x=False
-                # if current and target rows have invalid wells, dont care (either is fine)
-
-                # if current column has invalid wells, move x before y
-                # TODO
-                # if target column has invalid wells, move y before x
-                if wellplate_format.column_has_invalid_wells(column=column):
-                    move_y_before_x=True
-                # if current and target column have invalid wells, dont care (either is fine)
-
-                # only current row or current column can have invalid wells
-                # only target row or target column can have invalid wells
-
-                if move_y_before_x:
-                    self.navigation.move_y_to(base_y,wait_for_completion={})
-                    self.navigation.move_x_to(base_x,wait_for_completion={},wait_for_stabilization=True)
+                if self.Nt > 1:
+                    # for each time point, create a new folder
+                    current_path = str(self.output_path/self.time_point)
+                    self.current_path=current_path
+                    os.mkdir(current_path)
                 else:
-                    self.navigation.move_x_to(base_x,wait_for_completion={})
-                    self.navigation.move_y_to(base_y,wait_for_completion={},wait_for_stabilization=True)
+                    # only one time point, save it directly in the experiment folder
+                    self.current_path=str(self.output_path)
 
-                self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
-                self.on_abort_dx_usteps = 0
-                self.on_abort_dy_usteps = 0
-                self.on_abort_dz_usteps = 0
+                # create a dataframe to save coordinates
+                coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
 
-                # z stacking config
-                if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM TOP':
-                    self.deltaZ_usteps = -abs(self.deltaZ_usteps)
+                if not self.grid_mask is None:
+                    self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
+                else:
+                    self.num_positions_per_well=self.NX*self.NY*self.NZ
 
-                coordinates_pd=self.image_grid(coordinates_pd=coordinates_pd,base_coordinate_name=base_coordinate_name)
+                # each region is a well
+                n_regions = len(self.scan_coordinates_name)
+                for coordinate_id in range(n_regions) if n_regions==1 else tqdm(range(n_regions),desc="well on plate",unit="well"):
+                    coordinate_mm = self.scan_coordinates_mm[coordinate_id]
+                    base_coordinate_name = self.scan_coordinates_name[coordinate_id]
 
-                QApplication.processEvents()
+                    base_x=coordinate_mm[0]-self.deltaX*(self.NX-1)/2
+                    base_y=coordinate_mm[1]-self.deltaY*(self.NY-1)/2
 
-                if n_regions == 1:
-                    # only move to the start position if there's only one region in the scan
-                    if self.NY > 1:
-                        # move y back
-                        self.navigation.move_y_usteps(-self.deltaY_usteps*(self.NY-1),wait_for_completion={},wait_for_stabilization=True)
-                        self.on_abort_dy_usteps = self.on_abort_dy_usteps - self.deltaY_usteps*(self.NY-1)
+                    with Profiler("move_to_well",parent=profiler) as profmm:
+                        # this function handles avoiding invalid physical positions etc.
+                        self.navigation.move_to_mm(x_mm=base_x,y_mm=base_y)
 
-                    # move x back at the end of the scan
-                    if self.x_scan_direction == -1:
-                        self.navigation.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
+                    self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
+                    self.on_abort_dx_usteps = 0
+                    self.on_abort_dy_usteps = 0
+                    self.on_abort_dz_usteps = 0
 
-                    # move z back
-                    self.navigation.microcontroller.move_z_to_usteps(self.navigation.z_pos_usteps)
-                    self.navigation.microcontroller.wait_till_operation_is_completed()
+                    # z stacking config
+                    if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM TOP':
+                        self.deltaZ_usteps = -abs(self.deltaZ_usteps)
 
-                QApplication.processEvents()
+                    with Profiler("image_grid_here",parent=profiler) as immm:
+                        coordinates_pd=self.image_grid_here(coordinates_pd=coordinates_pd,base_coordinate_name=base_coordinate_name,profiler=immm)
 
-            coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
-            self.navigation.enable_joystick_button_action = True
+                    QApplication.processEvents()
 
-            self.signal_new_acquisition.emit('t')
+                    if n_regions == 1:
+                        # only move to the start position if there's only one region in the scan
+                        if self.NY > 1:
+                            # move y back
+                            self.navigation.move_y_usteps(-self.deltaY_usteps*(self.NY-1),wait_for_completion={},wait_for_stabilization=True)
+                            self.on_abort_dy_usteps = self.on_abort_dy_usteps - self.deltaY_usteps*(self.NY-1)
+
+                        # move x back at the end of the scan
+                        if self.x_scan_direction == -1:
+                            self.navigation.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
+
+                        # move z back
+                        self.navigation.microcontroller.move_z_to_usteps(self.navigation.z_pos_usteps)
+                        self.navigation.microcontroller.wait_till_operation_is_completed()
+
+                    QApplication.processEvents()
+
+                coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
+                self.navigation.enable_joystick_button_action = True
+
+                self.signal_new_acquisition.emit('t')
 
 class MultiPointController(QObject):
 

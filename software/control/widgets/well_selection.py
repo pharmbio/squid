@@ -1,6 +1,7 @@
 # qt libraries
 from qtpy.QtCore import Qt, Signal # type: ignore
 from qtpy.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem, QAbstractItemView
+from qtpy.QtGui import QBrush
 
 from control._def import *
 from control.gui import *
@@ -70,7 +71,7 @@ class WellSelectionWidget(QTableWidget):
                     columns = np.flip(columns)
 
                 for column in columns:
-                    well_coords=WELLPLATE_FORMATS[self.format].convert_well_index(int(row),int(column))
+                    well_coords=WELLPLATE_FORMATS[self.format].well_index_to_mm(int(row),int(column))
                     well_name=WELLPLATE_FORMATS[self.format].well_index_to_name(int(row),int(column))
 
                     self.coordinates_mm.append(well_coords)
@@ -143,7 +144,11 @@ class WellSelectionWidget(QTableWidget):
         for i in range(layout.rows):
             for j in range(layout.columns):
                 item = QTableWidgetItem()
-                item.setFlags(set_selectable(item.flags(),selectable=layout.is_well_reachable(row=i,column=j)))
+                item_is_selectable=layout.is_well_reachable(row=i,column=j,allow_corners=False)
+                item_flags=set_selectable(item.flags(),selectable=item_is_selectable)
+                item.setFlags(item_flags)
+                if not item_is_selectable:
+                    item.setBackground(QBrush(Qt.black))
                 self.setItem(i,j,item)
  
     @TypecheckFunction
@@ -161,8 +166,6 @@ class WellSelectionWidget(QTableWidget):
         wellplate_format=WELLPLATE_FORMATS[self.format]
 
         if wellplate_format.is_well_reachable(row=row,column=col):
-            x_mm,y_mm=wellplate_format.convert_well_index(row,col)
-
-            self.gui.core.navigation.move_to_mm(x_mm,y_mm,row=row,column=col)
+            self.gui.core.navigation.move_to_index(wellplate_format,row=row,column=col)
         else:
             MessageBox(title="well inaccessible",mode="warning",text=f"The selected well at {col=}, {row=} is not accessible because of physical restrictions.").run()

@@ -29,16 +29,18 @@ class LiveController(QObject):
         return 1/self.fps_trigger
 
     def __init__(self,
+        core,
         camera:camera.Camera,
         microcontroller:microcontroller.Microcontroller,
         configurationManager:ConfigurationManager,
         stream_handler:Optional[StreamHandler],
         control_illumination:bool=True,
         use_internal_timer_for_hardware_trigger:bool=True,
-        for_displacement_measurement:bool=False
+        for_displacement_measurement:bool=False,
     ):
 
         QObject.__init__(self)
+        self.core=core
         self.camera = camera
         self.microcontroller = microcontroller
         self.configurationManager:ConfigurationManager = configurationManager
@@ -76,32 +78,39 @@ class LiveController(QObject):
         crop:bool=True,
         override_crop_width:Optional[int]=None,
         override_crop_height:Optional[int]=None,
+        move_to_target:bool=False,
+        profiler:Optional[Profiler]=None,
     )->numpy.ndarray:
         """
         if 'crop' is True, the image will be cropped to the streamhandlers requested height and width. 'override_crop_[height,width]' override the respective value
         """
 
+        if move_to_target and not config.channel_z_offset is None:
+            self.core.laserAutofocusController.move_to_target(target_um=config.channel_z_offset)
+
         with StreamingCamera(self.camera):
             """ prepare camera and lights """
 
-            self.set_microscope_mode(config)
+            with Profiler("set channel",parent=profiler) as setchannel:
+                self.set_microscope_mode(config)
 
-            """ take image """
-            image=None
-            start_time=time.monotonic()
-            while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
-                try:
-                    self.trigger_acquisition()
-                    image = self.camera.read_frame()
-                    self.end_acquisition()
-                    break
-                except AttributeError as a:
-                    if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
-                        raise a
-                    continue
+            with Profiler("take image",parent=profiler) as takeimage:
+                """ take image """
+                image=None
+                start_time=time.monotonic()
+                while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
+                    try:
+                        self.trigger_acquisition()
+                        image = self.camera.read_frame()
+                        self.end_acquisition()
+                        break
+                    except AttributeError as a:
+                        if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
+                            raise a
+                        continue
 
-            if image is None:
-                raise ValueError(f"! error - could not take an image in config {config.name} !")
+                if image is None:
+                    raise ValueError(f"! error - could not take an image in config {config.name} !")
 
         """ de-prepare camera and lights """
 
@@ -112,17 +121,18 @@ class LiveController(QObject):
             }[image.dtype]
             print(f"recorded image in channel {config.name} with {config.exposure_time:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
 
-        # cropping etc. takes about 3.5ms
-        crop_height=override_crop_height or self.stream_handler.crop_height
-        crop_width=override_crop_width or self.stream_handler.crop_width
+        with Profiler("postprocess snap",parent=profiler) as postprocesssnap:
+            # cropping etc. takes about 3.5ms
+            crop_height=override_crop_height or self.stream_handler.crop_height
+            crop_width=override_crop_width or self.stream_handler.crop_width
 
-        image_cropped=image
-        if crop:
-            image_cropped = utils.crop_image(image_cropped,crop_width,crop_height)
-        image_cropped = numpy.squeeze(image_cropped)
-        image_cropped = utils.rotate_and_flip_image(image_cropped,rotate_image_angle=self.camera.rotate_image_angle,flip_image=self.camera.flip_image)
-        if crop:
-            image_cropped = utils.crop_image(image_cropped,round(crop_width), round(crop_height))
+            image_cropped=image
+            if crop:
+                image_cropped = utils.crop_image(image_cropped,crop_width,crop_height)
+            image_cropped = numpy.squeeze(image_cropped)
+            image_cropped = utils.rotate_and_flip_image(image_cropped,rotate_image_angle=self.camera.rotate_image_angle,flip_image=self.camera.flip_image)
+            if crop:
+                image_cropped = utils.crop_image(image_cropped,round(crop_width), round(crop_height))
 
         return image_cropped
 

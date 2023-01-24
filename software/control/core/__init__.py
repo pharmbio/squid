@@ -159,7 +159,7 @@ class AcquisitionConfig:
             else:
                 row,column=well
 
-            well_list[i]=(row,column-1) # column-1 because on the wellplates the column indices start at 1 (while in code they start at 0)
+            well_list[i]=(row,column)
 
         af_laser_reference=None
         if "af_laser_reference" in data and not data["af_laser_reference"] is None:
@@ -258,6 +258,7 @@ from control.core.displacement_measurement import DisplacementMeasurementControl
 
 class CameraWrapper:
     def __init__(self,
+        core_,
         camera,
         filename:str, # file backing up the configurations on disk
         microcontroller,
@@ -265,6 +266,7 @@ class CameraWrapper:
 
         **kwargs
     ):
+        self.core=core_
         self.camera=camera
         self.microcontroller=microcontroller
 
@@ -275,6 +277,7 @@ class CameraWrapper:
             self.stream_handler=None
 
         self.live_controller=core.LiveController(
+            self.core,
             self.camera,self.microcontroller,self.configuration_manager,
             stream_handler=self.stream_handler,
             **kwargs
@@ -380,6 +383,7 @@ class Core(QObject):
         self.microcontroller.configure_actuators()
 
         self.main_camera=CameraWrapper(
+            self,
             camera=main_camera,
             filename='./channel_config_main_camera.json',
             microcontroller=self.microcontroller,
@@ -388,6 +392,7 @@ class Core(QObject):
         MACHINE_CONFIG.MUTABLE_STATE.trigger_mode_change.connect(lambda new_trigger_mode:self.main_camera.live_controller.set_trigger_mode(new_trigger_mode))
 
         self.focus_camera=CameraWrapper(
+            self,
             camera=focus_camera,
             filename='./channel_config_focus_camera.json',
             microcontroller=self.microcontroller,
@@ -533,7 +538,7 @@ class Core(QObject):
                     raise ValueError(f"well {well_column=} out of bounds {wellplate_format}")
 
         well_list_names:List[str]=[wellplate_format.well_index_to_name(*c) for c in config.well_list]
-        well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.convert_well_index(*c) for c in config.well_list]
+        well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.well_index_to_mm(*c) for c in config.well_list]
 
         # print well names as debug info
         #print("imaging wells: ",", ".join(well_list_names))
@@ -594,7 +599,7 @@ class Core(QObject):
         """
         wellplate_format=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
-        well_center_x_mm,well_center_y_mm=wellplate_format.convert_well_index(well_row,well_column)
+        well_center_x_mm,well_center_y_mm=wellplate_format.well_index_to_mm(well_row,well_column)
 
         # assuming wells are square (even though they are round-ish)
         well_left_boundary=well_center_x_mm-wellplate_format.well_size_mm/2

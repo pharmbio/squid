@@ -1,6 +1,6 @@
 # qt libraries
 from qtpy.QtCore import QObject, Signal # type: ignore
-from qtpy.QtWidgets import QFrame, QVBoxLayout
+from qtpy.QtWidgets import QApplication
 
 from control._def import *
 
@@ -117,43 +117,78 @@ class NavigationController(QObject):
         if wait_for_stabilization:
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
 
+    def move_to_name(self,wellplate_format,well_name):
+        row,column=wellplate_format.well_name_to_index(well_name)
+
+        self.move_to_index(wellplate_format,row=row,column=column)
+
+    @TypecheckFunction
+    def move_to_index(self,wellplate_format:WellplateFormatPhysical,row:int,column:int,well_origin_x_offset:float=0.0,well_origin_y_offset:float=0.0):
+        assert self.plate_type.rows==wellplate_format.rows and self.plate_type.columns==wellplate_format.columns
+        # based on target row and column index, calculate target location in mm
+        target_row,target_column=row,column
+        target_x_mm,target_y_mm=wellplate_format.well_index_to_mm(row=target_row,column=target_column)
+        target_x_mm+=well_origin_x_offset
+        target_y_mm+=well_origin_y_offset
+
+        self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm)
     
-    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,row:Optional[int]=None,column:Optional[int]=None):
-        if not x_mm is None:
-            self.move_x(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
-        if not y_mm is None:
-            self.move_y(y_mm,wait_for_completion={},wait_for_stabilization=True)
+    @TypecheckFunction
+    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None):
+        self.move_to_mm(
+            x_mm=None if x_mm is None else x_mm+self.x_pos_mm,
+            y_mm=None if y_mm is None else y_mm+self.y_pos_mm,
+            z_mm=None if z_mm is None else z_mm+self.z_pos_mm,
+        )
+
+    @TypecheckFunction
+    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None):
+        if not x_mm is None and not y_mm is None:
+            def distance_to_wellplate_center(y_mm:float,x_mm:float)->float:
+                """ calculate distance of any point on the plate to the center of the wellplate """
+
+                # calculate center coordinates of the wellplate based on calibrated limits
+                plate_limits=self.plate_type.limit_unsafe(calibrated=True)
+                y_center=plate_limits.Y_NEGATIVE+(plate_limits.Y_POSITIVE-plate_limits.Y_NEGATIVE)/2
+                x_center=plate_limits.X_NEGATIVE+(plate_limits.X_POSITIVE-plate_limits.X_NEGATIVE)/2
+
+                return ((y_mm-y_center)**2+(x_mm-x_center)**2)**0.5
+            
+            # rename some things for better code readability
+            target_x_mm=x_mm
+            target_y_mm=y_mm
+            current_x_mm=self.x_pos_mm
+            current_y_mm=self.y_pos_mm
+
+            # calculate distance of both possible edge points (well where movement in x/y is done and movement in y/x starts, respectively) to the center of the wellplate
+            d1=distance_to_wellplate_center(current_y_mm,target_x_mm)
+            d2=distance_to_wellplate_center(target_y_mm,current_x_mm)
+            
+            # move to the edge point that is closer to the center of the wellplate
+            # because this point will always avoid moving the objective over/through the forbidden edge areas on the wellplate (since any point on the wellplate is closer to the center than the points on the edge..)
+            if d1<d2:
+                # move to target column while staying in current row first
+                self.move_x_to(target_x_mm,wait_for_completion={})
+                # then move to target row
+                self.move_y_to(target_y_mm,wait_for_completion={},wait_for_stabilization=True)
+            else:
+                # move to target row while staying in current column first
+                self.move_y_to(target_y_mm,wait_for_completion={})
+                # then move to target column
+                self.move_x_to(target_x_mm,wait_for_completion={},wait_for_stabilization=True)
+        else:
+            if not x_mm is None:
+                self.move_x_to(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
+            if not y_mm is None:
+                self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
+
         if not z_mm is None:
-            self.move_y(y_mm,wait_for_completion={},wait_for_stabilization=True)
-
-        self.well_pos_is_stale=not(x_mm is None and y_mm is None)
-
-        if not row is None:
-            self.well_pos_row=row
-        if not column is None:
-            self.well_pos_column=column
-
-        self.well_pos_is_stale=not(column is None and row is None)
-
-    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,row:Optional[int]=None,column:Optional[int]=None):
-        if not x_mm is None:
-            self.move_x_to(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
-        if not y_mm is None:
             self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
-        if not z_mm is None:
-            self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
-
-        self.well_pos_is_stale=not(x_mm is None and y_mm is None)
-
-        if not row is None:
-            self.well_pos_row=row
-        if not column is None:
-            self.well_pos_column=column
-
-        self.well_pos_is_stale=not(column is None and row is None)
 
     @TypecheckFunction
     def update_pos(self,microcontroller:microcontroller.Microcontroller):
+        """ this function will be called around every 10ms """
+
         # get position from the microcontroller
         x_pos, y_pos, z_pos, theta_pos = microcontroller.get_pos()
         self.z_pos_usteps = z_pos
@@ -179,6 +214,9 @@ class NavigationController(QObject):
         else:
             self.theta_pos_rad = theta_pos*MACHINE_CONFIG.STAGE_POS_SIGN_THETA*(2*math.pi/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_THETA*MACHINE_CONFIG.FULLSTEPS_PER_REV_THETA))
 
+        wellplate_format=WELLPLATE_FORMATS[384]
+        wellplate_format.pos_mm_to_well_index(x_mm=self.x_pos_mm,y_mm=self.y_pos_mm)
+
         # emit the updated position
         self.xPos.emit(self.x_pos_mm)
         self.yPos.emit(self.y_pos_mm)
@@ -191,6 +229,8 @@ class NavigationController(QObject):
                 self.signal_joystick_button_pressed.emit()
             print('joystick button pressed')
             microcontroller.signal_joystick_button_pressed_event = False
+
+        QApplication.processEvents()
 
     def home_x(self):
         self.microcontroller.home_x()
@@ -258,7 +298,7 @@ class NavigationController(QObject):
                 self.set_y_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_POSITIVE)
                 self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
                 self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
-                
+
                 print("homing - left loading position")
 
 			# move the objective back

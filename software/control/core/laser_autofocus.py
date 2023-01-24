@@ -132,7 +132,7 @@ class LaserAutofocusController(QObject):
 
         return displacement_um
 
-    def move_to_target(self,target_um:float,max_repeats:int=MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS):
+    def move_to_target(self,target_um:float,max_repeats:int=MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS,counter_backlash:bool=True):
         with StreamingCamera(self.camera):
             for num_repeat in range(max_repeats+1):
                 current_displacement_um = self.measure_displacement()
@@ -149,8 +149,11 @@ class LaserAutofocusController(QObject):
 
                 #print(f"laser af - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
 
-                self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                if counter_backlash:
+                    self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                    self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                else:
+                    self.navigation.move_z(um_to_move/1000,wait_for_completion={})
 
     def set_reference(self,z_pos_mm:float):
         assert self.is_initialized

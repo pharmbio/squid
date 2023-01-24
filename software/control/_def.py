@@ -26,7 +26,38 @@ class CameraPixelFormat:
     num_bytes_per_pixel:int
     gx_pixel_format:Union[gx.GxPixelFormatEntry,int] # instances of gx.GxPixelFormatEntry are represented as an int
 
-CORNERS_ARE_INVALID=False
+import time
+
+class Profiler:
+    def __init__(self,msg:str,parent:Optional["Self"]=None):
+        self.msg=msg
+        self.parent=parent
+
+        if (not self.parent is None) and (self.msg in self.parent.named_children):
+            self.duration=self.parent.named_children[self.msg].duration
+            self.named_children=self.parent.named_children[self.msg].named_children
+
+        else:
+            self.duration=0.0
+            self.named_children=dict()
+
+        self.start_time=0.0
+    def __enter__(self)->"Self":
+        self.start_time=time.monotonic()
+        return self
+    def __exit__(self,*args,**kwargs):
+        self.duration+=time.monotonic()-self.start_time
+        if self.parent is None:
+            print(self.to_text(indent=0,of_total=self.duration))
+        else:
+            self.parent.named_children[self.msg]=self
+
+    def to_text(self,indent:int,of_total:float)->str:
+        text=f"{' '*indent} ({(self.duration/of_total*100):6.2f}%) {self.duration:10.3f} : {self.msg}\n"
+        for child in self.named_children.values():
+            text+=child.to_text(indent=indent+2,of_total=of_total)
+
+        return text
 
 class CAMERA_PIXEL_FORMATS(Enum):
     MONO8=CameraPixelFormat(
@@ -223,14 +254,258 @@ class AutofocusConfig:
     CROP_WIDTH:int = 800
     CROP_HEIGHT:int = 800
 
+
 @dataclass(frozen=True)
+class WellplateFormatPhysical:
+    """ physical characteristics of a wellplate type """
+
+    well_size_mm:float # diameter
+    """ physical (and logical) well plate layout """
+
+    well_spacing_mm:float # mm from top left of one well to top left of next well (same in both axis)
+
+    A1_x_mm:float
+    A1_y_mm:float
+
+    number_of_skip:int
+    """ layers of disabled outer wells """
+
+    rows:int
+    columns:int
+
+    def imageable_origin(self)->Tuple[float,float]:
+        """ offset for coordinate origin, based on calibration with 384 wellplate """
+
+        wellplate_format_384=WELLPLATE_FORMATS[384]
+
+        return (
+            self.A1_x_mm + (MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT - wellplate_format_384.A1_x_mm - wellplate_format_384.well_spacing_mm ), # - wellplate_format_384.well_spacing_mm  ? (somehow A1 origin shows numbers as they should be for B2? how to account for this?)
+            self.A1_y_mm + (MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT - wellplate_format_384.A1_y_mm - wellplate_format_384.well_spacing_mm ) # - wellplate_format_384.well_spacing_mm  ? (somehow A1 origin shows numbers as they should be for B2? how to account for this?)
+        )
+
+    @TypecheckFunction
+    def well_index_to_mm(self,row:int,column:int)->Tuple[float,float]:
+        origin_x_offset,origin_y_offset=self.imageable_origin()
+
+        # physical position of the well on the wellplate that the cursor should move to
+        well_on_plate_offset_x=column * self.well_spacing_mm
+        well_on_plate_offset_y=row * self.well_spacing_mm
+
+        # offset from top left of well to position within well where cursor/camera should go
+        # should be centered, so offset is same in x and y
+        well_cursor_offset_x=self.well_size_mm/2
+        well_cursor_offset_y=well_cursor_offset_x
+
+        x_mm = origin_x_offset + well_on_plate_offset_x + well_cursor_offset_x
+        y_mm = origin_y_offset + well_on_plate_offset_y + well_cursor_offset_y
+
+        return (x_mm,y_mm)
+
+    @TypecheckFunction
+    def well_index_to_name(self,row:int,column:int,check_valid:bool=True)->str:
+        if check_valid:
+            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), f"{row=} {column=}"
+            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), f"{row=} {column=}"
+
+        well_name=chr(ord('A')+row)+f'{column+1:02}' # e.g. A01
+        return well_name
+
+    @TypecheckFunction
+    def well_name_to_index(self,name:str,check_valid:bool=True)->Tuple[int,int]:
+        assert len(name)==3, name # first character must be letter denoting the row, second and third character must be integer representing the column index (the latter starting at 1, not 0, and single digit numbers must be preceded by a 0)
+
+        row=ord(name[0])-ord('A')
+        column=int(name[1:])-1 # because column numbering starts at 1, but indices start at 0
+
+        if check_valid:
+            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), name
+            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), name
+
+        return row,column
+
+    @TypecheckFunction
+    def is_well_reachable(self,row:int,column:int,allow_corners:bool=False)->bool:
+        row_lower_bound=0 + self.number_of_skip
+        row_upper_bound=self.rows-1-self.number_of_skip
+        column_lower_bound=0 + self.number_of_skip
+        column_upper_bound=self.columns-1-self.number_of_skip
+
+        well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
+        
+        if not allow_corners:
+            is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
+            is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
+            is_in_top_right_corner    = ( row == row_lower_bound ) and ( column == column_upper_bound )
+            is_in_bottom_right_corner = ( row == row_upper_bound ) and ( column == column_upper_bound )
+
+            well_reachable=well_reachable and not (is_in_top_left_corner or is_in_bottom_left_corner or is_in_top_right_corner or is_in_bottom_right_corner)
+
+        return well_reachable
+
+    @TypecheckFunction
+    def row_has_invalid_wells(self,row:int)->bool:
+        """
+        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
+        """
+        for c in range(self.columns):
+            if not self.is_well_reachable(row=row,column=c,allow_corners=False and self.number_of_skip==0 and self.columns==24):
+                return True
+
+        return False
+
+    @TypecheckFunction
+    def column_has_invalid_wells(self,column:int)->bool:
+        """
+        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
+        """
+        for r in range(self.rows):
+            if not self.is_well_reachable(row=r,column=column,allow_corners=False and self.number_of_skip==0 and self.columns==24):
+                return True
+
+        return False
+    
+    def pos_mm_to_well_index(self,x_mm:float,y_mm:float,return_nearest_valid_well_instead_of_none_if_outside:bool=False)->Optional[Tuple[int,int]]:
+        origin_x,origin_y=self.imageable_origin()
+        if x_mm>=origin_x and y_mm>=origin_y:
+            x_mm-=origin_x
+            y_mm-=origin_y
+
+            x_wells=int(x_mm//self.well_spacing_mm)
+            y_wells=int(y_mm//self.well_spacing_mm)
+
+            x_well_edge_distance=x_mm%self.well_spacing_mm
+            y_well_edge_distance=y_mm%self.well_spacing_mm
+
+            if return_nearest_valid_well_instead_of_none_if_outside:
+                raise ValueError("unimplemented")
+
+            if x_well_edge_distance<=self.well_size_mm and y_well_edge_distance<=self.well_size_mm:
+                row,column=y_wells,x_wells
+                pass #print(f"inside well {self.well_index_to_name(row=y_wells,column=x_wells,check_valid=False)} with remaining {x_well_edge_distance=} {y_well_edge_distance=}")
+                return row,column
+
+        return None
+
+    def limit_safe(self,calibrated:bool=False)->"SoftwareStagePositionLimits":
+        if calibrated:
+            return SoftwareStagePositionLimits(
+                X_NEGATIVE = 10.0,
+                X_POSITIVE = 112.5,
+                Y_NEGATIVE = 6.0,
+                Y_POSITIVE = 76.0,
+                Z_POSITIVE = 6.0,
+            )
+        else:
+            return SoftwareStagePositionLimits(
+                X_NEGATIVE = 10.0,
+                X_POSITIVE = 112.5,
+                Y_NEGATIVE = 6.0,
+                Y_POSITIVE = 76.0,
+                Z_POSITIVE = 6.0,
+            )
+    
+    def limit_unsafe(self,calibrated:bool=False)->"SoftwareStagePositionLimits":
+        physical_wellplate_format=self # WELLPLATE_FORMATS[384]
+
+        if calibrated:
+            # these values are manually calibrated to be upper left coordinates of well B2 (instead of A1!)
+            x_start_mm = MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT
+            y_start_mm = MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT
+
+        else:
+            weird_factor = 1.0 # a1_y_mm is 9mm from plate CAD info, but y_start_mm defaults to 10mm, which actually works. unsure where this physical offset comes from
+            x_start_mm = physical_wellplate_format.A1_x_mm
+            y_start_mm = physical_wellplate_format.A1_y_mm + weird_factor
+
+        # adjust plate origin for number_of_skip (and take into account that references above are for upper left corner of well B2 instead of A1, even though upper left of A1 is origin of image-able area)
+        x_start_mm=x_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
+        y_start_mm=y_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
+
+        # taking number_of_skip into account, calculate distance from top left of image-able area to bottom right
+        x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
+        y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
+
+        return SoftwareStagePositionLimits(
+            X_NEGATIVE = x_start_mm,
+            X_POSITIVE = x_end_mm,
+            Y_NEGATIVE = y_start_mm,
+            Y_POSITIVE = y_end_mm,
+                                                                                
+            Z_POSITIVE = 6.0,
+        )
+
+WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
+    6:WellplateFormatPhysical(
+        well_size_mm = 34.94,
+        well_spacing_mm = 39.2,
+        A1_x_mm = 24.55,
+        A1_y_mm = 23.01,
+        number_of_skip = 0,
+        rows = 2,
+        columns = 3,
+    ),
+    12:WellplateFormatPhysical(
+        well_size_mm = 22.05,
+        well_spacing_mm = 26,
+        A1_x_mm = 24.75,
+        A1_y_mm = 16.86,
+        number_of_skip = 0,
+        rows = 3,
+        columns = 4,
+    ),
+    24:WellplateFormatPhysical(
+        well_size_mm = 15.54,
+        well_spacing_mm = 19.3,
+        A1_x_mm = 17.05,
+        A1_y_mm = 13.67,
+        number_of_skip = 0,
+        rows = 4,
+        columns = 6,
+    ),
+    96:WellplateFormatPhysical(
+        well_size_mm = 6.21,
+        well_spacing_mm = 9,
+        A1_x_mm = 14.3,
+        A1_y_mm = 11.36,
+        number_of_skip = 0,
+        rows = 8,
+        columns = 12,
+    ),
+    384:WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        rows = 16,
+        columns = 24,
+    )
+}
+WELLPLATE_NAMES:Dict[int,str]={
+    i:f"{i} well plate"
+    for i in WELLPLATE_FORMATS.keys()
+}
+
+assert WELLPLATE_FORMATS[384].well_name_to_index("A01",check_valid=False)==(0,0)
+assert WELLPLATE_FORMATS[384].well_name_to_index("B02",check_valid=False)==(1,1)
+assert WELLPLATE_FORMATS[384].well_index_to_name(row=0,column=0,check_valid=False)=="A01"
+assert WELLPLATE_FORMATS[384].well_index_to_name(row=1,column=1,check_valid=False)=="B02"
+
+@dataclass(frozen=True,repr=True)
 class SoftwareStagePositionLimits:
-    # limits that have popped up in other places (X_POSITIVE:float = 56, X_NEGATIVE:float = -0.5, Y_POSITIVE:float = 56, Y_NEGATIVE:float = -0.5) are likely used for another stage type!
+    """ limits in mm from home/loading position"""
+
     X_POSITIVE:float = 112.5
-    X_NEGATIVE:float = 10
-    Y_POSITIVE:float = 76
-    Y_NEGATIVE:float = 6
-    Z_POSITIVE:float = 10
+    X_NEGATIVE:float = 10.0
+    Y_POSITIVE:float = 76.0
+    Y_NEGATIVE:float = 6.0
+    Z_POSITIVE:float = 6.0
+
+    # the following limits that have popped up in other places: (likely used for another stage type)
+    #   X_POSITIVE:float = 56
+    #   X_NEGATIVE:float = -0.5
+    #   Y_POSITIVE:float = 56
+    #   Y_NEGATIVE:float = -0.5
 
 class FocusMeasureOperators(str,Enum):
     """ focus measure operators - GLVA has worked well for darkfield/fluorescence, and LAPE has worked well for brightfield """
@@ -446,30 +721,22 @@ class MachineConfiguration:
 
     AF:AutofocusConfig=AutofocusConfig()
 
-    SOFTWARE_POS_LIMIT:SoftwareStagePositionLimits=SoftwareStagePositionLimits(
-        X_POSITIVE = 112.5,
-        X_NEGATIVE = 10,
-        Y_POSITIVE = 76,
-        Y_NEGATIVE = 6,
-        Z_POSITIVE = 6
-    )
+    SOFTWARE_POS_LIMIT:SoftwareStagePositionLimits=WELLPLATE_FORMATS[MutableMachineConfiguration.WELLPLATE_FORMAT].limit_safe(calibrated=False)
 
     ENABLE_STROBE_OUTPUT:bool = False
 
     Z_STACKING_CONFIG:ClosedSet[str]('FROM CENTER', 'FROM BOTTOM', 'FROM TOP') = 'FROM CENTER'
 
     # for 384 well plate
-    X_MM_384_WELLPLATE_UPPERLEFT:float = 0.0
-    Y_MM_384_WELLPLATE_UPPERLEFT:float = 0.0
-    DEFAULT_Z_POS_MM:float = 2.0
+    X_MM_384_WELLPLATE_UPPERLEFT:float = 0.0 # for well B2 (NOT A1!!)
+    Y_MM_384_WELLPLATE_UPPERLEFT:float = 0.0 # for well B2 (NOT A1!!)
+
+    DEFAULT_Z_POS_MM:float = 1.0
     X_ORIGIN_384_WELLPLATE_PIXEL:int = 177 # upper left of B2 (corner opposite from clamp)
     Y_ORIGIN_384_WELLPLATE_PIXEL:int = 141 # upper left of B2 (corner opposite from clamp)
     # B1 upper left corner in pixel: x = 124, y = 141
     # B1 upper left corner in mm: x = 12.13 mm - 3.3 mm/2, y = 8.99 mm + 4.5 mm - 3.3 mm/2
     # B2 upper left corner in pixel: x = 177, y = 141
-
-    WELLPLATE_OFFSET_X_mm:float = 0.0 # x offset adjustment for using different plates
-    WELLPLATE_OFFSET_Y_mm:float = 0.0 # y offset adjustment for using different plates
 
     CONTROLLER_VERSION:ControllerType = ControllerType.TEENSY
 
@@ -487,9 +754,9 @@ class MachineConfiguration:
     USE_GLASS_TOP:bool = True # use right dot instead of left
     SHOW_LEGACY_DISPLACEMENT_MEASUREMENT_WINDOWS:bool = False
     LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:float = 0.3 # when moving to target, if absolute measured displacement after movement is larger than this value, repeat move to target (repeat max once) - note that the usual um/pixel value is 0.4
-    LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER:float=-160.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value
-    LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER:float=160.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value
-    LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS:int=3 # when moving, move again max this many times to reach displacement target
+    LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER:float = -170.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value
+    LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER:float =  170.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value
+    LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS:int = 3 # when moving, move again max this many times to reach displacement target
 
     MULTIPOINT_REFLECTION_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
 
@@ -519,181 +786,9 @@ class MachineConfiguration:
 
 MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
 
-@dataclass(frozen=True)
-class WellplateFormatPhysical:
-    """ physical (and logical) well plate layout """
-    well_size_mm:float
-    well_spacing_mm:float
-    A1_x_mm:float
-    A1_y_mm:float
-    """ layers of disabled outer wells """
-    number_of_skip:int
-    rows:int
-    columns:int
+print(f"  safe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=False)}")
+print(f"  safe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=True)}")
+print(f"unsafe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=False)}")
+print(f"unsafe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)}")
 
-    @TypecheckFunction
-    def convert_well_index(self,row:int,column:int)->Tuple[float,float]:
-        wellplate_format_384=WELLPLATE_FORMATS[384]
-
-        # offset for coordinate origin, required because origin was calibrated based on 384 wellplate, i guess. 
-        # term in parenthesis is required because A1_x/y_mm actually referes to upper left corner of B2, not A1 (also assumes that number_of_skip==1)
-        assert wellplate_format_384.number_of_skip==1
-        origin_x_offset=MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT-(wellplate_format_384.A1_x_mm + wellplate_format_384.well_spacing_mm * wellplate_format_384.number_of_skip)
-        origin_y_offset=MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT-(wellplate_format_384.A1_y_mm + wellplate_format_384.well_spacing_mm * wellplate_format_384.number_of_skip)
-
-        # physical position of the well on the wellplate that the cursor should move to
-        well_on_plate_offset_x=column * self.well_spacing_mm + self.A1_x_mm
-        well_on_plate_offset_y=row * self.well_spacing_mm + self.A1_y_mm
-
-        # offset from top left of well to position within well where cursor/camera should go
-        # should be centered, so offset is same in x and y
-        well_cursor_offset_x=wellplate_format_384.well_size_mm/2
-        well_cursor_offset_y=well_cursor_offset_x
-
-        x_mm = origin_x_offset + MACHINE_CONFIG.WELLPLATE_OFFSET_X_mm \
-            + well_on_plate_offset_x + well_cursor_offset_x
-        y_mm = origin_y_offset + MACHINE_CONFIG.WELLPLATE_OFFSET_Y_mm \
-            + well_on_plate_offset_y + well_cursor_offset_y
-
-        return (x_mm,y_mm)
-
-    @TypecheckFunction
-    def well_index_to_name(self,row:int,column:int,check_valid:bool=True)->str:
-        if check_valid:
-            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), f"{row=} {column=}"
-            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), f"{row=} {column=}"
-
-        well_name=chr(ord('A')+row)+f'{column+1:02}' # e.g. A01
-        return well_name
-
-    @TypecheckFunction
-    def well_name_to_index(self,name:str,check_valid:bool=True)->Tuple[int,int]:
-        assert len(name)==3, name # first character must be letter denoting the row, second and third character must be integer representing the column index (the latter starting at 1, not 0, and single digit numbers must be preceded by a 0)
-
-        row=ord(name[0])-ord('A')
-        column=int(name[1:])-1 # because column numbering starts at 1, but indices start at 0
-
-        if check_valid:
-            assert row>=(0+self.number_of_skip) and row<=(self.rows-self.number_of_skip-1), name
-            assert column>=(0+self.number_of_skip) and column<=(self.columns-self.number_of_skip-1), name
-
-        return row,column
-
-    @TypecheckFunction
-    def is_well_reachable(self,row:int,column:int)->bool:
-        row_lower_bound=0 + self.number_of_skip
-        row_upper_bound=self.rows-1-self.number_of_skip
-        column_lower_bound=0 + self.number_of_skip
-        column_upper_bound=self.columns-1-self.number_of_skip
-
-        well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
-        
-        if CORNERS_ARE_INVALID:
-            is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
-            is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
-            is_in_top_right_corner    = ( row == row_lower_bound ) and ( column == column_upper_bound )
-            is_in_bottom_right_corner = ( row == row_upper_bound ) and ( column == column_upper_bound )
-            well_reachable=well_reachable and not (is_in_top_left_corner or is_in_bottom_left_corner or is_in_top_right_corner or is_in_bottom_right_corner)
-
-        return well_reachable
-
-    @TypecheckFunction
-    def row_has_invalid_wells(self,row:int)->bool:
-        """
-        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
-        """
-        for c in range(self.columns):
-            if not self.is_well_reachable(row=row,column=c):
-                if CORNERS_ARE_INVALID:
-                    row_lower_bound=0 + self.number_of_skip
-                    row_upper_bound=self.rows-1-self.number_of_skip
-                    column_lower_bound=0 + self.number_of_skip
-                    column_upper_bound=self.columns-1-self.number_of_skip
-
-                    # this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area should be ignored here
-                    is_outside_skip_boundary=(row >= row_lower_bound and row <= row_upper_bound ) and ( c >= column_lower_bound and c <= column_upper_bound )
-                    if is_outside_skip_boundary:
-                        return True
-                else:
-                    return True
-
-        return False
-
-    @TypecheckFunction
-    def column_has_invalid_wells(self,column:int)->bool:
-        """
-        this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
-        """
-        for r in range(self.rows):
-            if not self.is_well_reachable(row=r,column=column):
-                if CORNERS_ARE_INVALID:
-                    row_lower_bound=0 + self.number_of_skip
-                    row_upper_bound=self.rows-1-self.number_of_skip
-                    column_lower_bound=0 + self.number_of_skip
-                    column_upper_bound=self.columns-1-self.number_of_skip
-
-                    # this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area should be ignored here
-                    is_outside_skip_boundary=(r >= row_lower_bound and r <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
-                    if is_outside_skip_boundary:
-                        return True
-                else:
-                    return True
-
-        return False
-
-WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
-    6:WellplateFormatPhysical(
-        well_size_mm = 34.94,
-        well_spacing_mm = 39.2,
-        A1_x_mm = 24.55,
-        A1_y_mm = 23.01,
-        number_of_skip = 0,
-        rows = 2,
-        columns = 3,
-    ),
-    12:WellplateFormatPhysical(
-        well_size_mm = 22.05,
-        well_spacing_mm = 26,
-        A1_x_mm = 24.75,
-        A1_y_mm = 16.86,
-        number_of_skip = 0,
-        rows = 3,
-        columns = 4,
-    ),
-    24:WellplateFormatPhysical(
-        well_size_mm = 15.54,
-        well_spacing_mm = 19.3,
-        A1_x_mm = 17.05,
-        A1_y_mm = 13.67,
-        number_of_skip = 0,
-        rows = 4,
-        columns = 6,
-    ),
-    96:WellplateFormatPhysical(
-        well_size_mm = 6.21,
-        well_spacing_mm = 9,
-        A1_x_mm = 14.3,
-        A1_y_mm = 11.36,
-        number_of_skip = 0,
-        rows = 8,
-        columns = 12,
-    ),
-    384:WellplateFormatPhysical(
-        well_size_mm = 3.3,
-        well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
-        number_of_skip = 1,
-        rows = 16,
-        columns = 24,
-    )
-}
-WELLPLATE_NAMES:Dict[int,str]={
-    i:f"{i} well plate"
-    for i in WELLPLATE_FORMATS.keys()
-}
-
-assert WELLPLATE_FORMATS[384].well_name_to_index("A01",check_valid=False)==(0,0)
-assert WELLPLATE_FORMATS[384].well_name_to_index("B02",check_valid=False)==(1,1)
-assert WELLPLATE_FORMATS[384].well_index_to_name(row=0,column=0,check_valid=False)=="A01"
-assert WELLPLATE_FORMATS[384].well_index_to_name(row=1,column=1,check_valid=False)=="B02"
+MACHINE_CONFIG.SOFTWARE_POS_LIMIT = WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)
