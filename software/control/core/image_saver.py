@@ -29,7 +29,7 @@ class ImageSaver(QObject):
         self.experiment_ID:str = ''
         self.image_format:ImageFormat = image_format
         self.max_num_image_per_folder:int = 1000
-        self.queue:Queue = Queue(10) # max 10 items in the queue
+        self.queue:Queue = Queue(64) # max this many items in the queue
         self.image_lock:Lock = Lock()
         self.stop_signal_received:bool = False
         self.thread = Thread(target=self.process_queue) # type: ignore
@@ -83,7 +83,8 @@ class ImageSaver(QObject):
         try:
             self.queue.put_nowait([path,image,file_format])
         except:
-            print('! critical - imageSaver queue is full, image discarded!')
+            # if putting in image in there fails, try again but wait for a free slot this time
+            self.queue.put([path,image,file_format])
 
     @TypecheckFunction
     def set_base_path(self,path:str):

@@ -134,15 +134,16 @@ class NavigationController(QObject):
         self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm)
     
     @TypecheckFunction
-    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None):
+    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,wait_for_completion:Optional[dict]=None):
         self.move_to_mm(
             x_mm=None if x_mm is None else x_mm+self.x_pos_mm,
             y_mm=None if y_mm is None else y_mm+self.y_pos_mm,
             z_mm=None if z_mm is None else z_mm+self.z_pos_mm,
+            wait_for_completion=wait_for_completion
         )
 
     @TypecheckFunction
-    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None):
+    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,wait_for_completion:Optional[dict]=None):
         if not x_mm is None and not y_mm is None:
             def distance_to_wellplate_center(y_mm:float,x_mm:float)->float:
                 """ calculate distance of any point on the plate to the center of the wellplate """
@@ -168,22 +169,22 @@ class NavigationController(QObject):
             # because this point will always avoid moving the objective over/through the forbidden edge areas on the wellplate (since any point on the wellplate is closer to the center than the points on the edge..)
             if d1<d2:
                 # move to target column while staying in current row first
-                self.move_x_to(target_x_mm,wait_for_completion={})
+                self.move_x_to(target_x_mm,wait_for_completion=wait_for_completion)
                 # then move to target row
-                self.move_y_to(target_y_mm,wait_for_completion={},wait_for_stabilization=True)
+                self.move_y_to(target_y_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
             else:
                 # move to target row while staying in current column first
-                self.move_y_to(target_y_mm,wait_for_completion={})
+                self.move_y_to(target_y_mm,wait_for_completion=wait_for_completion)
                 # then move to target column
-                self.move_x_to(target_x_mm,wait_for_completion={},wait_for_stabilization=True)
+                self.move_x_to(target_x_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
         else:
             if not x_mm is None:
-                self.move_x_to(x_mm,wait_for_completion={},wait_for_stabilization=y_mm is None)
+                self.move_x_to(x_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=y_mm is None)
             if not y_mm is None:
-                self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
+                self.move_y_to(y_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
 
         if not z_mm is None:
-            self.move_y_to(y_mm,wait_for_completion={},wait_for_stabilization=True)
+            self.move_y_to(y_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
 
     @TypecheckFunction
     def update_pos(self,microcontroller:microcontroller.Microcontroller):

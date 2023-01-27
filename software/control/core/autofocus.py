@@ -18,7 +18,6 @@ class AutofocusWorker(QObject):
 
     finished = Signal()
     image_to_display = Signal(np.ndarray)
-    # signal_current_configuration = Signal(Configuration)
 
     def __init__(self,autofocusController):
         QObject.__init__(self)

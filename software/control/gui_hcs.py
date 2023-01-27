@@ -4,6 +4,9 @@ import time, os, sys, traceback
 from pathlib import Path
 from typing import Union
 
+from queue import Queue
+from threading import Thread, Lock
+
 # qt libraries
 from qtpy.QtCore import Qt, QEvent, Signal, QItemSelectionModel
 from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange, QMessageBox
@@ -45,41 +48,83 @@ LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
 LIVE_BUTTON_IDLE_TEXT="Start Live"
 LIVE_BUTTON_RUNNING_TEXT="Stop Live"
-LIVE_BUTTON_TOOLTIP="""start/stop live image view
+LIVE_BUTTON_TOOLTIP="""Start/Stop live image view
 
-displays each image that is recorded by the camera
+Records images multiple times per second, up to the specified maximum FPS (to the right).
 
-useful for manual investigation of a plate and/or imaging settings. Note that this can lead to strong photobleaching. Consider using the snapshot button instead (labelled 'snap')"""
+Useful for manual investigation of a plate and/or imaging settings.
 
-BTN_SNAP_LABEL="snap"
-BTN_SNAP_TOOLTIP="take single image (minimizes bleaching for manual testing)"
-BTN_SNAP_ALL_LABEL="snap all"
-BTN_SNAP_ALL_TOOLTIP="Take image in all channels and display them in the multi-point acqusition panel."
+Note that this can lead to strong photobleaching. Consider using the Snap button instead.
+"""
+BTN_SNAP_LABEL="Snap"
+BTN_SNAP_TOOLTIP="Take a single image in the selected channel.\n\nThe image will not be saved, just displayed."
+BTN_SNAP_ALL_LABEL="Snap selection"
+BTN_SNAP_ALL_TOOLTIP="Take one image in all channels and display them in the multi-point acqusition panel.\n\nThe images will not be saved."
+BTN_SNAP_ALL_CHANNEL_SELECT_LABEL="Change selection"
+BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP="Change selection of channels imaged when clicking the button on the left."
+BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL="Apply z offset"
+BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP="Move to specified offset for all imaging channels. Requires laser autofocus to be initialized."
 
-EXPOSURE_TIME_TOOLTIP="exposure time is the time the camera sensor records an image. Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light)"
-ANALOG_GAIN_TOOLTIP="analog gain increases the camera sensor sensitiviy. Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise."
-CHANNEL_OFFSET_TOOLTIP="channel specific z offset used in multipoint acquisition to focus properly in channels that are not in focus at the same time the nucleus is (given the nucleus is the channel that is used for focusing)"
+EXPOSURE_TIME_LABEL="Exposure time:"
+EXPOSURE_TIME_TOOLTIP="""
+Exposure time is the time the camera sensor records a single image.
+
+Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light).
+
+Range is 0.01ms to 968.0ms
+"""
+ANALOG_GAIN_LABEL="Analog gain:"
+ANALOG_GAIN_TOOLTIP="""
+Analog gain increases the camera sensor sensitiviy.
+
+Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise.
+
+Note that a value of zero means that a (visible) will still be recorded.
+
+Range is 0.0 to 24.0
+"""
+CHANNEL_OFFSET_LABEL="Z Offset:"
+CHANNEL_OFFSET_TOOLTIP="Channel/Light source specific Z offset used in multipoint acquisition.\nCan be used to focus on cell organelles in different Z planes."
+ILLUMINATION_LABEL="Illumination:"
 ILLUMINATION_TOOLTIP="""
 Illumination %.
 
 Fraction of laser power used for illumination of the sample.
 
 Similar effect as exposure time, e.g. the signal is about the same at 50% illumination as it is at half the exposure time.
-If the signal shall be reduced, prefer reducing the exposure time rather than the illumination to reduce imaging time.
 
 Range is 0.1 - 100.0 %.
 """
-
 CAMERA_PIXEL_FORMAT_TOOLTIP="""
 Camera pixel format
 
 MONO8 means monochrome (grey-scale) 8bit
 MONO12 means monochrome 12bit
 
-more bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size
+More bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size.
+Due to file format restrictions, Mono12 takes up twice the storage of Mono8 (not the expected 50%).
 """
 
-FPS_TOOLTIP="Maximum number of frames per second that are recorded while live (capped by exposure time, e.g. 5 images with 300ms exposure time each dont fit into a single second)"
+FPS_TOOLTIP="""
+Maximum number of frames per second that are recorded while live.
+
+The actual number of recorded frames per second may be smaller because of the exposure time, e.g. 5 images with 300ms exposure time each don't fit into a single second.
+"""
+BTN_SAVE_CONFIG_LABEL="save config to file"
+BTN_SAVE_CONFIG_TOOLTIP="save settings related to all imaging modes/channels in a new file (this will open a window where you can specify the location to save the config file)"
+BTN_LOAD_CONFIG_LABEL="load config from file"
+BTN_LOAD_CONFIG_TOOLTIP="load settings related to all imaging modes/channels from a file (this will open a window where you will specify the file to load)"
+CONFIG_FILE_LAST_PATH_LABEL="config. file:"
+CONFIG_FILE_LAST_PATH_TOOLTIP="""
+Configuration file that was loaded last.
+
+If no file has been manually loaded, this will show the path to the default configuration file where the currently displayed settings are always saved.
+If a file has been manually loaded at some point, the last file that was loaded will be displayed.
+
+An asterisk (*) will be displayed after the filename if the settings have been changed since a file has been loaded.
+
+These settings are continuously saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.
+"""
 
 CHANNEL_COLORS={
     0:"grey", # bf led full
@@ -104,6 +149,97 @@ TRIGGER_MODES_LIST=[
     TriggerMode.SOFTWARE,
     TriggerMode.HARDWARE,
 ]
+
+class ImageArrayDisplayQueue(QObject):
+    @TypecheckFunction
+    def __init__(self,gui:Any):
+        QObject.__init__(self)
+        self.queue:Queue = Queue(16) # max 16 items in the queue
+        self.image_lock:Lock = Lock()
+        self.stop_signal_received:bool = False
+        self.thread = Thread(target=self.process_queue) # type: ignore
+        self.thread.start()
+        self.counter:int = 0
+        self.gui=gui
+
+    @TypecheckFunction
+    def process_queue(self):
+        while True:            
+            # process the queue
+            try:
+                [image,source] = self.queue.get(timeout=0.1)
+                self.image_lock.acquire(True)
+
+                self.gui.display_in_image_array(image,source)
+
+                self.counter = self.counter + 1
+                self.queue.task_done()
+
+                self.image_lock.release()
+            except:
+                # if queue is empty, and signal was received, terminate the thread
+                if self.stop_signal_received:
+                    return
+                            
+    def enqueue(self,image:numpy.ndarray,source:int):
+        if self.stop_signal_received:
+            print('! critical - attempted to display image even though stop signal was received!')
+        try:
+            self.queue.put_nowait([image,source])
+        except:
+            print('! critical - imagearraydisplay queue is full, image discarded!')
+
+    @TypecheckFunction
+    def close(self):
+        self.queue.join()
+        self.stop_signal_received = True
+        self.thread.join()
+
+class ImageDisplayQueue(QObject):
+    @TypecheckFunction
+    def __init__(self,gui:Any):
+        QObject.__init__(self)
+        self.queue:Queue = Queue(16) # max 16 items in the queue
+        self.image_lock:Lock = Lock()
+        self.stop_signal_received:bool = False
+        self.thread = Thread(target=self.process_queue) # type: ignore
+        self.thread.start()
+        self.counter:int = 0
+        self.gui=gui
+
+    @TypecheckFunction
+    def process_queue(self):
+        while True:            
+            # process the queue
+            try:
+                image = self.queue.get(timeout=0.1)
+                self.image_lock.acquire(True)
+
+                self.gui.imageDisplayWindow.display_image(image)
+                QApplication.processEvents()
+
+                self.counter = self.counter + 1
+                self.queue.task_done()
+
+                self.image_lock.release()
+            except:
+                # if queue is empty, and signal was received, terminate the thread
+                if self.stop_signal_received:
+                    return
+                            
+    def enqueue(self,image:numpy.ndarray):
+        if self.stop_signal_received:
+            print('! critical - attempted to display image even though stop signal was received!')
+        try:
+            self.queue.put_nowait(image)
+        except:
+            print('! critical - imagedisplay queue is full, image discarded!')
+
+    @TypecheckFunction
+    def close(self):
+        self.queue.join()
+        self.stop_signal_received = True
+        self.thread.join()
 
 class OctopiGUI(QMainWindow):
 
@@ -178,14 +314,16 @@ class OctopiGUI(QMainWindow):
 
         # load widgets
         self.imageDisplay           = widgets.ImageDisplay()
-        self.streamHandler.image_to_display.connect(self.imageDisplay.enqueue)
         self.wellSelectionWidget    = widgets.WellSelectionWidget(self,MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
         self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
         self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
         self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
-        self.core.multipointController.image_to_display_multi.connect(self.display_in_image_array)
+        self.imageArrayDisplayQueue=ImageArrayDisplayQueue(gui=self) # if multipointworker runs sync (instead of async in its own thread), emitting image to display directly increases imaging by 2 hours (!)
+        self.core.multipointController.image_to_display_multi.connect(self.imageArrayDisplayQueue.enqueue)
+        self.imageDisplayQueue=ImageDisplayQueue(gui=self)
+        self.core.multipointController.image_to_display.connect(self.imageDisplay.enqueue)
 
         self.imaging_mode_config_managers={}
 
@@ -210,7 +348,7 @@ class OctopiGUI(QMainWindow):
             imaging_modes_widget_list.extend([
                 [
                     GridItem(None,colSpan=4),
-                    Label("illumination:",tooltip=ILLUMINATION_TOOLTIP).widget,
+                    Label(ILLUMINATION_LABEL,tooltip=ILLUMINATION_TOOLTIP).widget,
                     config_manager.illumination_strength == SpinBoxDouble(
                         minimum=0.1,maximum=100.0,step=0.1,
                         default=config.illumination_intensity,
@@ -223,7 +361,7 @@ class OctopiGUI(QMainWindow):
                     ).widget,
                 ],
                 [   
-                    Label("exposure time:",tooltip=EXPOSURE_TIME_TOOLTIP).widget,
+                    Label(EXPOSURE_TIME_LABEL,tooltip=EXPOSURE_TIME_TOOLTIP).widget,
                     config_manager.exposure_time == SpinBoxDouble(
                         minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
                         maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
@@ -235,7 +373,7 @@ class OctopiGUI(QMainWindow):
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]
                     ).widget,
-                    Label("gain:",tooltip=ANALOG_GAIN_TOOLTIP).widget,
+                    Label(ANALOG_GAIN_LABEL,tooltip=ANALOG_GAIN_TOOLTIP).widget,
                     config_manager.analog_gain == SpinBoxDouble(
                         minimum=0.0,maximum=24.0,step=0.1,
                         default=config.analog_gain,
@@ -246,7 +384,7 @@ class OctopiGUI(QMainWindow):
                             lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
                         ]
                     ).widget,
-                    Label("offset:",tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
+                    Label(CHANNEL_OFFSET_LABEL,tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
                     config_manager.z_offset == SpinBoxDouble(
                         minimum=-30.0,maximum=30.0,step=0.1,
                         default=config.channel_z_offset,
@@ -271,41 +409,53 @@ class OctopiGUI(QMainWindow):
         self.imagingModes=VBox(
             # snap and channel config section
             HBox(
-                self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_all),
-                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label="incl. offset",tooltip="move to specified offset for all imaging channels. requires laser autofocus to be initialized.").widget,
+                self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_selected),
+                self.named_widgets.snap_all_channel_selection == Button(BTN_SNAP_ALL_CHANNEL_SELECT_LABEL,tooltip=BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP,on_clicked=self.snap_all_open_channel_selection).widget,
+                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label=BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL,tooltip=BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP).widget,
             ),
 
-            Label(""),
-            Grid(*flatten([
-                imaging_modes_widget_list,
-                imaging_modes_wide_widgets
-            ])),
+            Dock(
+                Grid(
+                    *flatten([
+                        imaging_modes_widget_list,
+                        imaging_modes_wide_widgets
+                    ])
+                ).widget,
+                "Imaging mode settings"
+            ),
 
             # config save/load section
-            Label(""),
-            HBox(
-                self.named_widgets.save_config_button == Button("save config to file",tooltip="save settings related to all imaging modes/channels in a new file (this will open a window where you can specify the location to save the config file)",on_clicked=self.save_illumination_config),
-                self.named_widgets.load_config_button == Button("load config from file",tooltip="load settings related to all imaging modes/channels from a file (this will open a window where you will specify the file to load)",on_clicked=self.load_illumination_config),
-            ),
-            HBox(
-                Label("config. file:",tooltip="configuration file that was loaded last. If no file has been manually loaded, this will show the path to the default configuration file where the currently displayed settings are always saved. If a file has been manually loaded at some point, the last file that was loaded will be displayed. An asterisk (*) will be displayed after the filename if the settings have been changed since a file has been loaded (these settings are always saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.)"),
-                self.named_widgets.last_configuration_file_path == Label("").widget,
+            Dock(
+                VBox(
+                    HBox(
+                        self.named_widgets.save_config_button == Button(BTN_SAVE_CONFIG_LABEL,tooltip=BTN_SAVE_CONFIG_TOOLTIP,on_clicked=self.save_illumination_config),
+                        self.named_widgets.load_config_button == Button(BTN_LOAD_CONFIG_LABEL,tooltip=BTN_LOAD_CONFIG_TOOLTIP,on_clicked=self.load_illumination_config),
+                    ),
+                    HBox(
+                        Label(CONFIG_FILE_LAST_PATH_LABEL,tooltip=CONFIG_FILE_LAST_PATH_TOOLTIP),
+                        self.named_widgets.last_configuration_file_path == Label("").widget,
+                    )
+                ).widget,
+                "Illumination Settings I/O"
             ),
 
             # numerical investigation section
-            Label(""),
-            Dock(self.histogramWidget,"Histogram").widget,
-            self.backgroundSliderContainer,
-            self.imageEnhanceWidget,
+            self.histogramWidget,
+            #self.backgroundSliderContainer, # TODO disabled because it did not actually seem super useful
 
-            # focus related stuff section
-            Label(""),
-            HBox(
-                self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
-                self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
-                Label("max. FPS",tooltip=FPS_TOOLTIP),
-                self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
+            Dock(
+                VBox(
+                    self.imageEnhanceWidget,
+                    HBox(
+                        self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
+                        self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
+                        Label("max. FPS",tooltip=FPS_TOOLTIP),
+                        self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
+                    ),
+                ).widget,
+                "Live Imaging"
             ),
+
             Dock(self.navigationWidget,"Navigation",True).widget,
 
             # autofocus section
@@ -313,24 +463,9 @@ class OctopiGUI(QMainWindow):
             Dock(self.autofocusWidget,title="Software AF",minimize_height=True).widget,
         ).widget
 
-        self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
+        self.channel_included_in_snap_all_flags=[True for c in self.configurationManager.configurations]
 
-        if False:
-            self.liveWidget=VBox(
-                #self.named_widgets.special_widget == BlankWidget(
-                #    height=300,width=300,
-                #    #background_image_path="./images/384_well_plate_1509x1010.png",
-                #    children=self.named_widgets.wells == [
-                #        BlankWidget(
-                #            height=10,width=10,
-                #            background_color="red",
-                #            offset_left=i*(10+5),offset_top=j*(10+5),
-                #            on_mousePressEvent=lambda event,i=i,j=j: self.well_click_callback(event,i,j)
-                #        )
-                #        for i in range(24) for j in range(16)
-                #    ]
-                #),
-            ).widget
+        self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
 
         self.recordTabWidget = TabBar(
             Tab(self.multiPointWidget, "Acquisition"),
@@ -350,9 +485,9 @@ class OctopiGUI(QMainWindow):
 
         self.navigationViewWrapper=VBox(
             HBox(
-                QLabel("wellplate overview"),
+                Label("wellplate overview").widget,
                 Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget,
-                QLabel("change plate type:"),
+                Label("Change plate type:").widget,
                 self.named_widgets.wellplate_selector
             ).layout,
             self.navigationViewer
@@ -422,7 +557,6 @@ class OctopiGUI(QMainWindow):
             # connections
             self.liveControlWidget_focus_camera.update_camera_settings()
 
-            self.streamHandler_focus_camera.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
             self.laserAutofocusController.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
 
             self.streamHandler_focus_camera.signal_new_frame_received.connect(self.liveController_focus_camera.on_new_frame)
@@ -538,7 +672,7 @@ class OctopiGUI(QMainWindow):
         self.backgroundSliderContainer=VBox(
             self.backgroundHeader,
             self.backgroundSlider
-        ).layout        
+        ).layout
 
     def open_config_load_popup(self):
         somewidget=QMainWindow(self)
@@ -619,8 +753,6 @@ class OctopiGUI(QMainWindow):
                 measured_displacement=self.core.laserAutofocusController.measure_displacement(displacement_measurement_granularity)
 
                 y1[i]=measured_displacement
-
-                QApplication.processEvents()
 
                 total_moved_distance+=move_z_distance_um
 
@@ -1035,8 +1167,6 @@ class OctopiGUI(QMainWindow):
                     widget.setEnabled(enable)
                 elif isinstance(widget,HasWidget):
                     widget.widget.setEnabled(enable)
-    
-        QApplication.processEvents()
 
     def toggle_live(self,button_pressed:bool):
         """
@@ -1137,8 +1267,10 @@ class OctopiGUI(QMainWindow):
         preserve_existing_histogram:bool=False,
         move_to_target:bool=False,
     ):
+        if move_to_target:
+            self.laserAutofocusController.move_to_target(config.channel_z_offset)
+
         image=self.liveController.snap(config)
-        QApplication.processEvents()
         histogram_color=CHANNEL_COLORS[config.illumination_source]
         self.processLiveImage(image,histogram_color=histogram_color,preserve_existing_histogram=preserve_existing_histogram)
         QApplication.processEvents()
@@ -1155,12 +1287,32 @@ class OctopiGUI(QMainWindow):
 
         self.imageArrayDisplayWindow.display_image(image,illumination_source)
 
-    def snap_all(self,_button_state):
+    def snap_all(self,_button_state,snap_enable_list:Optional[List[bool]]=None):
         move_to_target=bool(self.named_widgets.snap_all_with_offset_checkbox.checkState()) # can be 0 (unchecked) or 1(partially checked) or 2(checked)
 
         with core.StreamingCamera(self.camera):
-            for config in self.configurationManager.configurations:
-                self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True,move_to_target=move_to_target)
+            for config_i,config in enumerate(self.configurationManager.configurations):
+                if snap_enable_list is None or snap_enable_list[config_i]:
+                    self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True,move_to_target=move_to_target)
+
+    def snap_selected(self,_button):
+        self.snap_all(None,self.channel_included_in_snap_all_flags)
+
+    def snap_all_open_channel_selection(self,_button):
+        somewidget=QMainWindow(self)
+
+        vbox_widgets=[
+            Label("Tick the channels you want to image.\n(this menu will not initiate imaging)")
+        ]
+
+        for config_i,config in enumerate(self.configurationManager.configurations):
+            def toggle_selection(i):
+                self.channel_included_in_snap_all_flags[i]=not self.channel_included_in_snap_all_flags[i]
+
+            vbox_widgets.append(Checkbox(config.name,checked=self.channel_included_in_snap_all_flags[config_i],on_stateChanged=lambda _btn,i=config_i:toggle_selection(i)))
+                         
+        somewidget.setCentralWidget(VBox(*vbox_widgets).widget)
+        somewidget.show()
 
     def set_background(self,new_background_value:int):
         self.backgroundSlider.value=new_background_value
@@ -1326,6 +1478,9 @@ class OctopiGUI(QMainWindow):
     def closeEvent(self, event:QEvent):
 
         self.get_all_config(include_laser_af_reference=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
+
+        self.imageArrayDisplayQueue.close()
+        self.imageDisplayQueue.close()
         
         self.imageSaver.close()
         self.imageDisplay.close()

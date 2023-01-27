@@ -1,6 +1,6 @@
 # qt libraries
 from qtpy.QtCore import QObject, Signal, Qt # type: ignore
-from qtpy.QtWidgets import QMainWindow, QWidget, QGridLayout, QDesktopWidget, QVBoxLayout, QLabel
+from qtpy.QtWidgets import QMainWindow, QWidget, QGridLayout, QDesktopWidget, QVBoxLayout, QLabel, QApplication
 
 from control._def import *
 
@@ -32,18 +32,18 @@ class ImageDisplay(QObject):
                 return
             # process the queue
             try:
-                [image,_frame_ID,_timestamp] = self.queue.get(timeout=0.1)
+                [image,] = self.queue.get(timeout=0.1)
                 self.image_lock.acquire(True)
                 self.image_to_display.emit(image)
+                QApplication.processEvents()
                 self.image_lock.release()
                 self.queue.task_done()
             except:
                 pass
 
-    # def enqueue(self,image,frame_ID:int,timestamp):
     def enqueue(self,image):
         try:
-            self.queue.put_nowait([image,None,None])
+            self.queue.put_nowait([image,])
             # when using self.queue.put(str_) instead of try + nowait, program can be slowed down despite multithreading because of the block and the GIL
             pass
         except:

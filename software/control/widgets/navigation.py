@@ -98,8 +98,6 @@ class NavigationWidget(QFrame):
         self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_RUNNING)
         self.set_movement_ability(movement_allowed=False)
 
-        QApplication.processEvents()
-
         if self.core.navigation.is_in_loading_position:
             self.core.navigation.loading_position_leave()
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_UNLOADED)

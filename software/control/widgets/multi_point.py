@@ -229,14 +229,17 @@ class MultiPointWidget(QFrame):
                 self.image_format_widget,
             ],
             GridItem(
-                widget=Grid(
-                    [ Label('num acq. in x',tooltip=dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
-                    [ Label('num acq. in y',tooltip=dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
-                    [ Label('num acq. in z',tooltip=dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
-                    [ Label('num acq. in t',tooltip=dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=dt_tooltip), self.entry_dt, ],
+                widget=Dock(
+                    Grid(
+                        [ Label('num acq. in x',tooltip=dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=dx_tooltip), self.entry_deltaX,],
+                        [ Label('num acq. in y',tooltip=dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=dy_tooltip), self.entry_deltaY,],
+                        [ Label('num acq. in z',tooltip=dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=dz_tooltip), self.entry_deltaZ,],
+                        [ Label('num acq. in t',tooltip=dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=dt_tooltip), self.entry_dt, ],
 
-                    GridItem(self.well_grid_selector,0,4,4,1)
-                ).widget,
+                        GridItem(self.well_grid_selector,0,4,4,1)
+                    ).widget,
+                    "Grid imaging settings"
+                ),
                 colSpan=4
             ),
             GridItem(self.list_configurations,
@@ -259,9 +262,6 @@ class MultiPointWidget(QFrame):
         self.setLayout(self.grid.layout)
 
         self.acquisition_is_running=False
-
-        self.multipointController.image_to_display.connect(self.gui.imageDisplay.image_to_display)
-        self.multipointController.image_to_display.connect(self.gui.imageDisplay.image_to_display)
 
     @TypecheckFunction
     def set_image_format(self,index:int):
@@ -315,7 +315,7 @@ class MultiPointWidget(QFrame):
         num_rows=ny
 
         if self.well_grid_selector is None:
-            self.well_grid_selector=BlankWidget(height=size,width=size,background_color="black",children=[])
+            self.well_grid_selector=BlankWidget(height=size,width=size,background_color="black",children=[],tooltip="Grid imaging mask.\n\nSelected positions (lightblue) will be imaged inside each well.")
             self.well_grid_selector.setFixedSize(size,size)
 
         if dimension=="x":
@@ -454,6 +454,10 @@ class MultiPointWidget(QFrame):
             
             self.setEnabled_all(False,exclude_btn_startAcquisition=False)
 
+            self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
+
+            self.btn_startAcquisition.setEnabled(True)
+
             self.experiment_finished_signal=self.gui.start_experiment(
                 additional_data={
                     'project_name':self.gui.project_name_str,
@@ -467,14 +471,15 @@ class MultiPointWidget(QFrame):
                 self.acquisition_is_finished()
                 return
 
-            self.btn_startAcquisition.setText(BUTTON_START_ACQUISITION_RUNNING_TEXT)
-
             self.experiment_finished_signal.connect(self.acquisition_is_finished)
 
-            self.btn_startAcquisition.setEnabled(True)
             QApplication.processEvents()
         else:
-            self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
+            # try this because multipoint worker may run synchronously, in which case there is no signal to disconnect (so disconnecting will throw)
+            try:
+                self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
+            except:
+                pass
             self.gui.abort_experiment()
             self.acquisition_is_finished(aborted=True)
 

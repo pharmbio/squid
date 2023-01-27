@@ -29,9 +29,10 @@ class CameraPixelFormat:
 import time
 
 class Profiler:
-    def __init__(self,msg:str,parent:Optional["Self"]=None):
+    def __init__(self,msg:str,parent:Optional["Self"]=None,discard_if_parent_none:bool=True):
         self.msg=msg
         self.parent=parent
+        self.discard_if_parent_none=discard_if_parent_none
 
         if (not self.parent is None) and (self.msg in self.parent.named_children):
             self.duration=self.parent.named_children[self.msg].duration
@@ -48,7 +49,12 @@ class Profiler:
     def __exit__(self,*args,**kwargs):
         self.duration+=time.monotonic()-self.start_time
         if self.parent is None:
-            print(self.to_text(indent=0,of_total=self.duration))
+            if not self.discard_if_parent_none:
+                print( \
+                    "------------------ profiling results -----------------\n"
+                    f"{self.to_text(indent=0,of_total=self.duration)}"
+                    "------------------------------------------------------\n"
+                )
         else:
             self.parent.named_children[self.msg]=self
 

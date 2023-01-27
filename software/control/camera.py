@@ -66,7 +66,7 @@ class Camera(object):
         self.GAIN_MIN = 0
         self.GAIN_STEP = 1
         self.EXPOSURE_TIME_MS_MIN = 0.01
-        self.EXPOSURE_TIME_MS_MAX = 968 # technically 1000, but hardware trigger adds some overhead that adds 31.5 ms on top, and the sum of these two values mut not exceed 1s, so we cap it intentionally to work with either trigger mode
+        self.EXPOSURE_TIME_MS_MAX = 1000-62.5-1.5 # technically 1000, but hardware trigger adds 62.5ms overhead (then add 1.5 extra to make sure the limit is not hit!)
 
         self.ROI_offset_x = CAMERA.ROI_OFFSET_X_DEFAULT
         self.ROI_offset_y = CAMERA.ROI_OFFSET_X_DEFAULT
@@ -211,14 +211,17 @@ class Camera(object):
         camera_exposure_time=self.exposure_time * 1000
 
         if (not self.is_global_shutter) and (self.trigger_mode == TriggerMode.HARDWARE):
-            camera_exposure_time += self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
+            additional_exposure_time=self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
+            camera_exposure_time += additional_exposure_time
 
         if camera_exposure_time < min_exposure_time:
-            print(f"camera exposure time is {camera_exposure_time} but must be at least {min_exposure_time}")
+            print(f"camera exposure time is {camera_exposure_time} but must be at least {min_exposure_time}. exposure time will be automatically set to the closest valid value.")
+            camera_exposure_time=min_exposure_time
         elif camera_exposure_time > max_exposure_time:
-            print(f"camera exposure time is {camera_exposure_time} but must not be above {max_exposure_time}")
-        else:
-            self.camera.ExposureTime.set(camera_exposure_time)
+            print(f"camera exposure time is {camera_exposure_time} but must not be above {max_exposure_time}. exposure time will be automatically set to the closest valid value.")
+            camera_exposure_time=max_exposure_time
+        
+        self.camera.ExposureTime.set(camera_exposure_time)
 
     @TypecheckFunction
     def set_analog_gain(self,analog_gain:float):

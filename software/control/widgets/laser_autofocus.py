@@ -159,12 +159,14 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE)
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
-    def move_to_target(self,target_um):
+    def move_to_target(self,_btn=None,target_um=None):
         self.btn_move_to_target.setDisabled(True)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IN_PROGRESS)
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
-        self.laserAutofocusController.move_to_target(self.entry_target.value())
+        if target_um is None:
+            target_um=self.entry_target.value()
+        self.laserAutofocusController.move_to_target(target_um)
         self.laserAutofocusController.measure_displacement()
 
         self.btn_move_to_target.setDisabled(False)

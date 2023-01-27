@@ -19,8 +19,6 @@ import control.camera as camera
 from control.core import StreamingCamera, Configuration, NavigationController, LiveController, AutoFocusController, ConfigurationManager, ImageSaver #, LaserAutofocusController
 from control.typechecker import TypecheckFunction
 
-from cProfile import Profile
-
 ENABLE_TQDM_STUFF:bool=False
 if ENABLE_TQDM_STUFF:
     from tqdm import tqdm
@@ -43,16 +41,17 @@ class MultiPointWorker(QObject):
     image_to_display = Signal(numpy.ndarray)
     spectrum_to_display = Signal(numpy.ndarray)
     image_to_display_multi = Signal(numpy.ndarray,int)
-    signal_current_configuration = Signal(Configuration)
     signal_register_current_fov = Signal(float,float)
     signal_new_acquisition=Signal(str)
 
     def __init__(self,
         multiPointController,
-        scan_coordinates:Tuple[List[str],List[Tuple[float,float]]]
+        scan_coordinates:Tuple[List[str],List[Tuple[float,float]]],
+        is_async:bool=True,
     ):
         super().__init__()
         self.multiPointController:MultiPointController = multiPointController
+        self.is_async=is_async
 
         # copy all (relevant) fields to unlock multipointcontroller on thread start
         self.camera = self.multiPointController.camera
@@ -96,18 +95,11 @@ class MultiPointWorker(QObject):
         self.scan_coordinates_name,self.scan_coordinates_mm = scan_coordinates
 
     def run(self):
-        prof=Profile()
-        prof.enable()
-
         try:
             while self.time_point < self.Nt:
                 # continous acquisition
                 if self.dt == 0.0:
-                    QApplication.processEvents()
-
                     self.run_single_time_point()
-
-                    QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
@@ -116,11 +108,7 @@ class MultiPointWorker(QObject):
 
                 # timed acquisition
                 else:
-                    QApplication.processEvents()
-
                     self.run_single_time_point()
-
-                    QApplication.processEvents()
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
@@ -143,14 +131,8 @@ class MultiPointWorker(QObject):
                         
         except AbortAcquisitionException:
             pass
-
-
-        prof.disable()
-        dump_stats_filename="profiled_single_timepoint.prof"
-        prof.dump_stats(dump_stats_filename)
             
         self.finished.emit()
-        QApplication.processEvents()
 
         print("\nfinished multipoint acquisition\n")
 
@@ -159,7 +141,6 @@ class MultiPointWorker(QObject):
 
         configuration_name_AF = MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL
         config_AF = self.configurationManager.config_by_name(configuration_name_AF)
-        self.signal_current_configuration.emit(config_AF)
         self.autofocusController.autofocus()
         self.autofocusController.wait_till_autofocus_has_completed()
 
@@ -190,23 +171,21 @@ class MultiPointWorker(QObject):
             self.image_to_display.emit(image)
             self.image_to_display_multi.emit(image,config.illumination_source)
 
-            QApplication.processEvents()
-
         with Profiler("enqueue image saving",parent=profiler) as enqueuesaveimages:
             if self.camera.is_color:
-                if 'BF LED matrix' in config.name:
-                    if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+                with Profiler("convert color image",parent=enqueuesaveimages) as convertcolorimage:
+                    if 'BF LED matrix' in config.name:
+                        if MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RAW and image.dtype!=numpy.uint16:
+                            image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
+                        elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
+                            image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
+                        elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
+                            image = image[:,:,1]
+                    else:
                         image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.RGB2GRAY:
-                        image = cv2.cvtColor(image,cv2.COLOR_RGB2GRAY)
-                    elif MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_BF_SAVING_OPTION == BrightfieldSavingMode.GREEN_ONLY:
-                        image = image[:,:,1]
-                else:
-                    image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
 
-            self.image_saver.enqueue(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
-
-            QApplication.processEvents()
+            with Profiler("actual enqueue",parent=enqueuesaveimages) as actualenqueueprof:
+                self.image_saver.enqueue(path=saving_path,image=numpy.asarray(image),file_format=Acquisition.IMAGE_FORMAT)
 
         self.signal_new_acquisition.emit('c')
 
@@ -215,26 +194,25 @@ class MultiPointWorker(QObject):
 
         ret_coords=[]
 
-        # autofocus
-        if self.do_reflection_af == False:
-            # perform AF only when (not taking z stack) or (doing z stack from center)
-            if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter % Acquisition.NUMBER_OF_FOVS_PER_AF == 0):
-                self.perform_software_autofocus()
-        else:
-            # first FOV
-            if self.reflection_af_initialized==False:
-                # initialize the reflection AF
-                self.laserAutofocusController.initialize_auto()
-                # do contrast AF for the first FOV
-                if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter==0):
+        with Profiler("run autofocus",parent=profiler) as autofocusprof:
+            # autofocus
+            if self.do_reflection_af == False:
+                # perform AF only when (not taking z stack) or (doing z stack from center)
+                if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter % Acquisition.NUMBER_OF_FOVS_PER_AF == 0):
                     self.perform_software_autofocus()
-                # set the current plane as reference
-                self.laserAutofocusController.set_reference(z_pos_mm=0.0) # z pos does not matter here
-                self.reflection_af_initialized = True
             else:
-                self.laserAutofocusController.move_to_target(0.0)
-
-        QApplication.processEvents()
+                # first FOV
+                if self.reflection_af_initialized==False:
+                    # initialize the reflection AF
+                    self.laserAutofocusController.initialize_auto()
+                    # do contrast AF for the first FOV
+                    if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter==0):
+                        self.perform_software_autofocus()
+                    # set the current plane as reference
+                    self.laserAutofocusController.set_reference(z_pos_mm=0.0) # z pos does not matter here
+                    self.reflection_af_initialized = True
+                else:
+                    self.laserAutofocusController.move_to_target(0.0)
 
         if (self.NZ > 1):
             with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
@@ -245,8 +223,6 @@ class MultiPointWorker(QObject):
                 # maneuver for achiving uniform step size and repeatability when using open-loop control
                 self.navigation.move_z_usteps(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
                 self.navigation.move_z_usteps(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
-
-                QApplication.processEvents()
 
         # z-stack
         for k in range(self.NZ):
@@ -259,8 +235,6 @@ class MultiPointWorker(QObject):
                 file_ID = f'{coordinate_name}'
 
             self.movement_deviation_from_focusplane=0.0
-
-            QApplication.processEvents()
 
             with Profiler("image all configs",parent=profiler) as image_all_configs:
 
@@ -276,9 +250,8 @@ class MultiPointWorker(QObject):
                         previous_channel_z_offset=self.selected_configurations[config_i-1].channel_z_offset
                         current_channel_offset=self.selected_configurations[config_i-1].channel_z_offset
                         counter_backlash=previous_channel_z_offset<current_channel_offset
-                    self.image_config(config=config,saving_path=saving_path,profiler=image_all_configs,counter_backlash=counter_backlash)
 
-                QApplication.processEvents()
+                    self.image_config(config=config,saving_path=saving_path,profiler=image_all_configs,counter_backlash=counter_backlash)
 
             with Profiler("ret coords append",parent=profiler) as retcoordsappend:
                 # add the coordinate of the current location
@@ -292,8 +265,6 @@ class MultiPointWorker(QObject):
             # register the current fov in the navigationViewer 
             self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
 
-            QApplication.processEvents()
-
             # check if the acquisition should be aborted
             if self.multiPointController.abort_acqusition_requested:
                 raise AbortAcquisitionException()
@@ -305,8 +276,6 @@ class MultiPointWorker(QObject):
                     self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
 
             self.signal_new_acquisition.emit('z')
-
-            QApplication.processEvents()
         
         if self.NZ > 1:
             # move z back
@@ -316,8 +285,6 @@ class MultiPointWorker(QObject):
 
             self.on_abort_dz_usteps += latest_offset
             self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
-
-        QApplication.processEvents()
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
@@ -333,17 +300,16 @@ class MultiPointWorker(QObject):
             well_tqdm=tqdm(range(self.num_positions_per_well),desc="pos in well", unit="pos",leave=False)
             self.well_tqdm_iter=iter(well_tqdm)
 
+        leftover_x_mm=0.0
+        leftover_y_mm=0.0
+
         # along y
         for i in range(self.NY):
-
-            QApplication.processEvents()
 
             self.FOV_counter = 0 # so that AF at the beginning of each new row
 
             # along x
             for j in range(self.NX):
-
-                QApplication.processEvents()
 
                 j_actual = j if self.x_scan_direction==1 else self.NX-1-j
                 site_index = 1 + j_actual + i * self.NX
@@ -355,9 +321,17 @@ class MultiPointWorker(QObject):
                     do_image_this_position=self.grid_mask[i][j_actual]
 
                 if do_image_this_position:
+                    with Profiler("move to target location",parent=profiler) as movetotargetposition:
+                        self.navigation.move_by_mm(
+                            x_mm=leftover_x_mm if numpy.abs(leftover_x_mm)>1e-5 else None, # only move if moving distance is larger than zero (larger than <zero plus a small value to account for floating-point errors>)
+                            y_mm=leftover_y_mm if numpy.abs(leftover_y_mm)>1e-5 else None, # only move if moving distance is larger than zero (larger than <zero plus a small value to account for floating-point errors>)
+                            wait_for_completion={}
+                        )#,wait_for_stabilization=True)
+                        leftover_y_mm=0.0
+                        leftover_x_mm=0.0
+
                     try:
                         with Profiler("image z stack",parent=profiler) as imagezstack:
-                            QApplication.processEvents()
                             imaged_coords_dict_list=self.image_zstack_here(
                                 x=j,y=i,
                                 coordinate_name=coordinate_name,
@@ -365,8 +339,6 @@ class MultiPointWorker(QObject):
                             )
 
                         with Profiler("concat pd",parent=profiler) as concat_pd:
-                            QApplication.processEvents()
-
                             coordinates_pd = pd.concat([
                                 coordinates_pd,
                                 pd.DataFrame(imaged_coords_dict_list)
@@ -377,11 +349,6 @@ class MultiPointWorker(QObject):
                             self.well_tqdm_iter.close()
 
                         self.liveController.turn_off_illumination()
-                        # do not actually move back after abortion. current position is physically valid, moving in a straight line to an assumed safe location may cross invalid space!
-                        if False:
-                            self.navigation.move_x_usteps(-self.on_abort_dx_usteps,wait_for_completion={})
-                            self.navigation.move_y_usteps(-self.on_abort_dy_usteps,wait_for_completion={})
-                            self.navigation.move_z_usteps(-self.on_abort_dz_usteps,wait_for_completion={})
 
                         coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                         self.navigation.enable_joystick_button_action = True
@@ -393,21 +360,15 @@ class MultiPointWorker(QObject):
                 if self.NX > 1:
                     # move x
                     if j < self.NX - 1:
-                        with Profiler("move to next column",parent=profiler) as movetonextcolumn:
-                            self.navigation.move_x_usteps(self.x_scan_direction*self.deltaX_usteps,wait_for_completion={})#,wait_for_stabilization=True)
-                            self.on_abort_dx_usteps = self.on_abort_dx_usteps + self.x_scan_direction*self.deltaX_usteps
-
-                QApplication.processEvents()
+                        leftover_x_mm+=self.x_scan_direction*self.deltaX
 
             # move along rows in alternating directions (instead of always starting on left side of row)
             self.x_scan_direction = -self.x_scan_direction
 
-            with Profiler("move to next row",parent=profiler) as after_x_prof:
-                if self.NY > 1:
-                    # move y
-                    if i < self.NY - 1:
-                        self.navigation.move_y_usteps(self.deltaY_usteps,wait_for_completion={})#,wait_for_stabilization=True)
-                        self.on_abort_dy_usteps = self.on_abort_dy_usteps + self.deltaY_usteps
+            if self.NY > 1:
+                # move y
+                if i < self.NY - 1:
+                    leftover_y_mm+=self.deltaY
 
             self.signal_new_acquisition.emit('y')
 
@@ -418,7 +379,7 @@ class MultiPointWorker(QObject):
         return coordinates_pd
 
     def run_single_time_point(self):
-        with Profiler("run_single_time_point") as profiler:
+        with Profiler("run_single_time_point",parent=None,discard_if_parent_none=False) as profiler:
             with StreamingCamera(self.camera), StreamingCamera(self.autofocusController.camera):
 
                 # disable joystick button action
@@ -456,7 +417,7 @@ class MultiPointWorker(QObject):
 
                     with Profiler("move_to_well",parent=profiler) as profmm:
                         # this function handles avoiding invalid physical positions etc.
-                        self.navigation.move_to_mm(x_mm=base_x,y_mm=base_y)
+                        self.navigation.move_to_mm(x_mm=base_x,y_mm=base_y,wait_for_completion={})
 
                     self.x_scan_direction = 1 # will be flipped between {-1, 1} to alternate movement direction in rows within the same well (instead of moving to same edge of row and wasting time by doing so)
                     self.on_abort_dx_usteps = 0
@@ -469,8 +430,6 @@ class MultiPointWorker(QObject):
 
                     with Profiler("image_grid_here",parent=profiler) as immm:
                         coordinates_pd=self.image_grid_here(coordinates_pd=coordinates_pd,base_coordinate_name=base_coordinate_name,profiler=immm)
-
-                    QApplication.processEvents()
 
                     if n_regions == 1:
                         # only move to the start position if there's only one region in the scan
@@ -487,8 +446,6 @@ class MultiPointWorker(QObject):
                         self.navigation.microcontroller.move_z_to_usteps(self.navigation.z_pos_usteps)
                         self.navigation.microcontroller.wait_till_operation_is_completed()
 
-                    QApplication.processEvents()
-
                 coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                 self.navigation.enable_joystick_button_action = True
 
@@ -501,7 +458,6 @@ class MultiPointController(QObject):
     image_to_display = Signal(numpy.ndarray)
     image_to_display_multi = Signal(numpy.ndarray,int)
     spectrum_to_display = Signal(numpy.ndarray)
-    signal_current_configuration = Signal(Configuration)
     signal_register_current_fov = Signal(float,float)
 
     #@TypecheckFunction
@@ -713,8 +669,9 @@ class MultiPointController(QObject):
             # run the acquisition
             self.timestamp_acquisition_started = time.time()
 
-            self.multiPointWorker = MultiPointWorker(self,image_positions)
-            RUN_WORKER_ASYNC=True
+            RUN_WORKER_ASYNC=False
+            self.multiPointWorker = MultiPointWorker(self,image_positions,is_async=RUN_WORKER_ASYNC)
+            
             if RUN_WORKER_ASYNC:
                 self.thread = QThread()
                 self.multiPointWorker.moveToThread(self.thread)
@@ -724,10 +681,9 @@ class MultiPointController(QObject):
                 if not on_new_acquisition is None:
                     self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
 
-                self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
-                self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
+                self.multiPointWorker.image_to_display.connect(self.image_to_display.emit)
+                self.multiPointWorker.image_to_display_multi.connect(self.image_to_display_multi.emit)
                 self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
-                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration,type=Qt.BlockingQueuedConnection)
                 self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
 
                 self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
@@ -741,10 +697,9 @@ class MultiPointController(QObject):
                 if not on_new_acquisition is None:
                     self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
 
-                self.multiPointWorker.image_to_display.connect(self.slot_image_to_display)
-                self.multiPointWorker.image_to_display_multi.connect(self.slot_image_to_display_multi)
+                # self.multiPointWorker.image_to_display.connect(self.image_to_display.emit) # adds an hour or two to the imaging time.. ?!
+                self.multiPointWorker.image_to_display_multi.connect(self.image_to_display_multi.emit)
                 self.multiPointWorker.spectrum_to_display.connect(self.slot_spectrum_to_display)
-                self.multiPointWorker.signal_current_configuration.connect(self.slot_current_configuration) # using a blocking queue here deadlocks
                 self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
 
                 self.multiPointWorker.finished.connect(self._on_acquisition_completed)
@@ -761,28 +716,21 @@ class MultiPointController(QObject):
         self.multiPointWorker=None
         self.thread=None
 
-    def _on_acquisition_completed(self):
-        # restore the previous selected mode
-        if not self.configuration_before_running_multipoint is None:
-            self.signal_current_configuration.emit(self.configuration_before_running_multipoint)
-        
+    def _on_acquisition_completed(self):        
         # emit the acquisition finished signal to enable the UI
         self.acquisitionFinished.emit()
 
     def request_abort_aquisition(self):
         self.abort_acqusition_requested = True
 
-    def slot_image_to_display(self,image):
+    def _slot_image_to_display(self,image):
         self.image_to_display.emit(image)
 
     def slot_spectrum_to_display(self,data):
         self.spectrum_to_display.emit(data)
 
-    def slot_image_to_display_multi(self,image,illumination_source):
+    def _slot_image_to_display_multi(self,image,illumination_source):
         self.image_to_display_multi.emit(image,illumination_source)
-
-    def slot_current_configuration(self,configuration):
-        self.signal_current_configuration.emit(configuration)
 
     def slot_register_current_fov(self,x_mm,y_mm):
         self.signal_register_current_fov.emit(x_mm,y_mm)
