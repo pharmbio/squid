@@ -1,15 +1,18 @@
 # qt libraries
 from qtpy.QtCore import Signal, Qt # type: ignore
-from qtpy.QtWidgets import QFrame, QComboBox, QDoubleSpinBox, QPushButton, QSlider, QGridLayout, QLabel, QVBoxLayout, QFileDialog
+from qtpy.QtWidgets import QFrame, QComboBox, QDoubleSpinBox, QPushButton, QSlider, QGridLayout, QLabel, QVBoxLayout, QFileDialog, QApplication
 
 import time
 
 from control._def import *
-from control.core import Configuration, LiveController, ConfigurationManager, StreamHandler
+from control.core import Configuration, LiveController, ConfigurationManager, StreamingCamera
+
 from control.typechecker import TypecheckFunction
 from control.gui import *
 
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Callable
+
+import numpy
 
 # 'Live' button text
 LIVE_BUTTON_IDLE_TEXT="Start Live"
@@ -31,15 +34,15 @@ class LiveControlWidget(QFrame):
     def fps_trigger(self)->float:
         return self.liveController.fps_trigger
 
-    def __init__(self, 
-        streamHandler:StreamHandler, 
+    def __init__(self,
         liveController:LiveController,
-        configurationManager:ConfigurationManager
+        configurationManager:ConfigurationManager,
+        on_new_frame:Callable[[numpy.ndarray,],None]
     ):
         super().__init__()
         self.liveController = liveController
-        self.streamHandler = streamHandler
         self.configurationManager = configurationManager
+        self.on_new_frame=on_new_frame
         
         self.triggerMode = TriggerMode.SOFTWARE
         # note that this references the object in self.configurationManager.configurations
@@ -50,14 +53,9 @@ class LiveControlWidget(QFrame):
 
         self.is_switching_mode = False # flag used to prevent from settings being set by twice - from both mode change slot and value change slot; another way is to use blockSignals(True)
 
-    def add_components(self):
-        # line 0: trigger mode
-        trigger_mode_name_list=[mode.value for mode in TriggerMode]
-        self.dropdown_triggerMenu = Dropdown(trigger_mode_name_list,
-            current_index=trigger_mode_name_list.index(self.triggerMode.value),
-            on_currentIndexChanged=self.update_trigger_mode
-        ).widget
+        self.stop_requested=False
 
+    def add_components(self):
         self.entry_triggerFPS = SpinBoxDouble(minimum=0.02,maximum=100.0,step=1.0,default=self.fps_trigger,
             on_valueChanged=self.liveController.set_trigger_fps
         ).widget
@@ -75,8 +73,6 @@ class LiveControlWidget(QFrame):
             Grid([ # general camera settings
                 Label('pixel format',tooltip=CAMERA_PIXEL_FORMAT_TOOLTIP).widget, 
                 self.camera_pixel_format_widget,
-                QLabel('Trigger Mode'), 
-                self.dropdown_triggerMenu, 
             ]).layout,
             Grid([ # start live imaging
                 self.btn_live,
@@ -90,27 +86,29 @@ class LiveControlWidget(QFrame):
     @TypecheckFunction
     def toggle_live(self,pressed:bool):
         if pressed:
-            self.liveController.set_microscope_mode(self.currentConfiguration)
             self.btn_live.setText(LIVE_BUTTON_RUNNING_TEXT)
-            self.liveController.start_live()
-        else:
+            max_fps=self.liveController.fps_trigger
+
+            self.emit_camera_settings()
+
+            with StreamingCamera(self.liveController.camera):
+                last_image_time=time.monotonic()
+                while not self.stop_requested:
+                    current_time=time.monotonic()
+                    time_to_next_image=1/max_fps - (current_time-last_image_time)
+                    if time_to_next_image>0:
+                        time.sleep(time_to_next_image)
+                        QApplication.processEvents()
+
+                    new_image=self.liveController.snap(config=self.currentConfiguration)
+                    self.on_new_frame(new_image)
+                    last_image_time=current_time
+
             self.btn_live.setText(LIVE_BUTTON_IDLE_TEXT)
-            self.liveController.stop_live()
+        else:
+            self.stop_requested=True
 
     @TypecheckFunction
-    def update_camera_settings(self):
+    def emit_camera_settings(self):
         self.signal_newAnalogGain.emit(self.configurationManager.configurations[0].analog_gain)
         self.signal_newExposureTime.emit(self.configurationManager.configurations[0].exposure_time)
-
-    @TypecheckFunction
-    def update_trigger_mode(self):
-        self.liveController.set_trigger_mode(self.dropdown_triggerMenu.currentText())
-
-    @TypecheckFunction
-    def set_trigger_mode(self,trigger_mode:str):
-        self.dropdown_triggerMenu.setCurrentText(trigger_mode)
-        self.update_trigger_mode()
-
-    @TypecheckFunction
-    def set_microscope_mode(self,config:Configuration):
-        self.dropdown_modeSelection.setCurrentText(config.name)

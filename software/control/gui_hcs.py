@@ -529,7 +529,11 @@ class OctopiGUI(QMainWindow):
         # laser af section
         LASER_AUTOFOCUS_LIVE_CONTROLLER_ENABLED=True
         if LASER_AUTOFOCUS_LIVE_CONTROLLER_ENABLED:
-            self.liveControlWidget_focus_camera = widgets.LiveControlWidget(self.streamHandler_focus_camera,self.liveController_focus_camera,self.configurationManager_focus_camera)
+            self.liveControlWidget_focus_camera = widgets.LiveControlWidget(
+                self.liveController_focus_camera,
+                self.configurationManager_focus_camera,
+                on_new_frame=lambda image:self.laserAutofocusController.image_to_display.emit(image)
+            )
             self.imageDisplayWindow_focus = widgets.ImageDisplayWindow(draw_crosshairs=True)
 
             dock_laserfocus_image_display = Dock(
@@ -555,7 +559,7 @@ class OctopiGUI(QMainWindow):
             laserfocus_dockArea.addDock(dock_laserfocus_liveController,'right',relativeTo=dock_laserfocus_image_display)
 
             # connections
-            self.liveControlWidget_focus_camera.update_camera_settings()
+            self.liveControlWidget_focus_camera.emit_camera_settings()
 
             self.laserAutofocusController.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
 
