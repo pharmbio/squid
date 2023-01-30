@@ -86,7 +86,11 @@ class LiveControlWidget(QFrame):
     @TypecheckFunction
     def toggle_live(self,pressed:bool):
         if pressed:
+            self.stop_requested=False
+
             self.btn_live.setText(LIVE_BUTTON_RUNNING_TEXT)
+            QApplication.processEvents()
+
             max_fps=self.liveController.fps_trigger
 
             self.emit_camera_settings()
@@ -105,6 +109,7 @@ class LiveControlWidget(QFrame):
                     last_image_time=current_time
 
             self.btn_live.setText(LIVE_BUTTON_IDLE_TEXT)
+            QApplication.processEvents()
         else:
             self.stop_requested=True
 
