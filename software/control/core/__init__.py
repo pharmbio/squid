@@ -32,8 +32,8 @@ class StreamingCamera:
 
     def __exit__(self,_exception_type,_exception_value,_exception_traceback):
         if self.this_put_camera_into_a_state_to_be_used_directly:
-            if self.was_streaming:
-                self.camera.enable_callback()
+            #if self.was_streaming:
+            #    self.camera.enable_callback()
             if not self.was_live:
                 self.camera.is_live=False
             if not self.callback_was_enabled:

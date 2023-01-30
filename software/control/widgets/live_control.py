@@ -93,8 +93,6 @@ class LiveControlWidget(QFrame):
 
             max_fps=self.liveController.fps_trigger
 
-            self.emit_camera_settings()
-
             with StreamingCamera(self.liveController.camera):
                 last_image_time=time.monotonic()
                 while not self.stop_requested:
@@ -112,8 +110,3 @@ class LiveControlWidget(QFrame):
             QApplication.processEvents()
         else:
             self.stop_requested=True
-
-    @TypecheckFunction
-    def emit_camera_settings(self):
-        self.signal_newAnalogGain.emit(self.configurationManager.configurations[0].analog_gain)
-        self.signal_newExposureTime.emit(self.configurationManager.configurations[0].exposure_time)

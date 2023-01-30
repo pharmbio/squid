@@ -18,14 +18,14 @@ class Configuration:
     mode_id:int
     name:str
     camera_sn:str
-    exposure_time:float # in ms
+    exposure_time_ms:float # in ms
     analog_gain:float
     illumination_source:int
     illumination_intensity:float # percent light source power/intensity
     channel_z_offset:Optional[float]=None
 
     def set_exposure_time(self,new_value:float):
-        self.exposure_time=new_value
+        self.exposure_time_ms=new_value
     def set_analog_gain(self,new_value:float):
         self.analog_gain=new_value
     def set_offset(self,new_value:float):
@@ -45,7 +45,7 @@ class Configuration:
             "ID":self.mode_id,
             "Name":self.name,
             "IlluminationSource":self.illumination_source,
-            "ExposureTime":self.exposure_time,
+            "ExposureTime":self.exposure_time_ms,
             "AnalogGain":self.analog_gain,
             "IlluminationIntensity":self.illumination_intensity,
             "CameraSN":self.camera_sn,
@@ -57,7 +57,7 @@ class Configuration:
             mode_id=s["ID"],
             name=s["Name"],
             illumination_source=s["IlluminationSource"],
-            exposure_time=s["ExposureTime"],
+            exposure_time_ms=s["ExposureTime"],
             analog_gain=s["AnalogGain"],
             illumination_intensity=s["IlluminationIntensity"],
             camera_sn=s["CameraSN"],

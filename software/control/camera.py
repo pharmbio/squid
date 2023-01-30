@@ -49,7 +49,7 @@ class Camera(object):
         self.rotate_image_angle = rotate_image_angle
         self.flip_image = flip_image
 
-        self.exposure_time = 0 # unit: ms
+        self.exposure_time_ms = 10.0
         self.analog_gain = -1
         self.frame_ID = -1
         self.frame_ID_software = -1
@@ -196,8 +196,8 @@ class Camera(object):
     @TypecheckFunction
     def set_exposure_time(self,exposure_time:float):
         assert not self.camera is None
-        if self.exposure_time!=exposure_time: # takes 10ms, so avoid if possible
-            self.exposure_time = exposure_time
+        if self.exposure_time_ms!=exposure_time: # takes 10ms, so avoid if possible
+            self.exposure_time_ms = exposure_time
             self.update_camera_exposure_time()
 
     @TypecheckFunction
@@ -205,23 +205,23 @@ class Camera(object):
         assert not self.camera is None
 
         camera_exposure_time_range=self.camera.ExposureTime.get_range()
-        min_exposure_time=camera_exposure_time_range['min']
-        max_exposure_time=camera_exposure_time_range['max']
+        min_exposure_time_us=camera_exposure_time_range['min']
+        max_exposure_time_us=camera_exposure_time_range['max']
 
-        camera_exposure_time=self.exposure_time * 1000
+        camera_exposure_time_us=self.exposure_time_ms * 1000
 
         if (not self.is_global_shutter) and (self.trigger_mode == TriggerMode.HARDWARE):
             additional_exposure_time=self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1) + 500 # add an additional 500 us so that the illumination can fully turn off before rows start to end exposure
-            camera_exposure_time += additional_exposure_time
+            camera_exposure_time_us += additional_exposure_time
 
-        if camera_exposure_time < min_exposure_time:
-            print(f"camera exposure time is {camera_exposure_time} but must be at least {min_exposure_time}. exposure time will be automatically set to the closest valid value.")
-            camera_exposure_time=min_exposure_time
-        elif camera_exposure_time > max_exposure_time:
-            print(f"camera exposure time is {camera_exposure_time} but must not be above {max_exposure_time}. exposure time will be automatically set to the closest valid value.")
-            camera_exposure_time=max_exposure_time
+        if camera_exposure_time_us < min_exposure_time_us:
+            print(f"camera exposure time is {camera_exposure_time_us}us but must be at least {min_exposure_time_us}us. exposure time will be automatically set to the closest valid value.")
+            camera_exposure_time_us=min_exposure_time_us
+        elif camera_exposure_time_us > max_exposure_time_us:
+            print(f"camera exposure time is {camera_exposure_time_us}us but must not be above {max_exposure_time_us}us. exposure time will be automatically set to the closest valid value.")
+            camera_exposure_time_us=max_exposure_time_us
         
-        self.camera.ExposureTime.set(camera_exposure_time)
+        self.camera.ExposureTime.set(camera_exposure_time_us)
 
     @TypecheckFunction
     def set_analog_gain(self,analog_gain:float):
@@ -374,7 +374,7 @@ class Camera(object):
         assert not self.camera is None
 
         raw_image=None
-        while raw_image is None:
+        while raw_image is None or raw_image.get_status()==gx.GxFrameStatusList.INCOMPLETE:
             time.sleep(0.005)
             QApplication.processEvents()
             raw_image = self.camera.data_stream[self.device_index].get_image()

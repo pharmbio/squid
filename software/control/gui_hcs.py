@@ -365,7 +365,7 @@ class OctopiGUI(QMainWindow):
                     config_manager.exposure_time == SpinBoxDouble(
                         minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
                         maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
-                        default=config.exposure_time,
+                        default=config.exposure_time_ms,
                         tooltip=EXPOSURE_TIME_TOOLTIP,
                         on_valueChanged=[
                             lambda val,c=config: self.configurationManager.config_by_name(c.name).set_exposure_time(val),
@@ -559,8 +559,6 @@ class OctopiGUI(QMainWindow):
             laserfocus_dockArea.addDock(dock_laserfocus_liveController,'right',relativeTo=dock_laserfocus_image_display)
 
             # connections
-            self.liveControlWidget_focus_camera.emit_camera_settings()
-
             self.laserAutofocusController.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
 
             self.streamHandler_focus_camera.signal_new_frame_received.connect(self.liveController_focus_camera.on_new_frame)
@@ -1259,7 +1257,7 @@ class OctopiGUI(QMainWindow):
     def reload_configuration_into_gui(self,new_file_path:str):
         for config in self.configurationManager.configurations:
             self.imaging_mode_config_managers[config.mode_id].illumination_strength.setValue(config.illumination_intensity)
-            self.imaging_mode_config_managers[config.mode_id].exposure_time.setValue(config.exposure_time)
+            self.imaging_mode_config_managers[config.mode_id].exposure_time_ms.setValue(config.exposure_time_ms)
             self.imaging_mode_config_managers[config.mode_id].analog_gain.setValue(config.analog_gain)
             self.imaging_mode_config_managers[config.mode_id].z_offset.setValue(config.channel_z_offset)
 

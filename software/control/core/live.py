@@ -98,7 +98,8 @@ class LiveController(QObject):
                 """ take image """
                 image=None
                 start_time=time.monotonic()
-                while (time.monotonic()-start_time)<(config.exposure_time/1000.0+0.15): # timeout image capture
+                max_wait_time_s=config.exposure_time_ms/1000.0+0.15 # add extra 150ms to wait for imaging
+                while (time.monotonic()-start_time) < max_wait_time_s: # timeout image capture
                     try:
                         self.trigger_acquisition()
                         image = self.camera.read_frame()
@@ -119,7 +120,7 @@ class LiveController(QObject):
                 numpy.dtype('uint8'):2**8-1,
                 numpy.dtype('uint16'):2**12-1,
             }[image.dtype]
-            print(f"recorded image in channel {config.name} with {config.exposure_time:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
+            print(f"recorded image in channel {config.name} with {config.exposure_time_ms:.2f}ms exposure time, {config.analog_gain:.2f} analog gain and got image with mean brightness {(image.mean()/max_value*100):.2f}%")
 
         with Profiler("postprocess snap",parent=profiler) as postprocesssnap:
             # cropping etc. takes about 3.5ms
@@ -218,7 +219,8 @@ class LiveController(QObject):
             self.camera.send_trigger()
 
         elif self.trigger_mode == TriggerMode.HARDWARE:
-            self.microcontroller.send_hardware_trigger(control_illumination=True,illumination_on_time_us=self.camera.exposure_time*1000)
+            camera_exposure_time_us=self.camera.exposure_time_ms*1000
+            self.microcontroller.send_hardware_trigger(control_illumination=True,illumination_on_time_us=camera_exposure_time_us)
             self.microcontroller.wait_till_operation_is_completed()
 
         if not self.stream_handler is None:
@@ -301,7 +303,7 @@ class LiveController(QObject):
                 self.turn_off_illumination()
 
         # set camera exposure time and analog gain # this takes nearly 20ms (all the time in this function is spent here...)
-        self.camera.set_exposure_time(configuration.exposure_time)
+        self.camera.set_exposure_time(configuration.exposure_time_ms)
         self.camera.set_analog_gain(configuration.analog_gain)
 
         # set illumination

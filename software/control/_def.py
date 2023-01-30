@@ -280,13 +280,39 @@ class WellplateFormatPhysical:
     columns:int
 
     def imageable_origin(self)->Tuple[float,float]:
-        """ offset for coordinate origin, based on calibration with 384 wellplate """
+        """
+        
+        offset for coordinate origin, based on calibration with 384 wellplate
+
+        returns x,y coordinate in mm of imageable origin, i.e. top left coordinate of top-left well (does NOT mean that the corner can actualle be imaged, i.e. the well containing that corner may not be valid.)
+        this should only be used for internal reference
+        
+        """
 
         wellplate_format_384=WELLPLATE_FORMATS[384]
 
+        # explanation for math below:
+        #   A1 coordinates for wellplate type are coordinates for center of well A1, so offset half the well size towards top left for origin
+        #   position calibration is done via a 384 wellplate, so:
+        #       take calibrated position (MACHINE_CONFIG.{X,Y}_MM_384_WELLPLATE_UPPERLEFT), which is the top left corner of well B2
+        #       so subtract well spacing once (B2 -> A1)
+        #       and add half the well size to move to center of A1 (i.e. now we have calibrated coordinates of center of A1 on 384 wellplate)
+        #       then subtract the expected center of A1
+        #           -> now we have calibrated offset for coordinates of center of well A1
+        #       then add offset to center of A1 of current plate type
+
+
+        origin_x_mm = self.A1_x_mm - self.well_size_mm/2 + \
+            MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_size_mm/2 - \
+            (wellplate_format_384.A1_x_mm + wellplate_format_384.well_spacing_mm )
+        
+        origin_y_mm = self.A1_y_mm - self.well_size_mm/2 + \
+            MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_size_mm/2 - \
+            (wellplate_format_384.A1_y_mm + wellplate_format_384.well_spacing_mm )
+
         return (
-            self.A1_x_mm + (MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT - wellplate_format_384.A1_x_mm - wellplate_format_384.well_spacing_mm ), # - wellplate_format_384.well_spacing_mm  ? (somehow A1 origin shows numbers as they should be for B2? how to account for this?)
-            self.A1_y_mm + (MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT - wellplate_format_384.A1_y_mm - wellplate_format_384.well_spacing_mm ) # - wellplate_format_384.well_spacing_mm  ? (somehow A1 origin shows numbers as they should be for B2? how to account for this?)
+            origin_x_mm,
+            origin_y_mm
         )
 
     @TypecheckFunction
@@ -300,7 +326,7 @@ class WellplateFormatPhysical:
         # offset from top left of well to position within well where cursor/camera should go
         # should be centered, so offset is same in x and y
         well_cursor_offset_x=self.well_size_mm/2
-        well_cursor_offset_y=well_cursor_offset_x
+        well_cursor_offset_y=self.well_size_mm/2
 
         x_mm = origin_x_offset + well_on_plate_offset_x + well_cursor_offset_x
         y_mm = origin_y_offset + well_on_plate_offset_y + well_cursor_offset_y
