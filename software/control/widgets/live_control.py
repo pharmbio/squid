@@ -5,7 +5,7 @@ from qtpy.QtWidgets import QFrame, QComboBox, QDoubleSpinBox, QPushButton, QSlid
 import time
 
 from control._def import *
-from control.core import Configuration, LiveController, ConfigurationManager, StreamingCamera
+from control.core import Configuration, LiveController, ConfigurationManager
 
 from control.typechecker import TypecheckFunction
 from control.gui import *
@@ -36,17 +36,17 @@ class LiveControlWidget(QFrame):
 
     def __init__(self,
         liveController:LiveController,
-        configurationManager:ConfigurationManager,
+        configuration_manager:ConfigurationManager,
         on_new_frame:Callable[[numpy.ndarray,],None]
     ):
         super().__init__()
         self.liveController = liveController
-        self.configurationManager = configurationManager
+        self.configuration_manager = configuration_manager
         self.on_new_frame=on_new_frame
         
         self.triggerMode = TriggerMode.SOFTWARE
-        # note that this references the object in self.configurationManager.configurations
-        self.currentConfiguration:Configuration = self.configurationManager.configurations[0]
+        # note that this references the object in self.configuration_manager.configurations
+        self.currentConfiguration:Configuration = self.configuration_manager.configurations[0]
 
         self.add_components()
         self.liveController.set_microscope_mode(self.currentConfiguration)
@@ -91,9 +91,10 @@ class LiveControlWidget(QFrame):
             self.btn_live.setText(LIVE_BUTTON_RUNNING_TEXT)
             QApplication.processEvents()
 
+
             max_fps=self.liveController.fps_trigger
 
-            with StreamingCamera(self.liveController.camera):
+            with self.liveController.camera.wrapper.ensure_streaming():
                 last_image_time=time.monotonic()
                 while not self.stop_requested:
                     current_time=time.monotonic()
@@ -105,6 +106,7 @@ class LiveControlWidget(QFrame):
                     new_image=self.liveController.snap(config=self.currentConfiguration)
                     self.on_new_frame(new_image)
                     last_image_time=current_time
+
 
             self.btn_live.setText(LIVE_BUTTON_IDLE_TEXT)
             QApplication.processEvents()

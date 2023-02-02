@@ -137,7 +137,7 @@ CHANNEL_COLORS={
     11:"purple", # 405
 }
 
-def seconds_to_long_time(sec:float)->str:
+def format_seconds_nicely(sec:float)->str:
     hours=int(sec//3600)
     sec-=hours*3600
     minutes=int(sec//60)
@@ -314,9 +314,16 @@ class OctopiGUI(QMainWindow):
 
         # load widgets
         self.imageDisplay           = widgets.ImageDisplay()
-        self.wellSelectionWidget    = widgets.WellSelectionWidget(self,MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT)
-        self.navigationWidget       = widgets.NavigationWidget(self.core,gui=self,widget_configuration=default_well_plate)
-        self.autofocusWidget        = widgets.AutoFocusWidget(self.core,gui=self)
+        self.wellSelectionWidget    = widgets.WellSelectionWidget(
+            move_to_index=self.core.navigation.move_to_index,
+            format=MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
+        )
+        self.navigationWidget       = widgets.NavigationWidget(self.core)
+        self.autofocusWidget        = widgets.AutoFocusWidget(
+            software_af_controller=self.core.autofocusController,
+            configuration_manager=self.core.main_camera.configuration_manager,
+            on_set_all_callbacks_enabled=self.set_all_interactibles_enabled,
+        )
         self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
         self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
 
@@ -402,7 +409,10 @@ class OctopiGUI(QMainWindow):
 
         self.add_image_inspection()
 
-        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(self,self.laserAutofocusController)
+        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(
+            get_current_z_pos_in_mm=self.navigationWidget.real_pos_z,
+            laserAutofocusController=self.laserAutofocusController
+        )
         self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocs.setDisabled(False))
 
         self.named_widgets.live == ObjectManager()
@@ -486,7 +496,7 @@ class OctopiGUI(QMainWindow):
         self.navigationViewWrapper=VBox(
             HBox(
                 Label("wellplate overview").widget,
-                Button("clear history",on_clicked=self.navigationViewer.clear_imaged_positions).widget,
+                Button("clear history",on_clicked=self.navigationViewer.clear_history).widget,
                 Label("Change plate type:").widget,
                 self.named_widgets.wellplate_selector
             ).layout,
@@ -568,13 +578,13 @@ class OctopiGUI(QMainWindow):
         self.navigation.yPos.connect(self.navigationWidget.set_pos_y)
         self.navigation.zPos.connect(self.navigationWidget.set_pos_z)
         self.navigation.signal_joystick_button_pressed.connect(self.autofocusController.autofocus)
-        self.navigation.xyPos.connect(self.navigationViewer.update_current_location)
+        self.navigation.xyPos.connect(self.navigationViewer.update_current_fov)
 
         self.imageDisplay.image_to_display.connect(self.processLiveImage) # internally calls self.imageDisplayWindow.display_image, among other things
 
         self.autofocusController.image_to_display.connect(self.imageDisplayWindow.display_image)
 
-        self.multipointController.signal_register_current_fov.connect(self.navigationViewer.register_fov)
+        self.multipointController.signal_register_current_fov.connect(self.navigationViewer.add_history)
 
         # if well selection changes, or dx/y or Nx/y change, redraw preview
         self.wellSelectionWidget.itemSelectionChanged.connect(self.on_well_selection_change)
@@ -648,7 +658,7 @@ class OctopiGUI(QMainWindow):
             label="Histogram Log scale",
             checked=self.histogram_log_scale*2, # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
             tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
-            on_stateChanged=self.setHistogramLogScale,
+            on_stateChanged=self.set_histogram_log_scale,
         )
 
         self.imageEnhanceWidget=HBox(
@@ -740,7 +750,7 @@ class OctopiGUI(QMainWindow):
         displacement_measurement_granularity=self.named_widgets.displacement_accuracy_granularity.widget.value()
 
         total_moved_distance=0.0
-        with core.StreamingCamera(self.core.focus_camera.camera):
+        with self.core.focus_camera.ensure_streaming():
             for i,x_i in enumerate(tqdm(x)):
                 if i==0:
                     move_z_distance_um=x_i
@@ -762,7 +772,7 @@ class OctopiGUI(QMainWindow):
         self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
 
         total_moved_distance=0.0
-        with core.StreamingCamera(self.core.focus_camera.camera):
+        with self.core.focus_camera.ensure_streaming():
             for i,x_i in enumerate(tqdm(x)):
                 if i==0:
                     move_z_distance_um=x_i
@@ -1063,7 +1073,6 @@ class OctopiGUI(QMainWindow):
         acquisition_thread=self.core.acquire(
             self.get_all_config(),
 
-            set_num_acquisitions_callback=self.set_num_acquisitions,
             on_new_acquisition=self.on_step_completed,
             headless=False, # allow display of gui components like warning messages
 
@@ -1102,11 +1111,11 @@ class OctopiGUI(QMainWindow):
             time_elapsed_since_start=time.monotonic()-self.acquisition_start_time
             approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
 
-            elapsed_time_str=seconds_to_long_time(time_elapsed_since_start)
+            elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
             if self.acquisition_progress==self.total_num_acquisitions:
                 self.multiPointWidget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
             else:
-                approx_time_left_str=seconds_to_long_time(approx_time_left)
+                approx_time_left_str=format_seconds_nicely(approx_time_left)
                 done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
                 progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
                 self.multiPointWidget.progress_bar.setFormat(progress_bar_text)
@@ -1191,7 +1200,7 @@ class OctopiGUI(QMainWindow):
                 self.navigationWidget,
             ])
 
-            with core.StreamingCamera(self.camera):
+            with self.camera.wrapper.ensure_streaming():
                 last_imaging_time=0.0
                 while True:
                     current_time=time.monotonic()
@@ -1257,7 +1266,7 @@ class OctopiGUI(QMainWindow):
     def reload_configuration_into_gui(self,new_file_path:str):
         for config in self.configurationManager.configurations:
             self.imaging_mode_config_managers[config.mode_id].illumination_strength.setValue(config.illumination_intensity)
-            self.imaging_mode_config_managers[config.mode_id].exposure_time_ms.setValue(config.exposure_time_ms)
+            self.imaging_mode_config_managers[config.mode_id].exposure_time.setValue(config.exposure_time_ms)
             self.imaging_mode_config_managers[config.mode_id].analog_gain.setValue(config.analog_gain)
             self.imaging_mode_config_managers[config.mode_id].z_offset.setValue(config.channel_z_offset)
 
@@ -1292,7 +1301,7 @@ class OctopiGUI(QMainWindow):
     def snap_all(self,_button_state,snap_enable_list:Optional[List[bool]]=None):
         move_to_target=bool(self.named_widgets.snap_all_with_offset_checkbox.checkState()) # can be 0 (unchecked) or 1(partially checked) or 2(checked)
 
-        with core.StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             for config_i,config in enumerate(self.configurationManager.configurations):
                 if snap_enable_list is None or snap_enable_list[config_i]:
                     self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True,move_to_target=move_to_target)
@@ -1321,7 +1330,7 @@ class OctopiGUI(QMainWindow):
         self.processLiveImage()
 
     @TypecheckFunction
-    def setHistogramLogScale(self,state:Union[bool,int]):
+    def set_histogram_log_scale(self,state:Union[bool,int]):
         if type(state)==int:
             state=bool(state)
 
@@ -1452,7 +1461,7 @@ class OctopiGUI(QMainWindow):
 
     def on_well_selection_change(self):
         # clear display
-        self.navigationViewer.clear_slide()
+        self.navigationViewer.clear_history()
 
         # make sure the current selection is contained in selection buffer, then draw each pov
         self.wellSelectionWidget.itemselectionchanged()

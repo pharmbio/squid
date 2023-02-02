@@ -124,14 +124,13 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_to_index(self,wellplate_format:WellplateFormatPhysical,row:int,column:int,well_origin_x_offset:float=0.0,well_origin_y_offset:float=0.0):
-        assert self.plate_type.rows==wellplate_format.rows and self.plate_type.columns==wellplate_format.columns
         # based on target row and column index, calculate target location in mm
         target_row,target_column=row,column
         target_x_mm,target_y_mm=wellplate_format.well_index_to_mm(row=target_row,column=target_column)
         target_x_mm+=well_origin_x_offset
         target_y_mm+=well_origin_y_offset
 
-        self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm)
+        self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm,wait_for_completion={})
     
     @TypecheckFunction
     def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,wait_for_completion:Optional[dict]=None):
@@ -244,21 +243,6 @@ class NavigationController(QObject):
 
     def home_theta(self):
         self.microcontroller.home_theta()
-
-    def home_xy(self):
-        self.microcontroller.home_xy()
-
-    def zero_x(self):
-        self.microcontroller.zero_x()
-
-    def zero_y(self):
-        self.microcontroller.zero_y()
-
-    def zero_z(self):
-        self.microcontroller.zero_z()
-
-    def zero_theta(self):
-        self.microcontroller.zero_theta()
 
     def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
         assert not self.is_in_loading_position

@@ -65,7 +65,7 @@ class Person:
 peter=Person(name="peter")
 _=peter.sayhi()
 
-def seconds_to_long_time(sec:float)->str:
+def format_seconds_nicely(sec:float)->str:
     hours=int(sec//3600)
     sec-=hours*3600
     minutes=int(sec//60)

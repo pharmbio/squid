@@ -8,7 +8,10 @@ import sys
 from qtpy.QtWidgets import QApplication
 
 # app specific libraries
-import control.gui_hcs as gui
+if 0:
+    import control.gui_hcs as gui
+else:
+    import control.gui_hcs_better as gui
 import control.core as core
 
 class HcsApplication(QApplication):
@@ -20,7 +23,10 @@ if __name__ == "__main__":
 
     if True:
         app.setStyle('Fusion')
-        win = gui.OctopiGUI()
+        try:
+            win = gui.OctopiGUI()
+        except:
+            win = gui.Gui()
         win.show()
     else:
         c=core.Core()

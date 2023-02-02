@@ -1,8 +1,11 @@
 # qt libraries
 from qtpy.QtCore import QObject, Signal, Qt # type: ignore
-from qtpy.QtWidgets import QMainWindow, QWidget, QGridLayout, QDesktopWidget, QVBoxLayout, QLabel, QApplication
+from qtpy.QtWidgets import QMainWindow, QWidget, QGridLayout, QDesktopWidget, QVBoxLayout, QLabel, QApplication, QSizePolicy
 
 from control._def import *
+from control.gui import Label, Grid, VBox
+
+from control.core import ConfigurationManager
 
 from queue import Queue
 from threading import Thread, Lock
@@ -10,8 +13,6 @@ import numpy
 import pyqtgraph as pg
 
 from typing import Optional, List, Union, Tuple
-
-from control.core import ConfigurationManager
 
 class ImageDisplay(QObject):
 
@@ -65,7 +66,6 @@ class ImageDisplayWindow(QMainWindow):
         self.setWindowTitle(window_title)
         self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint) # type: ignore
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint) # type: ignore
-        self.widget = QWidget()
         self.show_LUT = show_LUT
 
         # interpret image data as row-major instead of col-major
@@ -130,22 +130,16 @@ class ImageDisplayWindow(QMainWindow):
         self.DrawCrossHairs = False
         self.image_offset = numpy.array([0, 0])
 
-        ## Layout
-        layout = QGridLayout()
-        if self.show_LUT:
-            layout.addWidget(self.graphics_widget.view, 0, 0) 
-        else:
-            layout.addWidget(self.graphics_widget, 0, 0)
-        self.widget.setLayout(layout)
+        self.image_label=Label("").widget
+            
+        self.widget=Grid(
+            [self.image_label],
+            [self.graphics_widget.view if self.show_LUT else self.graphics_widget],
+        ).widget
+        
         self.setCentralWidget(self.widget)
 
-        # set window size
-        desktopWidget = QDesktopWidget()
-        width = int(min(desktopWidget.height()*0.9,1000)) #@@@TO MOVE@@@#
-        height = width
-        self.setFixedSize(width,height)
-
-    def display_image(self,image):
+    def display_image(self,image,name:str=""):
         """ display image in the respective widget """
         kwargs={
             'autoLevels':False, # disable automatically scaling the image pixel values (scale so that the lowest pixel value is pure black, and the highest value if pure white)
@@ -154,6 +148,7 @@ class ImageDisplayWindow(QMainWindow):
             self.graphics_widget.img.setImage(image,levels=(0.0,1.0),**kwargs)
         else:
             self.graphics_widget.img.setImage(image,**kwargs)
+        self.image_label.setText(name)
 
     def update_ROI(self):
         self.roi_pos = self.ROI.pos()
@@ -184,13 +179,13 @@ class ImageDisplayWindow(QMainWindow):
 
 class ImageArrayDisplayWindow(QMainWindow):
 
-    def __init__(self, configurationManager:ConfigurationManager, window_title=''):
+    def __init__(self, configuration_manager:ConfigurationManager, window_title=''):
         super().__init__()
         self.setWindowTitle(window_title)
         self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint) # type: ignore
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint) # type: ignore
         self.widget = QWidget()
-        self.configurationManager=configurationManager
+        self.configuration_manager=configuration_manager
 
         # interpret image data as row-major instead of col-major
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -208,12 +203,6 @@ class ImageArrayDisplayWindow(QMainWindow):
         },num_rows=3,num_columns=3)
 
         self.setCentralWidget(self.widget)
-
-        # set window size
-        desktopWidget = QDesktopWidget()
-        width = int(min(desktopWidget.height()*0.9,1000)) #@@@TO MOVE@@@#
-        height = width
-        self.setFixedSize(width,height)
 
     @TypecheckFunction
     def set_image_displays(self,channel_mappings:Dict[int,int],num_rows:int,num_columns:int):
@@ -260,21 +249,21 @@ class ImageArrayDisplayWindow(QMainWindow):
             if i>0:
                 next_graphics_widget.view.setXLink(self.graphics_widgets[0].view)
                 next_graphics_widget.view.setYLink(self.graphics_widgets[0].view)
-
-            next_graphics_widget_wrapper=QVBoxLayout()
             
             if i in reverse_channel_mappings:
                 illumination_source_code=reverse_channel_mappings[i]
 
-                for c in self.configurationManager.configurations:
+                for c in self.configuration_manager.configurations:
                     if c.illumination_source==illumination_source_code:
                         channel_name=c.name
 
             else:
                 channel_name="<intentionally empty>"
 
-            next_graphics_widget_wrapper.addWidget(QLabel(channel_name))
-            next_graphics_widget_wrapper.addWidget(next_graphics_widget)
+            next_graphics_widget_wrapper=VBox(
+                QLabel(channel_name),
+                next_graphics_widget
+            ).layout
 
             row=i//num_columns
             column=i%num_columns
@@ -286,6 +275,7 @@ class ImageArrayDisplayWindow(QMainWindow):
         self.graphics_widgets[0].view.setRange(xRange=(max_lowerx,max_upperx),yRange=(max_lowery,max_uppery))
 
         self.widget.setLayout(image_display_layout)
+        self.widget.setSizePolicy(QSizePolicy.Maximum,QSizePolicy.Maximum)
 
     def display_image(self,image,channel_index:int):
         #print(f"{self.graphics_widgets[0].view.getState()['viewRange']=}")

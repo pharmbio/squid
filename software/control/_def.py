@@ -6,14 +6,108 @@ from enum import Enum
 from typing import Optional, Dict, List, ClassVar, Any, Tuple, Union
 
 from control.typechecker import TypecheckClass, ClosedRange, ClosedSet, TypecheckFunction
+#from control.core import Configuration
 from qtpy.QtCore import Signal, QObject
 
 import control.gxipy as gx
+import numpy
+
+class AcquisitionImageData:
+    image:numpy.ndarray
+    path:str
+    config:"Configuration"
+    x:Optional[int]
+    y:Optional[int]
+    z:Optional[int]
+    well_name:Optional[str]
+
+    def __init__(self,
+        image:numpy.ndarray,
+        path:str,
+        config:"Configuration",
+        x:Optional[int]=None,
+        y:Optional[int]=None,
+        z:Optional[int]=None,
+        well_name:Optional[str]=None,
+    ):
+        self.image=image
+        self.path=path
+        self.config=config
+        self.x=x
+        self.y=y
+        self.z=z
+        self.well_name=well_name
+
+class AcquisitionStartResultType(str,Enum):
+    Done="done"
+    RaisedException="exception"
+    Async="async"
+
+class AcquisitionStartResult:
+    type:AcquisitionStartResultType
+    exception:Optional[Exception]
+    async_signal_on_finish:Optional[Signal]
+
+    def __init__(self,
+        type:Union[None,AcquisitionStartResultType,str]=None,
+        exception:Optional[Exception]=None,
+        async_signal_on_finish:Optional[Signal]=None,
+    ):
+        self.exception=None
+        self.async_signal_on_finish=None
+
+        if not exception is None:
+            assert type in (None,"exception",AcquisitionStartResultType.RaisedException)
+            assert async_signal_on_finish is None
+            self.type=AcquisitionStartResultType.RaisedException
+            self.exception=exception
+        if not async_signal_on_finish is None:
+            assert type in (None,"async",AcquisitionStartResultType.Async)
+            assert exception is None
+            self.type=AcquisitionStartResultType.Async
+            self.async_signal_on_finish=async_signal_on_finish
+
+        if not type is None:
+            if isinstance(type,AcquisitionStartResultType):
+                self.type=type
+            else: # is str
+                self.type=AcquisitionStartResultType(type)
+        else:
+            _=self.type # make sure that self.type has been set        
+
+class AcqusitionProgress:
+    total_steps:int
+    completed_steps:int
+    start_time:float
+    last_imaged_coordinates:Tuple[float,float]
+    last_step_completion_time:float
+    _last_completed_action:str
+
+    def __init__(self,
+        total_steps:int,
+        completed_steps:int,
+        start_time:float,
+        last_imaged_coordinates:Tuple[float,float],
+        last_step_completion_time:float=float("nan"),
+    ):
+        self.total_steps=total_steps
+        self.completed_steps=completed_steps
+        self.start_time=start_time
+        self.last_imaged_coordinates=last_imaged_coordinates
+        self.last_step_completion_time=last_step_completion_time
+
+    @property
+    def last_completed_action(self)->float:
+        return self._last_completed_action
+    
+    @last_completed_action.setter
+    def last_completed_action(self,new_last_action:str):
+        self._last_completed_action=new_last_action
+        self.last_step_completion_time=time.time()
 
 class TriggerMode(str,Enum):
     SOFTWARE = 'Software'
     HARDWARE = 'Hardware'
-    CONTINUOUS = 'Continuous Acqusition'
 
 class ImageFormat(Enum):
     BMP=0
@@ -249,12 +343,6 @@ class CMD_EXECUTION_STATUS: # enum
     ERROR_CODE_EMPTYING_THE_FLUDIIC_LINE_FAILED:int = 100
 
 @dataclass(frozen=True)
-class ObjectiveData:
-    magnification:float
-    NA:float
-    tube_lens_f_mm:float
-
-@dataclass(frozen=True)
 class AutofocusConfig:
     STOP_THRESHOLD:float = 0.85
     CROP_WIDTH:int = 800
@@ -462,9 +550,30 @@ class WellplateFormatPhysical:
             X_POSITIVE = x_end_mm,
             Y_NEGATIVE = y_start_mm,
             Y_POSITIVE = y_end_mm,
-                                                                                
+
             Z_POSITIVE = 6.0,
         )
+
+    @TypecheckFunction
+    def fov_exceeds_well_boundary(self,well_row:int,well_column:int,x_mm:float,y_mm:float)->bool:
+        """
+        check if a position on the plate exceeds the boundaries of a well
+        (plate position in mm relative to plate origin. well position as row and column index, where row A and column 1 have index 0)
+        """
+
+        well_center_x_mm,well_center_y_mm=self.well_index_to_mm(well_row,well_column)
+
+        # assuming wells are square (even though they are round-ish)
+        well_left_boundary=well_center_x_mm-self.well_size_mm/2
+        well_right_boundary=well_center_x_mm+self.well_size_mm/2
+        assert well_left_boundary<well_right_boundary
+        well_upper_boundary=well_center_y_mm+self.well_size_mm/2
+        well_lower_boundary=well_center_y_mm-self.well_size_mm/2
+        assert well_lower_boundary<well_upper_boundary
+
+        is_in_bounds=x_mm>=well_left_boundary and x_mm<=well_right_boundary and y_mm<=well_upper_boundary and y_mm>=well_lower_boundary
+
+        return not is_in_bounds
 
 WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
     6:WellplateFormatPhysical(
@@ -516,6 +625,14 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
 WELLPLATE_NAMES:Dict[int,str]={
     i:f"{i} well plate"
     for i in WELLPLATE_FORMATS.keys()
+}
+
+WELLPLATE_TYPE_IMAGE={
+    WELLPLATE_NAMES[384] : 'images/384_well_plate_1509x1010.png',
+    WELLPLATE_NAMES[96]  : 'images/96_well_plate_1509x1010.png',
+    WELLPLATE_NAMES[24]  : 'images/24_well_plate_1509x1010.png',
+    WELLPLATE_NAMES[12]  : 'images/12_well_plate_1509x1010.png',
+    WELLPLATE_NAMES[6]   : 'images/6_well_plate_1509x1010.png'
 }
 
 assert WELLPLATE_FORMATS[384].well_name_to_index("A01",check_valid=False)==(0,0)
@@ -600,6 +717,70 @@ class MachineDisplayConfiguration:
 
     def from_json(json_data:dict):
         return MachineDisplayConfiguration(**json_data)
+
+
+
+CAMERA_PIXEL_SIZE_UM:Dict[str,float]={
+    'IMX290':    2.9,
+    'IMX178':    2.4,
+    'IMX226':    1.85,
+    'IMX250':    3.45,
+    'IMX252':    3.45,
+    'IMX273':    3.45,
+    'IMX264':    3.45,
+    'IMX265':    3.45,
+    'IMX571':    3.76,
+    'PYTHON300': 4.8
+}
+
+@dataclass(frozen=True)
+class ObjectiveData:
+    magnification:float
+    NA:float # numerical aperture
+    tube_lens_f_mm:float # tube lens focal length in mm1
+
+OBJECTIVES:Dict[str,ObjectiveData]={
+    '2x':ObjectiveData(
+        magnification=2,
+        NA=0.10,
+        tube_lens_f_mm=180
+    ),
+    '4x':ObjectiveData(
+        magnification=4,
+        NA=0.13,
+        tube_lens_f_mm=180
+    ),
+    '10x':ObjectiveData(
+        magnification=10,
+        NA=0.25,
+        tube_lens_f_mm=180
+    ),
+    '10x (Mitutoyo)':ObjectiveData(
+        magnification=10,
+        NA=0.25,
+        tube_lens_f_mm=200
+    ),
+    '20x (Boli)':ObjectiveData(
+        magnification=20,
+        NA=0.4,
+        tube_lens_f_mm=180
+    ),
+    '20x (Nikon)':ObjectiveData(
+        magnification=20,
+        NA=0.45,
+        tube_lens_f_mm=200
+    ),
+    '20x (Olympus)':ObjectiveData( # UPLFLN20X
+        magnification=20,
+        NA=0.50,
+        tube_lens_f_mm=180
+    ),
+    '40x':ObjectiveData(
+        magnification=40,
+        NA=0.6,
+        tube_lens_f_mm=180
+    )
+}
 
 @TypecheckClass
 class MachineConfiguration:
@@ -689,62 +870,6 @@ class MachineConfiguration:
     LED_MATRIX_G_FACTOR:int = 1
     LED_MATRIX_B_FACTOR:int = 1
 
-    CAMERA_PIXEL_SIZE_UM:ClassVar[Dict[str,float]]={
-        'IMX290':    2.9,
-        'IMX178':    2.4,
-        'IMX226':    1.85,
-        'IMX250':    3.45,
-        'IMX252':    3.45,
-        'IMX273':    3.45,
-        'IMX264':    3.45,
-        'IMX265':    3.45,
-        'IMX571':    3.76,
-        'PYTHON300': 4.8
-    }
-
-    OBJECTIVES:ClassVar[Dict[str,ObjectiveData]]={
-        '2x':ObjectiveData(
-            magnification=2,
-            NA=0.10,
-            tube_lens_f_mm=180
-        ),
-        '4x':ObjectiveData(
-            magnification=4,
-            NA=0.13,
-            tube_lens_f_mm=180
-        ),
-        '10x':ObjectiveData(
-            magnification=10,
-            NA=0.25,
-            tube_lens_f_mm=180
-        ),
-        '10x (Mitutoyo)':ObjectiveData(
-            magnification=10,
-            NA=0.25,
-            tube_lens_f_mm=200
-        ),
-        '20x (Boli)':ObjectiveData(
-            magnification=20,
-            NA=0.4,
-            tube_lens_f_mm=180
-        ),
-        '20x (Nikon)':ObjectiveData(
-            magnification=20,
-            NA=0.45,
-            tube_lens_f_mm=200
-        ),
-        '20x (Olympus)':ObjectiveData( # UPLFLN20X
-            magnification=20,
-            NA=0.50,
-            tube_lens_f_mm=180
-        ),
-        '40x':ObjectiveData(
-            magnification=40,
-            NA=0.6,
-            tube_lens_f_mm=180
-        )
-    }
-
     TUBE_LENS_MM:float = 50.0
     CAMERA_SENSOR:str = 'IMX226'
 
@@ -818,9 +943,9 @@ class MachineConfiguration:
 
 MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
 
-print(f"  safe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=False)}")
-print(f"  safe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=True)}")
-print(f"unsafe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=False)}")
-print(f"unsafe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)}")
+#print(f"  safe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=False)}")
+#print(f"  safe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=True)}")
+#print(f"unsafe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=False)}")
+#print(f"unsafe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)}")
 
 MACHINE_CONFIG.SOFTWARE_POS_LIMIT = WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)

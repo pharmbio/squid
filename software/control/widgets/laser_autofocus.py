@@ -20,11 +20,14 @@ BTN_MOVE_TO_TARGET_TOOLTIP="move to a focus plane with a given distance to the r
 BTN_DEINITIALIZE_TOOLTIP="Deinitialize laser af config.\nWARNING: this will remove all laser af related configuration that was created since program start-up.\nlaser af initialization data needs to be recreated after this button has been clicked.\nPrimarily used to clear laser af config data so that other data can be read from a config file (which by design will not overwrite existing data)"
 
 class LaserAutofocusControlWidget(QFrame):
-    def __init__(self, gui, laserAutofocusController:LaserAutofocusController):
+    def __init__(self,
+        laserAutofocusController:LaserAutofocusController,
+        get_current_z_pos_in_mm:Callable[[None,],float]
+    ):
         super().__init__()
 
-        self.gui=gui
         self.laserAutofocusController = laserAutofocusController
+        self.get_current_z_pos_in_mm = get_current_z_pos_in_mm
 
         self.btn_initialize = Button(INITIALIZE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_INITIALIZE_TOOLTIP,on_clicked=self.initialize).widget
         self.btn_set_reference = Button(SET_REFERENCE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_SET_REFERENCE_TOOLTIP,on_clicked=self.set_reference).widget
@@ -99,7 +102,6 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_initialize.setDisabled(False)
         self.btn_initialize.setText(INITIALIZE_BUTTON_TEXT_IDLE)
-        QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
         if initialization_failed:
             MessageBox(title="Could not initialize laser AF",mode="information",text="there was a problem initializing the laser autofocus. is the plate in focus?").run()
@@ -125,9 +127,8 @@ class LaserAutofocusControlWidget(QFrame):
     def set_reference(self):
         self.btn_set_reference.setDisabled(True)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IN_PROGRESS)
-        QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
-        self.laserAutofocusController.set_reference(z_pos_mm=self.gui.navigationWidget.real_pos_z)
+        self.laserAutofocusController.set_reference(z_pos_mm=self.get_current_z_pos_in_mm)
 
         # allow actual use of laser AF now
         self.call_after_set_reference()
@@ -136,7 +137,6 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_set_reference.setDisabled(False)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IDLE)
-        QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
         self.reference_was_set=True
 
@@ -157,7 +157,6 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_measure_displacement.setDisabled(False)
         self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE)
-        QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
     def move_to_target(self,_btn=None,target_um=None):
         self.btn_move_to_target.setDisabled(True)
@@ -171,4 +170,3 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_move_to_target.setDisabled(False)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
-        QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.

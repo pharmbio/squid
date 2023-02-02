@@ -8,39 +8,6 @@ from .configuration import Configuration, ConfigurationManager
 
 from typing import List, Tuple, Callable, Optional
 
-class StreamingCamera:
-    def __init__(self,camera):
-        self.camera=camera
-
-    def __enter__(self):
-        if not self.camera.in_a_state_to_be_used_directly:
-            self.was_streaming=self.camera.is_streaming
-            self.was_live=self.camera.is_live
-            self.callback_was_enabled=self.camera.callback_is_enabled
-
-            if self.callback_was_enabled:
-                self.camera.disable_callback()
-            if not self.was_live:
-                self.camera.is_live=True
-            if not self.was_streaming:
-                self.camera.start_streaming()
-
-            self.this_put_camera_into_a_state_to_be_used_directly=True
-            self.camera.in_a_state_to_be_used_directly=True
-        else:
-            self.this_put_camera_into_a_state_to_be_used_directly=False
-
-    def __exit__(self,_exception_type,_exception_value,_exception_traceback):
-        if self.this_put_camera_into_a_state_to_be_used_directly:
-            #if self.was_streaming:
-            #    self.camera.enable_callback()
-            if not self.was_live:
-                self.camera.is_live=False
-            if not self.callback_was_enabled:
-                self.camera.stop_streaming()
-
-            self.camera.in_a_state_to_be_used_directly=False
-
 @TypecheckClass
 class GridDimensionConfig:
     d:float
@@ -83,6 +50,24 @@ class WellGridConfig:
             z=GridDimensionConfig.from_json(s["z"]),
             t=GridDimensionConfig.from_json(s["t"])
         )
+    
+    @TypecheckFunction
+    def grid_positions_for_well(self,well_row:int,well_column:int,plate_type:WellplateFormatPhysical)->List[Tuple[float,float]]:
+        well_center_x_mm,well_center_y_mm=plate_type.well_index_to_mm(well_row,well_column)
+
+        coords=[]
+
+        base_x=well_center_x_mm-self.x.d*(self.x.N-1)/2
+        base_y=well_center_y_mm-self.y.d*(self.y.N-1)/2
+
+        for i in range(self.y.N):
+            y=base_y+i*self.y.d
+            for j in range(self.x.N):
+                x=base_x+j*self.x.d
+                
+                coords.append((x,y))
+
+        return coords
 
 @TypecheckClass
 class LaserAutofocusData:
@@ -256,6 +241,39 @@ import control.core as core
 import control.microcontroller as microcontroller
 from control.core.displacement_measurement import DisplacementMeasurementController
 
+class StreamingCamera:
+    def __init__(self,camera):
+        self.camera=camera
+
+    def __enter__(self):
+        if not self.camera.in_a_state_to_be_used_directly:
+            self.was_streaming=self.camera.is_streaming
+            self.was_live=self.camera.is_live
+            self.callback_was_enabled=self.camera.callback_is_enabled
+
+            if self.callback_was_enabled:
+                self.camera.disable_callback()
+            if not self.was_live:
+                self.camera.is_live=True
+            if not self.was_streaming:
+                self.camera.start_streaming()
+
+            self.this_put_camera_into_a_state_to_be_used_directly=True
+            self.camera.in_a_state_to_be_used_directly=True
+        else:
+            self.this_put_camera_into_a_state_to_be_used_directly=False
+
+    def __exit__(self,_exception_type,_exception_value,_exception_traceback):
+        if self.this_put_camera_into_a_state_to_be_used_directly:
+            #if self.was_streaming:
+            #    self.camera.enable_callback()
+            if not self.was_live:
+                self.camera.is_live=False
+            if not self.callback_was_enabled:
+                self.camera.stop_streaming()
+
+            self.camera.in_a_state_to_be_used_directly=False
+
 class CameraWrapper:
     def __init__(self,
         core_,
@@ -297,6 +315,9 @@ class CameraWrapper:
             self.camera.wrapper=self
         else:
             assert False, "a camera that already had a wrapper was attempted to be put inside a wrapper again"
+
+    def ensure_streaming(self)->StreamingCamera:
+        return StreamingCamera(self.camera)
         
     @property
     def pixel_formats(self)->List[str]:
@@ -304,15 +325,11 @@ class CameraWrapper:
 
     def close(self):
         self.camera.close()
-        self.live_controller.stop_live()
 
 class Core(QObject):
     @property
     def camera(self):
         return self.main_camera.camera
-    @property
-    def configurationManager(self):
-        return self.main_camera.configuration_manager
     @property
     def streamHandler(self):
         return self.main_camera.stream_handler
@@ -320,9 +337,6 @@ class Core(QObject):
     def liveController(self):
         return self.main_camera.live_controller
 
-    @property
-    def configurationManager_focus_camera(self):
-        return self.focus_camera.configuration_manager
     @property
     def streamHandler_focus_camera(self):
         return self.focus_camera.stream_handler
@@ -420,7 +434,7 @@ class Core(QObject):
             self.liveController,
             self.autofocusController,
             self.laserAutofocusController,
-            configurationManager = self.configurationManager,
+            configuration_manager = self.main_camera.configuration_manager,
             image_saver = self.imageSaver,
         )
 
@@ -437,38 +451,8 @@ class Core(QObject):
 
     # borrowed multipointController functions
     @property
-    def set_NX(self):
-        return self.multipointController.set_NX
-    @property
-    def set_NY(self):
-        return self.multipointController.set_NY
-    @property
-    def set_NZ(self):
-        return self.multipointController.set_NZ
-    @property
-    def set_Nt(self):
-        return self.multipointController.set_Nt
-    @property
-    def set_deltaX(self):
-        return self.multipointController.set_deltaX
-    @property
-    def set_deltaY(self):
-        return self.multipointController.set_deltaY
-    @property
-    def set_deltaZ(self):
-        return self.multipointController.set_deltaZ
-    @property
-    def set_deltat(self):
-        return self.multipointController.set_deltat
-    @property
     def set_selected_configurations(self):
         return self.multipointController.set_selected_configurations
-    @property
-    def set_software_af_flag(self):
-        return self.multipointController.set_software_af_flag
-    @property
-    def set_laser_af_flag(self):
-        return self.multipointController.set_laser_af_flag
 
     #borrowed microcontroller functions
     @property
@@ -498,19 +482,12 @@ class Core(QObject):
     def acquire(self,
         config:AcquisitionConfig,
 
-        set_num_acquisitions_callback:Optional[Callable[[int],None]]=None,
-        on_new_acquisition:Optional[Callable[[str],None]]=None,
-
-        headless:bool=True,
+        on_new_acquisition:Optional[Callable[[AcqusitionProgress],None]]=None,
 
         additional_data:Optional[dict]=None,
-    )->Optional[QThread]:
 
-        # set objective and well plate type from machine config (or.. should be part of imaging configuration..?)
-        # set wells to be imaged <- acquire.well_list argument
-        # set grid per well to be imaged
-        # set lighting settings per channel
-        # set selection and order of channels to be imaged <- acquire.channels argument
+        image_return:Optional[Any]=None,
+    )->Optional[QThread]:
 
         # calculate physical imaging positions on wellplate given plate type and well selection
         plate_type=config.plate_type
@@ -544,25 +521,23 @@ class Core(QObject):
         #print("imaging wells: ",", ".join(well_list_names))
 
         # set autofocus parameters
-        if config.af_software_channel is None:
-            self.multipointController.set_software_af_flag(False)
-        else:
-            assert config.af_software_channel in [c.name for c in self.configurationManager.configurations], f"{config.af_software_channel} is not a valid (AF) channel"
+        self.multipointController.set_software_af_flag(not config.af_software_channel is None)
+        if not config.af_software_channel is None:
+            assert config.af_software_channel in [c.name for c in self.main_camera.configuration_manager.configurations], f"{config.af_software_channel} is not a valid (AF) channel"
             if config.af_software_channel!=MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL:
                 MACHINE_CONFIG.MUTABLE_STATE.MULTIPOINT_AUTOFOCUS_CHANNEL=config.af_software_channel
-            self.multipointController.set_software_af_flag(True)
 
         self.multipointController.set_laser_af_flag(config.af_laser_on)
 
         # set grid data per well
-        self.set_NX(config.grid_config.x.N)
-        self.set_NY(config.grid_config.y.N)
-        self.set_NZ(config.grid_config.z.N)
-        self.set_Nt(config.grid_config.t.N)
-        self.set_deltaX(config.grid_config.x.d)
-        self.set_deltaY(config.grid_config.y.d)
-        self.set_deltaZ(config.grid_config.z.d)
-        self.set_deltat(config.grid_config.t.d)
+        self.multipointController.set_NX(config.grid_config.x.N)
+        self.multipointController.set_NY(config.grid_config.y.N)
+        self.multipointController.set_NZ(config.grid_config.z.N)
+        self.multipointController.set_Nt(config.grid_config.t.N)
+        self.multipointController.set_deltaX(config.grid_config.x.d)
+        self.multipointController.set_deltaY(config.grid_config.y.d)
+        self.multipointController.set_deltaZ(config.grid_config.z.d)
+        self.multipointController.set_deltat(config.grid_config.t.d)
 
         for i,(well_row,well_column) in enumerate(config.well_list):
             well_x_mm,well_y_mm=well_list_physical_pos[i]
@@ -578,40 +553,19 @@ class Core(QObject):
         acquisition_data.update(additional_data)
         self.multipointController.prepare_folder_for_new_experiment(output_path=config.output_path,complete_experiment_data=acquisition_data) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
+        # set file format for saved images
+        Acquisition.IMAGE_FORMAT=config.image_file_format # not super ergonomic, but currently the image file format is globally specified via this variable
+
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
         return self.multipointController.run_experiment(
             well_selection = ( well_list_names, well_list_physical_pos ),
             grid_mask = config.grid_mask,
 
-            set_num_acquisitions_callback = set_num_acquisitions_callback,
             on_new_acquisition = on_new_acquisition,
+            image_return=image_return,
 
             plate_type=config.plate_type,
-
-            headless = headless,
         )
-
-    @TypecheckFunction
-    def fov_exceeds_well_boundary(self,well_row:int,well_column:int,x_mm:float,y_mm:float)->bool:
-        """
-        check if a position on the plate exceeds the boundaries of a well
-        (plate position in mm relative to plate origin. well position as row and column index, where row A and column 1 have index 0)
-        """
-        wellplate_format=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
-
-        well_center_x_mm,well_center_y_mm=wellplate_format.well_index_to_mm(well_row,well_column)
-
-        # assuming wells are square (even though they are round-ish)
-        well_left_boundary=well_center_x_mm-wellplate_format.well_size_mm/2
-        well_right_boundary=well_center_x_mm+wellplate_format.well_size_mm/2
-        assert well_left_boundary<well_right_boundary
-        well_upper_boundary=well_center_y_mm+wellplate_format.well_size_mm/2
-        well_lower_boundary=well_center_y_mm-wellplate_format.well_size_mm/2
-        assert well_lower_boundary<well_upper_boundary
-
-        is_in_bounds=x_mm>=well_left_boundary and x_mm<=well_right_boundary and y_mm<=well_upper_boundary and y_mm>=well_lower_boundary
-
-        return not is_in_bounds
 
     @TypecheckFunction
     def close(self):

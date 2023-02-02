@@ -14,7 +14,7 @@ import scipy.signal
 
 import control.microcontroller as microcontroller
 import control.camera as camera
-from control.core import LiveController,NavigationController,StreamingCamera
+from control.core import LiveController,NavigationController
 
 import matplotlib.pyplot as plt
 
@@ -78,7 +78,7 @@ class LaserAutofocusController(QObject):
         self.camera.set_exposure_time(MACHINE_CONFIG.FOCUS_CAMERA_EXPOSURE_TIME_MS)
         self.camera.set_analog_gain(MACHINE_CONFIG.FOCUS_CAMERA_ANALOG_GAIN)
 
-        with StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             # get laser spot location
             x,y = self._get_laser_spot_centroid()
 
@@ -133,7 +133,7 @@ class LaserAutofocusController(QObject):
         return displacement_um
 
     def move_to_target(self,target_um:float,max_repeats:int=MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS,counter_backlash:bool=True):
-        with StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             for num_repeat in range(max_repeats+1):
                 current_displacement_um = self.measure_displacement()
 
@@ -188,7 +188,7 @@ class LaserAutofocusController(QObject):
         if num_images is None:
             num_images=MACHINE_CONFIG.LASER_AF_AVERAGING_N_PRECISE
 
-        with StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             for i in range(num_images):
                 DEBUG_THIS_STUFF=False
 

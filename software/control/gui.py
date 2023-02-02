@@ -12,6 +12,13 @@ import pyqtgraph.dockarea as dock
 
 from control.typechecker import TypecheckClass, ClosedRange, ClosedSet, TypecheckFunction
 
+def format_seconds_nicely(sec:float)->str:
+    hours=int(sec//3600)
+    sec-=hours*3600
+    minutes=int(sec//60)
+    sec-=minutes*60
+    return f"{hours:3}h {minutes:2}m {sec:4.1f}s"
+
 def flatten(l:list):
     ret=[]
 
@@ -374,8 +381,12 @@ class Checkbox(HasCallbacks,HasToolTip,HasWidget):
 
 class Tab(HasWidget):
     def __init__(self,widget,title:Optional[str]=None):
-        assert isinstance(widget,QWidget)
-        self.widget=widget
+        if isinstance(widget,QWidget):
+            self.widget=widget
+        elif isinstance(widget,HasWidget):
+            self.widget=widget.widget
+        else:
+            assert False, "widget is not a QWidget"
         self.title=title
 
 class TabBar(HasWidget):

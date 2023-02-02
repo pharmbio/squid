@@ -97,6 +97,7 @@ class Camera(object):
         (device_num, self.device_info_list) = self.device_manager.update_device_list()
         if device_num == 0:
             raise RuntimeError('Could not find any USB camera devices!')
+        
         if self.sn is None:
             self.device_index = index
             self.camera = self.device_manager.open_device_by_index(index + 1)
@@ -277,8 +278,7 @@ class Camera(object):
     def stop_streaming(self):
         """ this takes 350ms!!!! avoid calling this function if at all possible! """
 
-        if self.is_streaming:
-            assert not self.camera is None
+        if self.is_streaming and not self.camera is None: # under some weird circumstances (actually a race condition....) this camera object can have been destroyed before this callback is called, e.g. when the program is closed while a live view is active (this should not happen, but it does)
             self.camera.stream_off()
             self.is_streaming = False
 
@@ -315,13 +315,6 @@ class Camera(object):
         # update the exposure delay and strobe delay
         self.exposure_delay_us = self.exposure_delay_us_8bit*self.pixel_size_byte
         self.strobe_delay_us = self.exposure_delay_us + self.row_period_us*self.pixel_size_byte*(self.row_numbers-1)
-
-    @TypecheckFunction
-    def set_continuous_acquisition(self):
-        assert not self.camera is None
-        self.camera.TriggerMode.set(gx.GxSwitchEntry.OFF)
-        self.trigger_mode = TriggerMode.CONTINUOUS
-        self.update_camera_exposure_time()
 
     @TypecheckFunction
     def set_software_triggered_acquisition(self):

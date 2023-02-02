@@ -10,13 +10,10 @@ from typing import Optional, List, Union, Tuple
 
 import control.microcontroller as microcontroller
 import control.camera as camera
-from control.core import ConfigurationManager, Configuration, StreamHandler, StreamingCamera
+from control.core import ConfigurationManager, Configuration, StreamHandler
 import control.utils as utils
 
 class LiveController(QObject):
-
-    start_live_signal=Signal()
-    stop_live_signal=Signal()
 
     @property
     def timer_trigger_interval_ms(self)->int:
@@ -32,7 +29,7 @@ class LiveController(QObject):
         core,
         camera:camera.Camera,
         microcontroller:microcontroller.Microcontroller,
-        configurationManager:ConfigurationManager,
+        configuration_manager:ConfigurationManager,
         stream_handler:Optional[StreamHandler],
         control_illumination:bool=True,
         use_internal_timer_for_hardware_trigger:bool=True,
@@ -43,7 +40,7 @@ class LiveController(QObject):
         self.core=core
         self.camera = camera
         self.microcontroller = microcontroller
-        self.configurationManager:ConfigurationManager = configurationManager
+        self.configuration_manager:ConfigurationManager = configuration_manager
         self.stream_handler=stream_handler
         self.currentConfiguration:Optional[Configuration] = None
         self.trigger_mode:TriggerMode = TriggerMode.SOFTWARE
@@ -71,10 +68,10 @@ class LiveController(QObject):
         self.stop_requested=False
 
         if for_displacement_measurement:
-            self.currentConfiguration=self.configurationManager.configurations[0]
+            self.currentConfiguration=self.configuration_manager.configurations[0]
 
     def snap(self,
-        config:Configuration=None,
+        config:Configuration,
         crop:bool=True,
         override_crop_width:Optional[int]=None,
         override_crop_height:Optional[int]=None,
@@ -88,7 +85,7 @@ class LiveController(QObject):
         if move_to_target and not config.channel_z_offset is None:
             self.core.laserAutofocusController.move_to_target(target_um=config.channel_z_offset)
 
-        with StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             """ prepare camera and lights """
 
             with Profiler("set channel",parent=profiler) as setchannel:
@@ -149,49 +146,6 @@ class LiveController(QObject):
             self.microcontroller.turn_off_illumination()
             self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
             self.illumination_on = False
-
-    def start_live(self):
-        if self.image_acquisition_in_progress:
-            self.stream_handler.signal_new_frame_received.connect(self.start_live)
-            return
-
-        self.is_live = True
-        self.camera.is_live = True
-        self.camera.start_streaming()
-        if self.trigger_mode == TriggerMode.SOFTWARE or ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
-            self.camera.enable_callback() # in case it's disabled e.g. by the laser AF controller
-            self._start_triggered_acquisition()
-
-        if self.for_displacement_measurement:
-            self.microcontroller.turn_on_AF_laser(completion={})
-
-        self.start_live_signal.emit()
-
-    def stop_live(self):
-        self.stop_requested=True
-        if self.image_acquisition_in_progress or self.image_acquisition_queued:
-            return
-
-        if self.is_live:
-            self.is_live = False
-            self.camera.is_live = False
-            self.camera.stop_streaming()
-            if self.trigger_mode == TriggerMode.CONTINUOUS:
-                self.camera.stop_streaming()
-                self.turn_off_illumination()
-            if self.trigger_mode == TriggerMode.SOFTWARE or ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
-                self._stop_triggered_acquisition()
-
-            if self.for_displacement_measurement:
-                self.microcontroller.turn_off_AF_laser(completion={})
-
-            self.camera.stop_streaming()
-
-            self.stop_requested=False
-            self.image_acquisition_in_progress=False
-            self.image_acquisition_queued=False
-
-            self.stop_live_signal.emit()
 
     # actually take an image
     def trigger_acquisition(self):
@@ -280,12 +234,6 @@ class LiveController(QObject):
             self.microcontroller.set_strobe_delay_us(self.camera.strobe_delay_us)
             if self.is_live and self.use_internal_timer_for_hardware_trigger:
                 self._start_triggered_acquisition()
-
-        elif mode == TriggerMode.CONTINUOUS: 
-            if ( self.trigger_mode == TriggerMode.SOFTWARE ) or ( self.trigger_mode == TriggerMode.HARDWARE and self.use_internal_timer_for_hardware_trigger ):
-                self._stop_triggered_acquisition()
-
-            self.camera.set_continuous_acquisition()
         else:
             assert False
 

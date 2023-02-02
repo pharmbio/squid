@@ -11,7 +11,7 @@ import numpy as np
 from typing import Optional, List, Union, Tuple
 
 from control.camera import Camera
-from control.core import NavigationController, LiveController, StreamingCamera
+from control.core import NavigationController, LiveController
 from control.microcontroller import Microcontroller
 
 class AutofocusWorker(QObject):
@@ -29,7 +29,6 @@ class AutofocusWorker(QObject):
         self.liveController = self.autofocusController.liveController
 
         self.N = self.autofocusController.N
-        self.deltaZ = self.autofocusController.deltaZ
         self.deltaZ_usteps = self.autofocusController.deltaZ_usteps
         
         self.crop_width = self.autofocusController.crop_width
@@ -55,14 +54,13 @@ class AutofocusWorker(QObject):
         self.navigation.move_z_usteps(- self.microcontroller.clear_z_backlash_usteps - z_af_offset_usteps ,wait_for_completion={})
         self.navigation.move_z_usteps(  self.microcontroller.clear_z_backlash_usteps                      ,wait_for_completion={})
 
-        with StreamingCamera(self.camera):
+        with self.camera.wrapper.ensure_streaming():
             steps_moved = 0
             for i in range(self.N):
                 self.navigation.move_z_usteps(self.deltaZ_usteps,wait_for_completion={})
                 steps_moved = steps_moved + 1
 
                 image=self.liveController.snap(config)
-                QApplication.processEvents()
 
                 self.image_to_display.emit(image)
                 QApplication.processEvents()
@@ -83,7 +81,6 @@ class AutofocusWorker(QObject):
 
             # take focused image and display
             image=self.liveController.snap(config)
-            QApplication.processEvents()
 
             self.image_to_display.emit(image)
             QApplication.processEvents()
@@ -111,38 +108,33 @@ class AutoFocusController(QObject):
         self.liveController = liveController
         self.N:int = 1 # arbitrary value of type
         self.deltaZ:float = 0.1 # arbitrary value of type
-        self.deltaZ_usteps:int = 1 # arbitrary value of type
         self.crop_width:int = MACHINE_CONFIG.AF.CROP_WIDTH
         self.crop_height:int = MACHINE_CONFIG.AF.CROP_HEIGHT
         self.autofocus_in_progress:bool = False
         self.thread:Optional[QThread] = None
 
-    def set_N(self,N:int):
-        self.N = N
-
-    def set_deltaZ(self,deltaZ_um:float):
-        mm_per_ustep_Z = self.navigation.microcontroller.mm_per_ustep_z
-        self.deltaZ = deltaZ_um/1000
-        self.deltaZ_usteps = round((deltaZ_um/1000)/mm_per_ustep_Z)
+    @property
+    def deltaZ_usteps(self)->int:
+        return int(self.deltaZ/self.navigation.microcontroller.mm_per_ustep_z)
 
     def set_crop(self,crop_width:int,crop_height:int):
         self.crop_width = crop_width
         self.crop_height = crop_height
 
-    def autofocus(self,config):
-        # stop live
-        if self.liveController.is_live:
-            self.was_live_before_autofocus = True
-            self.liveController.stop_live()
-        else:
-            self.was_live_before_autofocus = False
-
+    def autofocus(self,
+        config,
+        N:int,
+        dz:float,
+    ):
         # create a QThread object
         if not self.thread is None and self.thread.isRunning():
             print('*** autofocus thread is still running ***')
             self.thread.terminate()
             self.thread.wait()
-            print('*** autofocus threaded manually stopped ***')
+            print('*** autofocus thread manually stopped ***')
+
+        self.N=N
+        self.deltaZ=dz
 
         self.focus_config=config
 
@@ -163,15 +155,9 @@ class AutoFocusController(QObject):
         self.thread.start()
         
     def _on_autofocus_completed(self):
-        
-        # re-enable live if it's previously on
-        if self.was_live_before_autofocus:
-            self.liveController.start_live()
 
         # emit the autofocus finished signal to enable the UI
         self.autofocusFinished.emit()
-        QApplication.processEvents()
-        #print('autofocus finished')
 
         # update the state
         self.autofocus_in_progress = False
