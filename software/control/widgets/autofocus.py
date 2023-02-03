@@ -32,8 +32,8 @@ class SoftwareAutoFocusWidget(QFrame):
         self.configuration_manager=configuration_manager
         self.on_set_all_callbacks_enabled=on_set_all_callbacks_enabled
 
-        self.entry_delta = SpinBoxDouble(minimum=0.0,maximum=20.0,step=0.2,num_decimals=3,default=DEFAULT_DELTAZ,keyboard_tracking=False).widget
-        self.entry_N = SpinBoxInteger(minimum=3,maximum=20,step=1,default=DEFAULT_NZ,keyboard_tracking=False).widget
+        self.entry_delta = SpinBoxDouble(minimum=0.1,maximum=20.0,step=0.1,num_decimals=3,default=DEFAULT_DELTAZ,keyboard_tracking=False).widget
+        self.entry_N = SpinBoxInteger(minimum=3,maximum=23,step=2,default=DEFAULT_NZ,keyboard_tracking=False).widget
 
         self.btn_autofocus = Button("Run",default=False,checkable=True,checked=False,tooltip=DZ_TOOLTIP,on_clicked=self.autofocus_start).widget
 
