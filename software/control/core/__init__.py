@@ -539,10 +539,9 @@ class Core(QObject):
         self.multipointController.set_deltaZ(config.grid_config.z.d)
         self.multipointController.set_deltat(config.grid_config.t.d)
 
-        for i,(well_row,well_column) in enumerate(config.well_list):
-            well_x_mm,well_y_mm=well_list_physical_pos[i]
-            for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(well_x_mm,well_y_mm):
-                if self.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
+        for well_row,well_column in config.well_list:
+            for x_grid_item,y_grid_item in config.grid_config.grid_positions_for_well(well_row,well_column,plate_type=wellplate_format):
+                if wellplate_format.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
                     raise ValueError(f"at least one grid item is outside the bounds of the well! well size is {wellplate_format.well_size_mm}mm")
 
         # set list of imaging channels
