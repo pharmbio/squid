@@ -23,8 +23,8 @@ class BasicSettings(QWidget):
     def __init__(self,
         main_camera:Camera,
         
-        on_save_all_config:Callable[[None,],None],
-        on_load_all_config:Callable[[None,],None],
+        on_save_all_config:Callable[[],None],
+        on_load_all_config:Callable[[],None],
     ):
         super().__init__()
 
@@ -39,12 +39,12 @@ class BasicSettings(QWidget):
                 Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
                 self.interactive_widgets.trigger_mode_dropdown == Dropdown(
                     items=TRIGGER_MODES_LIST,
-                    current_index=0,
+                    current_index=TRIGGER_MODES_LIST.index(TriggerMode.SOFTWARE),
                 ).widget,
                 Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
                 self.interactive_widgets.pixel_format == Dropdown(
                     items=self.main_camera.pixel_formats,
-                    current_index=0,
+                    current_index=self.main_camera.pixel_formats.index("Mono12"), # list contains "Mono8" and "Mono12"
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                 ).widget,
             ),
@@ -187,6 +187,10 @@ class Gui(QMainWindow):
         self.well_widget.interactive_widgets.navigation_viewer.set_preview_list(preview_fov_list)
 
     def loading_position_toggle(self,loading_position_enter:bool):
+        """
+        callback for when the status of the stage changes with regards to the loading position
+        i.e. is called when the stage should enter or leave the loading position
+        """
         if loading_position_enter: # entering loading position
             self.set_all_interactible_enabled(set_enabled=False,exceptions=[self.position_widget.btn_goToLoadingPosition]) # disable everything except the single button that can leave the loading position
             self.core.navigation.loading_position_enter()
@@ -410,12 +414,6 @@ class Gui(QMainWindow):
     def closeEvent(self, event:QEvent):
 
         self.get_all_config(dry=False,allow_invalid_values=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
-
-        #self.imageArrayDisplayQueue.close()
-        #self.imageDisplayQueue.close()
-        
-        #self.imageSaver.close()
-        #self.imageDisplay.close()
 
         self.core.close()
         
