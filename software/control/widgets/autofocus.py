@@ -81,6 +81,9 @@ class AutofocusWidget:
         get_current_z_pos_in_mm,
         on_set_all_callbacks_enabled,
         configuration_manager,
+
+        laser_af_validity_changed:Signal,
+
         debug_laser_af:bool=False,
         debug_software_af:bool=False,
     ):
@@ -100,7 +103,11 @@ class AutofocusWidget:
         else:
             self.laser_af_debug_display=None
 
-        self.laser_af_control=LaserAutofocusControlWidget(laser_af_controller,get_current_z_pos_in_mm=get_current_z_pos_in_mm)
+        self.laser_af_control=LaserAutofocusControlWidget(
+            laser_af_controller,
+            get_current_z_pos_in_mm=get_current_z_pos_in_mm,
+            laser_af_validity_changed=laser_af_validity_changed,
+        )
 
         self.af_control=VBox(
             Dock(self.laser_af_control,"Laser AF"),
@@ -109,8 +116,17 @@ class AutofocusWidget:
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
-        return [
-            self.laser_af_control,
+        return flatten(*[
+            self.laser_af_control.get_all_interactive_widgets(),
             self.software_af_control,
-        ]
+        ])
+    
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        if not self.software_af_control in exceptions:
+            self.software_af_control.setEnabled(set_enabled)
+
+        if not self.laser_af_control in exceptions:
+            self.laser_af_control.set_all_interactible_enabled(set_enabled,exceptions)
+
+
     

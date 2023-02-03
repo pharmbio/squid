@@ -1,3 +1,4 @@
+from qtpy.QtCore import Signal
 from qtpy.QtWidgets import QApplication, QFrame, QLabel, QDoubleSpinBox, QGridLayout
 
 from control.core import LaserAutofocusController
@@ -31,12 +32,14 @@ Primarily used to clear laser af config data so that other data can be read from
 class LaserAutofocusControlWidget(QFrame):
     def __init__(self,
         laserAutofocusController:LaserAutofocusController,
-        get_current_z_pos_in_mm:Callable[[None,],float]
+        get_current_z_pos_in_mm:Callable[[None,],float],
+        laser_af_validity_changed:Signal,
     ):
         super().__init__()
 
         self.laserAutofocusController = laserAutofocusController
         self.get_current_z_pos_in_mm = get_current_z_pos_in_mm
+        self.laser_af_validity_changed = laser_af_validity_changed
 
         self.btn_initialize = Button(INITIALIZE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_INITIALIZE_TOOLTIP,on_clicked=self.initialize).widget
         self.btn_set_reference = Button(SET_REFERENCE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_SET_REFERENCE_TOOLTIP,on_clicked=self.set_reference).widget
@@ -95,6 +98,8 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_to_target.setDisabled(True)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE+" (not initialized)")
         self.entry_target.setDisabled(True)
+
+        self.laser_af_validity_changed.emit(False) # signal that laser af is now invalid
 
     def initialize(self):
         """ automatically initialize laser autofocus """
@@ -156,6 +161,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
         self.entry_target.setDisabled(False)
 
+        self.laser_af_validity_changed.emit(True) # signal that laser af is now valid
 
     def measure_displacement(self):
         self.btn_measure_displacement.setDisabled(True)
@@ -179,3 +185,25 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_move_to_target.setDisabled(False)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
+
+    @TypecheckFunction
+    def get_all_interactive_widgets(self)->List[QWidget]:
+        return [
+            self.btn_initialize,
+            self.btn_deinitialize,
+            self.btn_set_reference,
+            self.btn_measure_displacement,
+            self.btn_move_to_target,
+        ]
+
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        for widget in self.get_all_interactive_widgets():
+            if not widget in exceptions:
+                if set_enabled and widget is self.btn_set_reference:
+                    if self.has_been_initialized:
+                        self.btn_set_reference.setEnabled(True)
+                elif set_enabled and widget in (self.btn_measure_displacement, self.btn_move_to_target):
+                    if self.reference_was_set:
+                        widget.setEnabled(True)
+                else:
+                    widget.setEnabled(set_enabled)

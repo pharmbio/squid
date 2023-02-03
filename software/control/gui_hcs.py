@@ -412,7 +412,7 @@ class OctopiGUI(QMainWindow):
             get_current_z_pos_in_mm=self.navigationWidget.real_pos_z,
             laserAutofocusController=self.laserAutofocusController
         )
-        self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocs.setDisabled(False))
+        self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocus.setDisabled(False))
 
         self.named_widgets.live == ObjectManager()
         self.imagingModes=VBox(
@@ -1055,11 +1055,11 @@ class OctopiGUI(QMainWindow):
                 self.named_widgets.laserAutofocusControlWidget.call_after_initialization()
                 self.named_widgets.laserAutofocusControlWidget.call_after_set_reference()
 
-                self.multiPointWidget.checkbox_laserAutofocs.setEnabled(True)
+                self.multiPointWidget.checkbox_laserAutofocus.setEnabled(True)
 
         if config.af_laser_on:
             if self.laserAutofocusController.is_initialized:
-                self.multiPointWidget.checkbox_laserAutofocs.setCheckState(Qt.Checked)
+                self.multiPointWidget.checkbox_laserAutofocus.setCheckState(Qt.Checked)
             else:
                 MessageBox(title="cannot turn on laser AF",mode="information",text="config file indicates laser AF should be turned on, but the laser AF is not initialized\n(it has not been initialized already, and config file contains no initialization data).\nPlease initialize the laser AF, then turn it on manually (or load the config file again after intialization).").run()
 

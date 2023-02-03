@@ -64,6 +64,11 @@ class BasicSettings(QWidget):
             self.interactive_widgets.save_all_config,
             self.interactive_widgets.load_all_config
         ]
+    
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        for widget in self.get_all_interactive_widgets():
+            if not widget in exceptions:
+                widget.setEnabled(set_enabled)
 
     def set_main_camera_pixel_format(self,pixel_format_index:int):
         new_pixel_format=self.main_camera.pixel_formats[pixel_format_index]
@@ -84,6 +89,8 @@ class BasicSettings(QWidget):
         print("stub def open_config_load_popup(self):")
 
 class Gui(QMainWindow):
+    laser_af_validity_changed=Signal(bool)
+
     def __init__(self):
         super().__init__()
 
@@ -108,7 +115,7 @@ class Gui(QMainWindow):
             start_experiment=self.start_experiment,
             abort_experiment=self.abort_experiment,
 
-            signal_laser_af_validity_changed=None,
+            signal_laser_af_validity_changed=self.laser_af_validity_changed,
         )
         self.well_widget=widgets.WellWidget(
             on_move_to_index=self.core.navigation.move_to_index,
@@ -122,8 +129,11 @@ class Gui(QMainWindow):
             laser_af_controller = self.core.laserAutofocusController,
             software_af_controller = self.core.autofocusController,
             get_current_z_pos_in_mm = lambda:self.core.navigation.z_pos_mm,
+
             on_set_all_callbacks_enabled=self.set_all_interactible_enabled,
-            configuration_manager=self.core.main_camera.configuration_manager
+
+            configuration_manager=self.core.main_camera.configuration_manager,
+            laser_af_validity_changed=self.laser_af_validity_changed,
         )
 
         self.setCentralWidget(HBox(
@@ -266,6 +276,14 @@ class Gui(QMainWindow):
             self.autofocus_widget.get_all_interactive_widgets(),
         ])
 
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        self.basic_settings.set_all_interactible_enabled(set_enabled,exceptions)
+        self.imaging_channels_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.acquisition_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.well_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.position_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.autofocus_widget.set_all_interactible_enabled(set_enabled,exceptions)
+
     def on_step_completed(self,progress_data:AcqusitionProgress):
         """
         this function is called every time the acquisition thread considers something to be done
@@ -316,11 +334,6 @@ class Gui(QMainWindow):
         if progress_data.last_completed_action=="finished acquisition":
             self.set_all_interactible_enabled(set_enabled=True)
 
-    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
-        for widget in self.get_all_interactive_widgets():
-            if not widget in exceptions:
-                widget.setEnabled(set_enabled)
-
     def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
         # get output paths
         base_dir_str=self.acquisition_widget.lineEdit_baseDir.text()
@@ -369,7 +382,7 @@ class Gui(QMainWindow):
             grid_mask=self.acquisition_widget.get_grid_mask(),
             grid_config=self.acquisition_widget.get_grid_data(),
             #af_software_channel:Optional[str]=None,
-            af_laser_on=self.acquisition_widget.interactive_widgets.checkbox_laserAutofocs.checkState()==Qt.Checked,
+            af_laser_on=self.acquisition_widget.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked,
             #af_laser_reference:Optional[LaserAutofocusData]=None,
             trigger_mode=TRIGGER_MODES_LIST[self.basic_settings.interactive_widgets.trigger_mode_dropdown.currentIndex()],
             pixel_format=self.core.main_camera.pixel_formats[self.basic_settings.interactive_widgets.pixel_format.currentIndex()],

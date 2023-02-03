@@ -448,6 +448,11 @@ class WellWidget(QWidget):
             
             self.interactive_widgets.clear_well_selection,
         ]
+    
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        for widget in self.get_all_interactive_widgets():
+            if not widget in exceptions:
+                widget.setEnabled(set_enabled)
 
 
     

@@ -118,14 +118,15 @@ class MultiPointWidget:
         start_experiment:Callable[[Any],None],
         abort_experiment:Callable[[],None],
 
-        signal_laser_af_validity_changed:Callable[[],bool],
+        signal_laser_af_validity_changed:Signal,
     ):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
         
         self.core = core
         self.start_experiment=start_experiment
         self.abort_experiment=abort_experiment
-        self.is_laser_af_initialized=signal_laser_af_validity_changed
+        self.is_laser_af_initialized=False
+        signal_laser_af_validity_changed.connect(self.on_laser_af_validity_changed)
 
         self.base_path_is_set = False
 
@@ -238,7 +239,7 @@ class MultiPointWidget:
             on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index])
         ).widget
 
-        self.interactive_widgets.checkbox_laserAutofocs = Checkbox(
+        self.interactive_widgets.checkbox_laserAutofocus = Checkbox(
             label="Laser AF",
             checked=False,
             enabled=False,
@@ -250,7 +251,7 @@ class MultiPointWidget:
         grid_multipoint_acquisition_config=Grid(
             [self.checkbox_withAutofocus],
             [self.af_channel_dropdown],
-            [self.interactive_widgets.checkbox_laserAutofocs],
+            [self.interactive_widgets.checkbox_laserAutofocus],
             [self.btn_startAcquisition],
         ).widget
         grid_multipoint_acquisition_config.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Minimum)
@@ -271,6 +272,14 @@ class MultiPointWidget:
         self.imaging_widget.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Maximum)
 
         self.acquisition_is_running=False
+
+    def on_laser_af_validity_changed(self,new_validity:bool):
+        """
+        callback for a signal that says whether the laser af is now valid or not
+        """
+        self.is_laser_af_initialized=new_validity
+        self.interactive_widgets.checkbox_laserAutofocus.setEnabled(new_validity)
+        self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Unchecked) # uncheck it when validity change to invalid, but also uncheck otherwise because why not
     
     def set_grid_mask(self,new_mask:numpy.ndarray):
         for row_i,row in enumerate(new_mask):
@@ -495,5 +504,10 @@ class MultiPointWidget:
             self.btn_startAcquisition,
             self.list_configurations,
 
-            self.interactive_widgets.checkbox_laserAutofocs, #*([self.interactive_widgets.checkbox_laserAutofocs] if self.is_laser_af_initialized() else []),
+            *([self.interactive_widgets.checkbox_laserAutofocus] if self.is_laser_af_initialized else []),
         ]
+    
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        for widget in self.get_all_interactive_widgets():
+            if not widget in exceptions:
+                widget.setEnabled(set_enabled)
