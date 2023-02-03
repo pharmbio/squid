@@ -5,6 +5,10 @@ import time
 from qtpy.QtCore import Qt, QEvent
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
 
+import pyqtgraph as pg
+
+from PIL import ImageEnhance, Image
+
 from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler
 TRIGGER_MODES_LIST=list(TriggerMode)
 from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely
@@ -183,33 +187,34 @@ class ImagingChannels:
         self.live_display=widgets.ImageDisplayWindow()
         self.live_config=Dock(
             VBox(
+                self.interactive_widgets.histogram == pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples"),
                 self.interactive_widgets.imageEnhanceWidget == HBox(
-                    self.interactive_widgets.imageBrightnessAdjust == HBox(
+                    HBox(
                         Label("View Brightness:"),
-                        SpinBoxDouble(
+                        self.interactive_widgets.imageBrightnessAdjust == SpinBoxDouble(
                             minimum=BRIGHTNESS_ADJUST_MIN,
                             maximum=BRIGHTNESS_ADJUST_MAX,
                             default=1.0,
                             step=0.1,
-                            on_valueChanged=self.set_brightness,
-                        )
+                            on_valueChanged=lambda _new_value:self.display_last_single_image(),
+                        ).widget
                     ).layout,
-                    self.interactive_widgets.imageContrastAdjust == HBox(
+                    HBox(
                         Label("View Contrast:"),
-                        SpinBoxDouble(
+                        self.interactive_widgets.imageContrastAdjust == SpinBoxDouble(
                             minimum=CONTRAST_ADJUST_MIN,
                             maximum=CONTRAST_ADJUST_MAX,
                             default=1.0,
                             step=0.1,
-                            on_valueChanged=self.set_contrast,
-                        )
+                            on_valueChanged=lambda _new_value:self.display_last_single_image(),
+                        ).widget
                     ).layout,
                     self.interactive_widgets.histogramLogScaleCheckbox == Checkbox(
                         label="Histogram Log scale",
                         checked=Qt.Checked,
                         tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
-                        on_stateChanged=self.set_histogram_log_scale,
-                    ),
+                        on_stateChanged=lambda _btn:self.display_last_single_image(),
+                    ).widget,
                 ).widget,
                 HBox(
                     self.interactive_widgets.live_button == Button(ComponentLabel.LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=ComponentLabel.LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
@@ -220,6 +225,11 @@ class ImagingChannels:
             ).widget,
             "Live Imaging"
         ).widget
+
+        self.interactive_widgets.histogram.view=self.interactive_widgets.histogram.addViewBox()
+
+        self.last_single_displayed_image_image:Optional[numpy.ndarray]=None
+        self.last_single_displayed_image_config:Optional[Configuration]=None
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
@@ -305,19 +315,84 @@ class ImagingChannels:
         with self.camera_wrapper.ensure_streaming():
             for config_i,config in enumerate(self.configuration_manager.configurations):
                 if self.channel_included_in_snap_all_flags[config_i]:
-                    image=self.snap_single(_btn_state=None,config=config)
+                    image=self.snap_single(_btn_state=None,config=config,display_single=True)
                     self.channel_display.display_image(image,channel_index=config.illumination_source)
 
-    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None)->numpy.ndarray:
+    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None,display_single:bool=True)->numpy.ndarray:
         with Profiler("do_snap",parent=profiler) as dosnapprof:
             image=self.camera_wrapper.live_controller.snap(config=config,profiler=dosnapprof)
-        with Profiler("display",parent=profiler):
-            self.live_display.display_image(image,name=config.name)
-        return image
+            self.last_single_displayed_image_image=image
+            self.last_single_displayed_image_config=config
+        if display_single:
+            self.display_last_single_image(profiler=profiler)
 
-    def set_brightness(self,new_value):
-        print("stub def set_brightness(self,new_value):")
-    def set_contrast(self,new_value):
-        print("stub def set_contrast(self,new_value):")
-    def set_histogram_log_scale(self,new_value):
-        print("stub def set_histogram_log_scale(self,new_value):")
+        return image
+    
+    def display_last_single_image(self,profiler:Optional[Profiler]=None):
+        if self.last_single_displayed_image_image is None:
+            return
+        
+        with Profiler("display",parent=profiler):
+            processed_image=self.last_single_displayed_image_image
+
+            # calculate histogram of image pixel values
+            preserve_existing_histogram=False
+            histogram_color="white"
+
+            max_value=numpy.ma.minimum_fill_value(processed_image) # yes, minimum_fill_size returns maximum value (returns inf for float!)
+
+            bins=numpy.linspace(0,max_value,129,dtype=processed_image.dtype)
+            hist,bins=numpy.histogram(processed_image,bins=bins)
+            hist=hist.astype(numpy.float32)
+            use_histogram_log_scale=self.interactive_widgets.histogramLogScaleCheckbox.checkState()==Qt.Checked
+            if use_histogram_log_scale:
+                hist_nonzero_mask=hist!=0
+                hist[hist_nonzero_mask]=numpy.log(hist[hist_nonzero_mask])
+            hist=hist/hist.max() # normalize to [0;1]
+
+            self.interactive_widgets.histogram.view.setLimits(
+                xMin=0,
+                xMax=max_value,
+                yMin=0.0,
+                yMax=1.0,
+                minXRange=bins[4],
+                maxXRange=bins[-1],
+                minYRange=1.0,
+                maxYRange=1.0,
+            )
+            self.interactive_widgets.histogram.view.setRange(xRange=(0,max_value))
+
+            plot_kwargs={'x':bins[:-1],'y':hist,'pen':pg.mkPen(color=histogram_color)}
+            try:
+                if not preserve_existing_histogram:
+                    self.interactive_widgets.histogram.plot_data.clear()
+                self.interactive_widgets.histogram.plot_data.plot(**plot_kwargs)
+            except:
+                self.interactive_widgets.histogram.plot_data=self.interactive_widgets.histogram.addPlot(0,0,title="Histogram",viewBox=self.interactive_widgets.histogram.view,**plot_kwargs)
+                self.interactive_widgets.histogram.plot_data.hideAxis("left")
+
+            # enhance image brightness and contrast
+            brightness_value=self.interactive_widgets.imageBrightnessAdjust.value()
+            contrast_value=self.interactive_widgets.imageContrastAdjust.value()
+
+            if brightness_value!=1.0 or contrast_value!=1.0:
+                pil_image=Image.fromarray(processed_image) # requires image to be uint8
+
+                # change brightness
+                if brightness_value!=1.0:
+                    brightness_enhancer = ImageEnhance.Brightness(pil_image)
+                    pil_image=brightness_enhancer.enhance(brightness_value)
+
+                # change contrast
+                if contrast_value!=1.0:
+                    contrast_enhancer = ImageEnhance.Contrast(pil_image)
+                    pil_image=contrast_enhancer.enhance(contrast_value)
+
+                processed_image=numpy.asarray(pil_image) # numpy.array could also be used, but asarray does not copy the image data (read only view)
+
+            if self.last_single_displayed_image_image is None:
+                self.live_display.display_image(processed_image)
+                return
+            
+            self.live_display.display_image(processed_image,name=self.last_single_displayed_image_config.name)
+
