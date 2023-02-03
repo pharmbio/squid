@@ -18,10 +18,12 @@ class NavigationWidget(QFrame):
 
     def __init__(self, 
         core:Core,
+        on_loading_position_toggle:Callable[[bool,],None],
     ):
         super().__init__()
 
         self.core=core
+        self.on_loading_position_toggle=on_loading_position_toggle
 
         self.label_Xpos = Label("0,0",text_selectable=True).widget
         self.label_Xpos.setFrameStyle(QFrame.Panel | QFrame.Sunken)
@@ -47,7 +49,7 @@ class NavigationWidget(QFrame):
         self.btn_zero_Z = Button('Zero Z',checkable=True,on_clicked=self.zero_z).widget
         self.zero_z_offset=0.0
 
-        self.btn_goToLoadingPosition=Button(BTN_LOADING_POSITION_IDLE_UNLOADED).widget
+        self.btn_goToLoadingPosition=Button(BTN_LOADING_POSITION_IDLE_UNLOADED,checkable=True).widget
         self.btn_goToLoadingPosition.clicked.connect(self.loading_position_toggle)
         
         if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT:
@@ -73,35 +75,27 @@ class NavigationWidget(QFrame):
         self.core.navigation.yPos.connect(self.set_pos_y)
         self.core.navigation.zPos.connect(self.set_pos_z)
 
-    def set_movement_ability(self,movement_allowed:bool,apply_to_loading_position_button:bool=False):
-        for item in [
-            self.btn_moveX_forward,
-            self.btn_moveX_backward,
-            self.btn_moveY_forward,
-            self.btn_moveY_backward,
-                    self.btn_moveZ_forward,
-            self.btn_moveZ_backward,
-            self.btn_zero_Z,
-        ]:
-            item.setDisabled(not movement_allowed)
+    def loading_position_toggle(self,entered:bool):
+        """
+        toggle loading position (or at least call callback that is supposed to do this)
+        the button is disabled while the callback is called (i.e. disabled before call, and enabled after callback has finished)
+        """
+        if entered:
+            self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_RUNNING)
+            self.btn_goToLoadingPosition.setDisabled(True)
 
-        if apply_to_loading_position_button:
-            self.btn_goToLoadingPosition.setDisabled(not movement_allowed)
+            self.on_loading_position_toggle(True)
 
-    def loading_position_toggle(self,button_state:bool):
-        self.btn_goToLoadingPosition.setDisabled(True)
-        self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_RUNNING)
-        self.set_movement_ability(movement_allowed=False)
-
-        if self.core.navigation.is_in_loading_position:
-            self.core.navigation.loading_position_leave()
-            self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_UNLOADED)
-            self.set_movement_ability(movement_allowed=True)
-        else:
-            self.core.navigation.loading_position_enter()
+            self.btn_goToLoadingPosition.setEnabled(True)
             self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_LOADED)
+        else:
+            self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_RUNNING)
+            self.btn_goToLoadingPosition.setDisabled(True)
 
-        self.btn_goToLoadingPosition.setDisabled(False)
+            self.on_loading_position_toggle(False)
+
+            self.btn_goToLoadingPosition.setEnabled(True)
+            self.btn_goToLoadingPosition.setText(BTN_LOADING_POSITION_IDLE_UNLOADED)        
         
     def move_x_forward(self):
         self.core.navigation.move_x(self.entry_dX.value())

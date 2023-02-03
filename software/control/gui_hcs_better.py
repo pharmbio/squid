@@ -114,7 +114,10 @@ class Gui(QMainWindow):
             on_move_to_index=self.core.navigation.move_to_index,
             xy_pos_changed=self.core.navigation.xyPos,
         )
-        self.position_widget=widgets.NavigationWidget(self.core)
+        self.position_widget=widgets.NavigationWidget(
+            self.core,
+            on_loading_position_toggle=self.loading_position_toggle
+        )
         self.autofocus_widget=widgets.AutofocusWidget(
             laser_af_controller = self.core.laserAutofocusController,
             software_af_controller = self.core.autofocusController,
@@ -182,6 +185,15 @@ class Gui(QMainWindow):
         
         # write view to display buffer
         self.well_widget.interactive_widgets.navigation_viewer.set_preview_list(preview_fov_list)
+
+    def loading_position_toggle(self,loading_position_enter:bool):
+        if loading_position_enter: # entering loading position
+            self.set_all_interactible_enabled(set_enabled=False,exceptions=[self.position_widget.btn_goToLoadingPosition]) # disable everything except the single button that can leave the loading position
+            self.core.navigation.loading_position_enter()
+
+        else: # leaving loading position
+            self.core.navigation.loading_position_leave()
+            self.set_all_interactible_enabled(set_enabled=True)
 
     def start_experiment(self,dry:bool=False)->Union[AcquisitionStartResult,AcquisitionConfig]:
 
