@@ -17,7 +17,16 @@ BTN_INITIALIZE_TOOLTIP="after moving into focus, click this. (only needs to be d
 BTN_SET_REFERENCE_TOOLTIP="after moving into focus, click this to set the current focus plane. when 'moving to target' after this has been clicked, the target will always be relative to this plane."
 BTN_MEASURE_DISPLACEMENT_TOOLTIP="measure distance between current and reference focus plane."
 BTN_MOVE_TO_TARGET_TOOLTIP="move to a focus plane with a given distance to the reference plane that was set earlier."
-BTN_DEINITIALIZE_TOOLTIP="Deinitialize laser af config.\nWARNING: this will remove all laser af related configuration that was created since program start-up.\nlaser af initialization data needs to be recreated after this button has been clicked.\nPrimarily used to clear laser af config data so that other data can be read from a config file (which by design will not overwrite existing data)"
+BTN_DEINITIALIZE_TOOLTIP="""
+Deinitialize laser af config.
+
+WARNING: This will remove all laser af related configuration that was created since program start-up.
+         Laser AF initialization data needs to be recreated after this button has been clicked.
+
+You will be asked to confirm this action if you click this button.
+
+Primarily used to clear laser af config data so that other data can be read from a config file (which by design will not overwrite existing data)
+"""
 
 class LaserAutofocusControlWidget(QFrame):
     def __init__(self,

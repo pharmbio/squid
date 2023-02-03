@@ -29,6 +29,9 @@ CONTRAST_ADJUST_MAX:float=5.0
 FPS_MIN=1.0
 FPS_MAX=30.0 # documentation for MER2-1220-32U3M-W90 says 32.5 fps is max, but we likely will never reach that with the manual trigger method that we use
 
+IMAGE_ADJUST_BRIGHTNESS_TOOLTIP="Image brightness adjustment factor.\nThis factor is used to artificially brighten the image displayed in the single image view.\nThis is not applied to images displayed during acqusition, and also not to images saved."
+IMAGE_ADJUST_CONTRAST_TOOLTIP="Image contrast adjustment factor.\nThis factor is used to artificially enhance the contrast of the image displayed in the single image view.\nThis is not applied to images displayed during acqusition, and also not to images saved."
+
 CHANNEL_COLORS={
     0:"grey", # bf led full
     1:"grey", # bf led left half
@@ -190,8 +193,9 @@ class ImagingChannels:
                 self.interactive_widgets.histogram == pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples"),
                 self.interactive_widgets.imageEnhanceWidget == HBox(
                     HBox(
-                        Label("View Brightness:"),
+                        Label("View Brightness:",tooltip=IMAGE_ADJUST_BRIGHTNESS_TOOLTIP),
                         self.interactive_widgets.imageBrightnessAdjust == SpinBoxDouble(
+                            tooltip=IMAGE_ADJUST_BRIGHTNESS_TOOLTIP,
                             minimum=BRIGHTNESS_ADJUST_MIN,
                             maximum=BRIGHTNESS_ADJUST_MAX,
                             default=1.0,
@@ -200,8 +204,9 @@ class ImagingChannels:
                         ).widget
                     ).layout,
                     HBox(
-                        Label("View Contrast:"),
+                        Label("View Contrast:",tooltip=IMAGE_ADJUST_CONTRAST_TOOLTIP),
                         self.interactive_widgets.imageContrastAdjust == SpinBoxDouble(
+                            tooltip=IMAGE_ADJUST_CONTRAST_TOOLTIP,
                             minimum=CONTRAST_ADJUST_MIN,
                             maximum=CONTRAST_ADJUST_MAX,
                             default=1.0,
@@ -218,7 +223,7 @@ class ImagingChannels:
                 ).widget,
                 HBox(
                     self.interactive_widgets.live_button == Button(ComponentLabel.LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=ComponentLabel.LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
-                    self.interactive_widgets.live_channel_dropdown == Dropdown(items=[config.name for config in self.configuration_manager.configurations],current_index=0).widget,
+                    self.interactive_widgets.live_channel_dropdown == Dropdown(items=[config.name for config in self.configuration_manager.configurations],current_index=0,tooltip="Go live in this channel when clicking the button on the left.").widget,
                     Label("max. FPS",tooltip=ComponentLabel.FPS_TOOLTIP),
                     self.interactive_widgets.live_fps == SpinBoxDouble(minimum=FPS_MIN,maximum=FPS_MAX,step=0.1,default=5.0,num_decimals=1,tooltip=ComponentLabel.FPS_TOOLTIP).widget,
                 ),
