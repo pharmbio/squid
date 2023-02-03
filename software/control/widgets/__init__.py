@@ -103,7 +103,7 @@ from .live_control import LiveControlWidget
 from .multi_point import MultiPointWidget
 from .navigation import NavigationWidget
 from .well import WellWidget
-from .image_display import ImageDisplay, ImageDisplayWindow, ImageArrayDisplayWindow
+from .image_display import ImageDisplayWindow, ImageArrayDisplayWindow
 from .imaging_channels import ImagingChannels
 
 from typing import Optional, Any

@@ -313,7 +313,6 @@ class OctopiGUI(QMainWindow):
         default_well_plate=WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
         # load widgets
-        self.imageDisplay           = widgets.ImageDisplay()
         self.wellSelectionWidget    = widgets.WellSelectionWidget(
             move_to_index=self.core.navigation.move_to_index,
             format=MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
