@@ -14,51 +14,6 @@ import pyqtgraph as pg
 
 from typing import Optional, List, Union, Tuple
 
-class ImageDisplay(QObject):
-
-    image_to_display = Signal(numpy.ndarray)
-
-    def __init__(self):
-        QObject.__init__(self)
-        self.queue = Queue(10) # max 10 items in the queue
-        self.image_lock = Lock()
-        self.stop_signal_received = False
-        self.thread:Thread = Thread(target=self.process_queue)
-        self.thread.start()
-        
-    def process_queue(self):
-        while True:
-            # stop the thread if stop signal is received
-            if self.stop_signal_received:
-                return
-            # process the queue
-            try:
-                [image,] = self.queue.get(timeout=0.1)
-                self.image_lock.acquire(True)
-                self.image_to_display.emit(image)
-                QApplication.processEvents()
-                self.image_lock.release()
-                self.queue.task_done()
-            except:
-                pass
-
-    def enqueue(self,image):
-        try:
-            self.queue.put_nowait([image,])
-            # when using self.queue.put(str_) instead of try + nowait, program can be slowed down despite multithreading because of the block and the GIL
-            pass
-        except:
-            print('imageDisplay queue is full, image discarded')
-
-    def emit_directly(self,image):
-        self.image_to_display.emit(image)
-
-    def close(self):
-        self.queue.join()
-        self.stop_signal_received = True
-        self.thread.join()
-
-
 class ImageDisplayWindow(QMainWindow):
 
     def __init__(self, window_title='', draw_crosshairs = False, show_LUT=False):
