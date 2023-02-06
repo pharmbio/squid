@@ -3,7 +3,7 @@ from qtpy.QtCore import QObject, Signal, Qt # type: ignore
 from qtpy.QtWidgets import QMainWindow, QWidget, QGridLayout, QDesktopWidget, QVBoxLayout, QLabel, QApplication, QSizePolicy
 
 from control._def import *
-from control.gui import Label, Grid, VBox
+from control.gui import Label, Grid, VBox, Button, HBox, Checkbox, BlankWidget
 
 from control.core import ConfigurationManager
 
@@ -134,43 +134,54 @@ class ImageDisplayWindow(QMainWindow):
 
 class ImageArrayDisplayWindow(QMainWindow):
 
-    def __init__(self, configuration_manager:ConfigurationManager, window_title=''):
+    def __init__(self, configuration_manager:ConfigurationManager):
         super().__init__()
-        self.setWindowTitle(window_title)
-        self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint) # type: ignore
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint) # type: ignore
-        self.widget = QWidget()
-        self.configuration_manager=configuration_manager
-
         # interpret image data as row-major instead of col-major
         pg.setConfigOptions(imageAxisOrder='row-major')
 
-        self.set_image_displays({
-            11:0,
-            12:1,
-            14:2,
-            13:3,
-            15:4,
+        self.configuration_manager=configuration_manager
 
-            0:6,
-            1:7,
-            2:8,
-        },num_rows=3,num_columns=3)
+        grid_layout=Grid(with_margins=False)
+        self.image_display_layout = grid_layout.layout
+        self.image_display_widget = grid_layout.widget
+
+        self.saved_images=[]
+        self.set_image_displays(
+            {
+                11:0,
+                12:1,
+                14:2,
+                13:3,
+                15:4,
+
+                0:6,
+                1:7,
+                2:8,
+            },
+            num_rows=3,
+            num_columns=3
+        )
+
+        self.widget=VBox(
+            self.image_display_widget,
+            HBox(
+                Checkbox("Hide BF",checked=False,on_stateChanged=lambda check_state:self.set_rows_visible([True,True,check_state!=Qt.Checked]))
+            )
+        ).widget
 
         self.setCentralWidget(self.widget)
 
     @TypecheckFunction
-    def set_image_displays(self,channel_mappings:Dict[int,int],num_rows:int,num_columns:int):
+    def set_image_displays(self,channel_mappings:Dict[int,int],num_rows:int,num_columns:int,rows_enabled:Optional[List[bool]]=None):
         reverse_channel_mappings={
             value:key
             for key,value
             in channel_mappings.items()
         }
-            
+
         self.num_image_displays=num_rows*num_columns
         self.channel_mappings=channel_mappings
         self.graphics_widgets=[]
-        image_display_layout = QGridLayout()
 
         assert num_rows*num_columns>=self.num_image_displays
 
@@ -180,6 +191,7 @@ class ImageArrayDisplayWindow(QMainWindow):
         ((max_lowerx,max_upperx),(max_lowery,max_uppery))=max_state
         ((min_lowerx,min_upperx),(min_lowery,min_uppery))=min_state
 
+        # create widgets and fill them with empty image display widgets
         for i in range(self.num_image_displays):
             next_graphics_widget = pg.GraphicsLayoutWidget()
             next_graphics_widget.view = next_graphics_widget.addViewBox()
@@ -202,8 +214,8 @@ class ImageArrayDisplayWindow(QMainWindow):
 
             # link all views together so that each image view shows the same region
             if i>0:
-                next_graphics_widget.view.setXLink(self.graphics_widgets[0].view)
-                next_graphics_widget.view.setYLink(self.graphics_widgets[0].view)
+                next_graphics_widget.view.setXLink(self.graphics_widgets[0][0].view)
+                next_graphics_widget.view.setYLink(self.graphics_widgets[0][0].view)
             
             if i in reverse_channel_mappings:
                 illumination_source_code=reverse_channel_mappings[i]
@@ -217,23 +229,34 @@ class ImageArrayDisplayWindow(QMainWindow):
 
             next_graphics_widget_wrapper=VBox(
                 QLabel(channel_name),
-                next_graphics_widget
-            ).layout
+                next_graphics_widget,
+                with_margins=False,
+            ).widget
 
             row=i//num_columns
             column=i%num_columns
-            image_display_layout.addLayout(next_graphics_widget_wrapper, row, column)
 
-            self.graphics_widgets.append(next_graphics_widget)
+            if rows_enabled is None or rows_enabled[row]:
+                self.image_display_layout.addWidget(next_graphics_widget_wrapper, row, column)
+
+                self.graphics_widgets.append((next_graphics_widget,next_graphics_widget_wrapper,row,column))
 
         # all views are linked, to it's enough to set the (initial) view range on a single view
-        self.graphics_widgets[0].view.setRange(xRange=(max_lowerx,max_upperx),yRange=(max_lowery,max_uppery))
-
-        self.widget.setLayout(image_display_layout)
-        self.widget.setSizePolicy(QSizePolicy.Maximum,QSizePolicy.Maximum)
+        self.graphics_widgets[0][0].view.setRange(xRange=(max_lowerx,max_upperx),yRange=(max_lowery,max_uppery))
+        if len(self.saved_images)==0:
+            self.saved_images=[None for i in range(self.num_image_displays)]
 
     def display_image(self,image,channel_index:int):
-        #print(f"{self.graphics_widgets[0].view.getState()['viewRange']=}")
+        index=self.channel_mappings[channel_index]
+        try:
+            # display image, flipped across x (to counteract the displaying of the image as flipped across x)
+            self.graphics_widgets[index][0].img.setImage(image[::-1,:],autoLevels=False)
+            self.saved_images[index]=(image,channel_index)
+        except IndexError:
+            pass
 
-        # display image, flipped across x (to counteract the displaying of the image as flipped across x)
-        self.graphics_widgets[self.channel_mappings[channel_index]].img.setImage(image[::-1,:],autoLevels=False)
+    def set_rows_visible(self,rows_enabled:List[bool]):
+        for item,wrapper,row,column in self.graphics_widgets:
+            wrapper.setVisible(rows_enabled[row])
+
+

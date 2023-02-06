@@ -1,8 +1,7 @@
 from typing import Optional, Callable, List, Union, Any
-import time
+import time, math, os
 from datetime import datetime
 from pathlib import Path
-import math
 
 from qtpy.QtCore import Qt, QEvent, Signal
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
@@ -94,7 +93,10 @@ class Gui(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.core=Core(home=True)
+        # skip_homing is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
+        do_home=not bool(int(os.environ.get('skip_homing') or 0))
+
+        self.core=Core(home=do_home)
 
         self.basic_settings=BasicSettings(
             main_camera=self.core.main_camera,
@@ -108,6 +110,7 @@ class Gui(QMainWindow):
             camera_wrapper=self.core.main_camera,
 
             on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[self.imaging_channels_widget.interactive_widgets.live_button]),
+            move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um)
         )
         self.acquisition_widget=widgets.MultiPointWidget(
             self.core,
@@ -139,7 +142,7 @@ class Gui(QMainWindow):
         self.setCentralWidget(HBox(
             TabBar(*[
                 Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
-                Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display.widget),
+                Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
                 *([] if self.autofocus_widget.laser_af_debug_display is None else
                     [Tab(title="Laser AF debug",widget=self.autofocus_widget.laser_af_debug_display)]
                 ),

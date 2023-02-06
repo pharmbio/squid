@@ -68,25 +68,19 @@ class NavigationWidget(QFrame):
 
         self.btn_goToLoadingPosition=Button(BTN_LOADING_POSITION_IDLE_UNLOADED,tooltip="Enter/Leave stage loading position, so that a plate can be easily taken off/put on the stage.",checkable=True).widget
         self.btn_goToLoadingPosition.clicked.connect(self.loading_position_toggle)
-        
-        if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT:
-            grid_line0 = Grid([ Label(POS_X_LABEL,tooltip=POS_X_TOOLTIP).widget, self.label_Xpos, self.entry_dX, self.btn_moveX_forward, self.btn_moveX_backward, ]).layout
-            grid_line1 = Grid([ Label(POS_Y_LABEL,tooltip=POS_Y_TOOLTIP).widget, self.label_Ypos, self.entry_dY, self.btn_moveY_forward, self.btn_moveY_backward, ]).layout
 
-        grid_line2 = Grid([ Label(POS_Z_LABEL,tooltip=POS_Z_TOOLTIP).widget, self.label_Zpos, self.entry_dZ, self.btn_moveZ_forward, self.btn_moveZ_backward, ]).layout
-        grid_line3 = Grid([ self.btn_zero_Z, self.btn_goToLoadingPosition ]).layout
+        grid_lines=[
+            *([
+                [Grid([ Label(POS_X_LABEL,tooltip=POS_X_TOOLTIP).widget, self.label_Xpos, self.entry_dX, self.btn_moveX_forward, self.btn_moveX_backward, ]).layout],
+                [Grid([ Label(POS_Y_LABEL,tooltip=POS_Y_TOOLTIP).widget, self.label_Ypos, self.entry_dY, self.btn_moveY_forward, self.btn_moveY_backward, ]).layout],
+            ] if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT else []),
+            [Grid([ Label(POS_Z_LABEL,tooltip=POS_Z_TOOLTIP).widget, self.label_Zpos, self.entry_dZ, self.btn_moveZ_forward, self.btn_moveZ_backward, ]).layout],
+            [Grid([ self.btn_zero_Z, self.btn_goToLoadingPosition ]).layout],
+        ]
 
-        grid_lines=[]
-        if MACHINE_CONFIG.DISPLAY.SHOW_XY_MOVEMENT:
-            grid_lines.extend([
-                [grid_line0],
-                [grid_line1],
-            ])
-        grid_lines.extend([
-            [grid_line2],
-            [grid_line3],
-        ])
-        self.setLayout(Grid(*grid_lines).layout)
+        self.setLayout(Grid(
+            *grid_lines,
+        ).layout)
 
         self.core.navigation.xPos.connect(self.set_pos_x)
         self.core.navigation.yPos.connect(self.set_pos_y)

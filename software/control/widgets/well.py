@@ -57,7 +57,11 @@ class NavigationViewer(QFrame):
             maxYRange=max_uppery-max_lowery,
         )
 
-        self.setLayout(VBox(self.graphics_widget).layout)
+        self.setLayout(VBox(
+            self.graphics_widget,
+            
+            with_margins=False,
+        ).layout)
  
         self.last_fov_drawn=None
  
@@ -109,7 +113,9 @@ class NavigationViewer(QFrame):
         WELLPLATE_384_LENGTH_IN_MM=127.8 # from https://www.thermofisher.com/document-connect/document-connect.html?url=https://assets.thermofisher.com/TFS-Assets%2FLSG%2Fmanuals%2Fcms_042831.pdf
         self.mm_per_pixel = WELLPLATE_384_LENGTH_IN_MM/WELLPLATE_IMAGE_LENGTH_IN_PIXELS # 0.084665 was the hardcoded value, which is closer to this number as calculated from the width of the plate at 85.5mm/1010px=0.0846535
 
-        self.fov_size_mm = image_width_pixels*camera_pixel_size_um/(tube_lens_length_mm/objective_focal_length_mm)*um_to_mm
+        camera_pixel_size_in_focus_plane_mm=camera_pixel_size_um/(tube_lens_length_mm/objective_focal_length_mm)*um_to_mm # with a 20x objective, this is 1/3 um
+        #print(f"info - camera pixel size in the focus plane in mm: {camera_pixel_size_in_focus_plane_mm:.6f}")
+        self.fov_size_mm = image_width_pixels*camera_pixel_size_in_focus_plane_mm
 
         self.origin_bottom_left_x = MACHINE_CONFIG.X_ORIGIN_384_WELLPLATE_PIXEL - (MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT)/self.mm_per_pixel
         self.origin_bottom_left_y = MACHINE_CONFIG.Y_ORIGIN_384_WELLPLATE_PIXEL - (MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT)/self.mm_per_pixel
@@ -416,6 +422,8 @@ class WellWidget(QWidget):
                 sample = WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT],
                 xy_pos_changed=xy_pos_changed,
             ),
+
+            with_margins=False,
         ).layout)
 
         self.setSizePolicy(QSizePolicy.Maximum,QSizePolicy.Maximum)

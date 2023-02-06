@@ -308,7 +308,7 @@ class OctopiGUI(QMainWindow):
 
         # load window
         self.imageDisplayWindow = widgets.ImageDisplayWindow(draw_crosshairs=True)
-        self.imageArrayDisplayWindow = widgets.ImageArrayDisplayWindow(self.configurationManager,window_title="HCS microscope control")
+        self.imageArrayDisplayWindow = widgets.ImageArrayDisplayWindow(self.configurationManager)
 
         default_well_plate=WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
@@ -597,7 +597,7 @@ class OctopiGUI(QMainWindow):
         # image display windows
         self.imageDisplayTabs = TabBar(
             Tab(self.imageDisplayWindow.widget, "Single View"),
-            Tab(self.imageArrayDisplayWindow.widget, "Multi View"),
+            Tab(self.imageArrayDisplayWindow, "Multi View"),
             Tab(laserfocus_dockArea,"Laser AF Signal"),
         ).widget
 

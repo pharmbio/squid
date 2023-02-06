@@ -112,6 +112,8 @@ class AutofocusWidget:
         self.af_control=VBox(
             Dock(self.laser_af_control,"Laser AF"),
             Dock(self.software_af_control,"Software Af"),
+            
+            with_margins=False,
         ).widget
 
     @TypecheckFunction

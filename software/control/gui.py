@@ -63,7 +63,12 @@ def as_widget(layout)->QWidget:
     return w
 
 class HasLayout():
-    pass
+    def __init__(self,
+        with_margins:bool=True,
+    ):
+        if not with_margins:
+            self.layout.setContentsMargins(0, 0, 0, 0)
+    
 class HasWidget():
     def __init__(self,
         enabled:Optional[bool]=None,
@@ -221,20 +226,24 @@ class Grid(HasLayout,HasWidget):
         return as_widget(self.layout)
 
 class HBox(HasLayout,HasWidget):
-    def __init__(self,*args):
+    def __init__(self,*args,**kwargs):
         self.layout=QHBoxLayout()
         for arg in args:
             try_add_member(self.layout,arg)
+
+        super().__init__(**kwargs)
 
     @property
     def widget(self):
         return as_widget(self.layout)
 
 class VBox(HasLayout,HasWidget):
-    def __init__(self,*args):
+    def __init__(self,*args,**kwargs):
         self.layout=QVBoxLayout()
         for arg in args:
             try_add_member(self.layout,arg)
+    
+        super().__init__(**kwargs)
 
     @property
     def widget(self):

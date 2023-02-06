@@ -2,7 +2,7 @@
 from qtpy.QtCore import Qt, QModelIndex, QSize, Signal, QEvent
 from qtpy.QtWidgets import QFrame, QPushButton, QLineEdit, \
     QLabel, QAbstractItemView, QProgressBar, QDesktopWidget, \
-    QWidget, QSizePolicy, QApplication
+    QWidget, QSizePolicy, QApplication, QComboBox, QAbstractScrollArea
 from qtpy.QtGui import QIcon, QMouseEvent
 
 from control._def import *
@@ -168,7 +168,9 @@ class MultiPointWidget:
                 self.lineEdit_plateName,
                 QLabel("Image File Format:"),
                 self.image_format_widget,
-            ]
+            ],
+
+            with_margins=False,
         ).widget
 
         # add imaging grid configuration options
@@ -222,7 +224,9 @@ class MultiPointWidget:
         self.list_configurations.setSelectionMode(QAbstractItemView.MultiSelection) # ref: https://doc.qt.io/qt-5/qabstractitemview.html#SelectionMode-enum
         self.list_configurations.setDragDropMode(QAbstractItemView.InternalMove) # allow moving items within list
         self.list_configurations.model().rowsMoved.connect(self.channel_list_rows_moved)
-        self.list_configurations.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Expanding)
+        num_items_in_list=len(self.list_channel_names)
+        item_height=18 # TODO get real value, not just guess a good looking one..
+        self.list_configurations.setMinimumHeight(num_items_in_list*item_height)
 
         # add autofocus related stuff
         self.checkbox_withAutofocus = Checkbox(
@@ -253,8 +257,9 @@ class MultiPointWidget:
             [self.af_channel_dropdown],
             [self.interactive_widgets.checkbox_laserAutofocus],
             [self.btn_startAcquisition],
+
+            with_margins=False,
         ).widget
-        grid_multipoint_acquisition_config.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Minimum)
 
         self.progress_bar=QProgressBar()
         self.progress_bar.setMinimum(0)
@@ -265,11 +270,9 @@ class MultiPointWidget:
             GridItem( self.list_configurations,           row=0, column=0, colSpan=2 ),
             GridItem( grid_multipoint_acquisition_config, row=0, column=2, colSpan=2 ),
             GridItem( self.progress_bar,                  row=1, column=0, colSpan=4 ),
+            
+            with_margins=False,
         ).widget
-
-        self.storage_widget.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Maximum)
-        self.grid_widget.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Maximum)
-        self.imaging_widget.setSizePolicy(QSizePolicy.Minimum,QSizePolicy.Maximum)
 
         self.acquisition_is_running=False
 

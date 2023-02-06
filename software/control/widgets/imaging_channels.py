@@ -28,6 +28,8 @@ CONTRAST_ADJUST_MAX:float=5.0
 
 FPS_MIN=1.0
 FPS_MAX=30.0 # documentation for MER2-1220-32U3M-W90 says 32.5 fps is max, but we likely will never reach that with the manual trigger method that we use
+MIN_CHANNEL_Z_OFFSET_UM=-50.0 # real limit is about +-150
+MAX_CHANNEL_Z_OFFSET_UM= 50.0 # real limit is about +-150
 
 IMAGE_ADJUST_BRIGHTNESS_TOOLTIP="Image brightness adjustment factor.\nThis factor is used to artificially brighten the image displayed in the single image view.\nThis is not applied to images displayed during acqusition, and also not to images saved."
 IMAGE_ADJUST_CONTRAST_TOOLTIP="Image contrast adjustment factor.\nThis factor is used to artificially enhance the contrast of the image displayed in the single image view.\nThis is not applied to images displayed during acqusition, and also not to images saved."
@@ -54,12 +56,14 @@ class ImagingChannels:
         camera_wrapper:CameraWrapper,
 
         on_live_status_changed:Optional[Callable[[],bool]]=None,
+        move_to_offset:Optional[Callable[[float,],None]]=None,
     ):
         self.configuration_manager = configuration_manager
         self.camera_wrapper=camera_wrapper
         self.camera=camera_wrapper.camera
 
         self.on_live_status_changed=on_live_status_changed
+        self.move_to_offset=move_to_offset
 
         self.interactive_widgets=ObjectManager()
 
@@ -123,7 +127,7 @@ class ImagingChannels:
                     ).widget,
                     Label(ComponentLabel.CHANNEL_OFFSET_LABEL,tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP).widget,
                     config_manager.z_offset == SpinBoxDouble(
-                        minimum=-30.0,maximum=30.0,step=0.1,
+                        minimum=MIN_CHANNEL_Z_OFFSET_UM,maximum=MAX_CHANNEL_Z_OFFSET_UM,step=0.1,
                         default=config.channel_z_offset,
                         tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP,
                         on_valueChanged=[
@@ -177,6 +181,8 @@ class ImagingChannels:
                 label=ComponentLabel.BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL,
                 tooltip=ComponentLabel.BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP
             ).widget,
+
+            with_margins=False,
         ).widget
         self.channel_config=Dock(
             Grid(
@@ -321,18 +327,26 @@ class ImagingChannels:
         else:
             self.stop_requested=True
 
-    def snap_selected(self,_btn_state):
+    def snap_selected(self,_btn_state,with_offset_verride:Optional[bool]=None):
+        if not with_offset_verride is None:
+            with_offset=with_offset_verride
+        else:
+            with_offset=self.interactive_widgets.snap_all_with_offset_checkbox.checkState()==Qt.Checked
+            
         with self.camera_wrapper.ensure_streaming():
             for config_i,config in enumerate(self.configuration_manager.configurations):
                 if self.channel_included_in_snap_all_flags[config_i]:
-                    image=self.snap_single(_btn_state=None,config=config,display_single=True)
+                    image=self.snap_single(_btn_state=None,config=config,display_single=True,with_offset=with_offset)
                     self.channel_display.display_image(image,channel_index=config.illumination_source)
 
-    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None,display_single:bool=True)->numpy.ndarray:
+    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None,display_single:bool=True,with_offset:bool=False)->numpy.ndarray:
         with Profiler("do_snap",parent=profiler) as dosnapprof:
+            if with_offset and not self.move_to_offset is None:
+                self.move_to_offset(config.channel_z_offset)
             image=self.camera_wrapper.live_controller.snap(config=config,profiler=dosnapprof)
             self.last_single_displayed_image_image=image
             self.last_single_displayed_image_config=config
+
         if display_single:
             self.display_last_single_image(profiler=profiler)
 
