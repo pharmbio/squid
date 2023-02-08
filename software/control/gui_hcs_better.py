@@ -7,7 +7,7 @@ from qtpy.QtCore import Qt, QEvent, Signal
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
 
 from control.camera import Camera
-from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData
+from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME
 TRIGGER_MODES_LIST=list(TriggerMode)
 from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely, MessageBox, HasWidget
 from control.core import Core, ReferenceFile, CameraWrapper, AcquisitionConfig
@@ -17,6 +17,34 @@ from control.widgets import ComponentLabel
 from control.typechecker import TypecheckFunction
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
+
+class ConfigurationDatabase(QMainWindow):
+    def __init__(self,
+        parent:QWidget
+    ):
+        super().__init__(parent=parent)
+
+        def create_referenceFile_widget(file:str)->QWidget:
+            config=AcquisitionConfig.from_json(file)
+
+            return VBox(
+                Label(config.output_path)
+            ).widget
+
+        self.widget=VBox(
+            Label("load a file"),
+            VBox(*[
+                create_referenceFile_widget(reference_file)
+                for reference_file
+                in [LAST_PROGRAM_STATE_BACKUP_FILE_PATH]
+            ]),
+            Button("do load"),
+            #with_margin=False
+        ).widget
+
+        self.setCentralWidget(self.widget)
+
+        self.setWindowTitle("Configuration Database")
 
 class BasicSettings(QWidget):
     def __init__(self,
@@ -64,6 +92,7 @@ class BasicSettings(QWidget):
             self.interactive_widgets.load_all_config
         ]
     
+    @TypecheckFunction
     def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
         for widget in self.get_all_interactive_widgets():
             if not widget in exceptions:
@@ -80,18 +109,20 @@ class BasicSettings(QWidget):
         self.on_load_all_config()
 
     def open_config_load_popup(self):
-        self.on_load_all_config()
+        #self.on_load_all_config()
 
         # open window instead to load config from database (calibrated laser AF and approximate focus z position based on combination wellplate type + cell line)
         # also has interface to load only parts of a config file, e.g. checkboxes to select loading of certain parts of the whole-program config
-
-        print("stub def open_config_load_popup(self):")
+        
+        cdb=ConfigurationDatabase(parent=self.parent())
+        cdb.show()
 
 class Gui(QMainWindow):
     laser_af_validity_changed=Signal(bool)
 
     def __init__(self):
         super().__init__()
+        self.setWindowTitle(SOFTWARE_NAME)
 
         # skip_homing is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
         do_home=not bool(int(os.environ.get('skip_homing') or 0))
@@ -217,7 +248,7 @@ class Gui(QMainWindow):
         whole_acquisition_config:AcquisitionConfig=self.get_all_config(dry=dry)
 
         if dry:
-            return whole_acquisition_config
+            return AcquisitionStartResult(whole_acquisition_config,"dry")
 
         # some metadata written to the config file, in addition to the settings directly used for imaging
         additional_data={
@@ -243,12 +274,12 @@ class Gui(QMainWindow):
         except Exception as e:
             MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {str(e)}").run()
             self.set_all_interactible_enabled(set_enabled=True)
-            return AcquisitionStartResult(exception=e)
+            return AcquisitionStartResult(whole_acquisition_config,exception=e)
         
         if acquisition_thread is None:
-            return AcquisitionStartResult("done")
+            return AcquisitionStartResult(whole_acquisition_config,"done")
 
-        return AcquisitionStartResult(async_signal_on_finish=acquisition_thread.finished)
+        return AcquisitionStartResult(whole_acquisition_config,async_signal_on_finish=acquisition_thread.finished)
         
     def handle_acquired_image(self,image_data:AcquisitionImageData):
         self.imaging_channels_widget.live_display.display_image(image_data.image,name=f"{image_data.config.name} in well {image_data.well_name}")
@@ -377,8 +408,25 @@ class Gui(QMainWindow):
 
         full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_str)
 
+        # try generating unique experiment ID (that includes current timestamp) until successfull
+        while True:
+            now = datetime.now()
+            now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
+            now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
+
+            experiment_pathname = full_output_path + '_' + now_str
+            experiment_pathname = experiment_pathname.replace(' ', '_')
+            experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
+            experiment_path=Path(experiment_pathname)
+            if experiment_path.exists():
+                time.sleep(1) # wait until next second to get a unique experiment ID
+            else:
+                if not dry:
+                    experiment_path.mkdir(parents=True) # create a new folder
+                break
+
         return AcquisitionConfig(
-            output_path=full_output_path,
+            output_path=str(experiment_path),
             project_name=project_name_str,
             plate_name=plate_name_str,
             well_list=self.well_widget.get_selected_wells(),

@@ -42,19 +42,27 @@ class AcquisitionStartResultType(str,Enum):
     Done="done"
     RaisedException="exception"
     Async="async"
+    Dry="dry"
 
 class AcquisitionStartResult:
+    acquisition_config:"AcquisitionConfig"
     type:AcquisitionStartResultType
     exception:Optional[Exception]
     async_signal_on_finish:Optional[Signal]
 
     def __init__(self,
+        acquisition_config:"AcquisitionConfig",
         type:Union[None,AcquisitionStartResultType,str]=None,
         exception:Optional[Exception]=None,
         async_signal_on_finish:Optional[Signal]=None,
     ):
+        self.acquisition_config=acquisition_config
         self.exception=None
         self.async_signal_on_finish=None
+
+        if not type is None and type in (AcquisitionStartResultType.Dry,AcquisitionStartResultType.Dry.value):
+            self.type=AcquisitionStartResultType.Dry
+            return
 
         if not exception is None:
             assert type in (None,"exception",AcquisitionStartResultType.RaisedException)
@@ -941,6 +949,8 @@ class MachineConfiguration:
             kwargs['DISPLAY']=display
 
         return MachineConfiguration(**kwargs)
+
+SOFTWARE_NAME="SQUID - HCS Microscope Control Software"
 
 MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
 

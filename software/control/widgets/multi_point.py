@@ -14,6 +14,9 @@ from control.typechecker import TypecheckFunction
 from control.gui import *
 
 from enum import Enum
+import subprocess, os
+from datetime import datetime
+
 import numpy
 
 class ComponentLabels(str,Enum):
@@ -276,6 +279,7 @@ class MultiPointWidget:
 
         self.acquisition_is_running=False
 
+    @TypecheckFunction
     def on_laser_af_validity_changed(self,new_validity:bool):
         """
         callback for a signal that says whether the laser af is now valid or not
@@ -284,14 +288,17 @@ class MultiPointWidget:
         self.interactive_widgets.checkbox_laserAutofocus.setEnabled(new_validity)
         self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Unchecked) # uncheck it when validity change to invalid, but also uncheck otherwise because why not
     
+    @TypecheckFunction
     def set_grid_mask(self,new_mask:numpy.ndarray):
         for row_i,row in enumerate(new_mask):
             for column_i,element in enumerate(row):
                 self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=element)
 
+    @TypecheckFunction
     def get_grid_mask(self)->numpy.ndarray:
-        return self.well_grid_items_selected
+        return numpy.array(self.well_grid_items_selected)
 
+    @TypecheckFunction
     def set_grid_data(self,new_grid_data:WellGridConfig):
         assert new_grid_data.x.unit=="mm"
         self.entry_deltaX.setValue(new_grid_data.x.d)
@@ -309,6 +316,7 @@ class MultiPointWidget:
         # manually call callback to refresh acquisition preview in navigation viewer widget
         self.grid_changed()
 
+    @TypecheckFunction
     def get_grid_data(self)->WellGridConfig:
         return WellGridConfig(
             x=GridDimensionConfig(
@@ -333,6 +341,7 @@ class MultiPointWidget:
             ),
         )
     
+    @TypecheckFunction
     def set_selected_channels(self,new_selection:List[str]):
         for item_index in range(len(self.list_channel_names)):
             item=self.list_configurations.item(item_index)
@@ -340,6 +349,7 @@ class MultiPointWidget:
 
         # todo change order as well! (new_selection is ordered)
     
+    @TypecheckFunction
     def get_selected_channels(self)->List[str]:
         """
         return list of selected channels in order (ordered as displayed, will also be imaged in this order)
@@ -452,14 +462,14 @@ class MultiPointWidget:
     def toggle_acquisition(self,_pressed:bool):
         if not self.acquisition_is_running:
             # make sure all the parameters are fine
-            dry_start_experiment=self.start_experiment(dry=True)
-            assert isinstance(dry_start_experiment,AcquisitionConfig)
+            _=self.start_experiment(dry=True)
             
             self.acquisition_is_running=True
 
             self.btn_startAcquisition.setText(ComponentLabels.BUTTON_START_ACQUISITION_RUNNING_TEXT)
 
             self.experiment_finished_signal=self.start_experiment(dry=False)
+            self.experiment_config_data=self.experiment_finished_signal.acquisition_config
 
             if self.experiment_finished_signal.type=="done":
                 self.acquisition_is_finished()
@@ -494,7 +504,9 @@ class MultiPointWidget:
             self.abort_experiment()
             MessageBox(title="Acquisition terminated",text="Acquisition was terminated. It may take a few seconds until the microscope has finished the last step is was working on.",mode="information").run()
         else:
-            MessageBox(title="Acquisition finished",text="Acquisition is finished. See progress bar for details.",mode="information").run()
+            if QMessageBox.Open==MessageBox(title="Acquisition finished",text="Acquisition is finished. See progress bar for details.\n\nClick 'Open' button to open experiment output folder.",mode="information",button_override=QMessageBox.Ok|QMessageBox.Open).run():
+                # linux only (unsure if other things are linux only so far, but this is definitely one of them)
+                subprocess.Popen(f'xdg-open {os.path.realpath(self.experiment_config_data.output_path)}'.split(" "))
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:

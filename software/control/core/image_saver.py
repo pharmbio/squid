@@ -4,7 +4,7 @@ from qtpy.QtCore import QObject, Signal # type: ignore
 import control.utils as utils
 from control._def import *
 
-from queue import Queue
+from queue import Queue, Empty
 from threading import Thread, Lock
 import time
 import numpy as np
@@ -51,32 +51,34 @@ class ImageSaver(QObject):
         # need to use tiff when saving 16 bit images
         if file_format in (ImageFormat.TIFF_COMPRESSED,ImageFormat.TIFF):
             if file_format==ImageFormat.TIFF_COMPRESSED:
-                tifffile.imwrite(path + '.tiff',image,compression=8) # adobe deflate / zlib compression # takes 200ms (!)
+                tifffile.imwrite(path + '.tiff',image,compression=tifffile.COMPRESSION.LZW) # lossless and should be widely supported
             else:
-                iio.imwrite(path + '.tiff',image) # takes 7ms
+                tifffile.imwrite(path + '.tiff',image) # takes 7ms
         else:
             assert file_format==ImageFormat.BMP
             iio.imwrite(path + '.bmp',image)
 
     @TypecheckFunction
     def process_queue(self):
-        while True:            
+        while True:
             # process the queue
             try:
                 [path,image,file_format] = self.queue.get(timeout=0.1)
                 self.image_lock.acquire(True)
 
+                # this can throw if the package that is required for the compression method is not installed, in which case this queue deadlocks because self.image_lock has been acquired, but not released
                 ImageSaver.save_image(path,image,file_format)
 
                 self.counter = self.counter + 1
                 self.queue.task_done()
 
                 self.image_lock.release()
-            except:
+            except Empty:
                 # if queue is empty, and signal was received, terminate the thread
                 if self.stop_signal_received:
                     return
-                            
+        
+    @TypecheckFunction
     def enqueue(self,path:str,image:numpy.ndarray,file_format:ImageFormat):
         if self.stop_signal_received:
             print('! critical - attempted to save image even though stop signal was received!')

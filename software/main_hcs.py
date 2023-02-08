@@ -6,6 +6,7 @@ import sys
 
 # qt libraries
 from qtpy.QtWidgets import QApplication
+from control._def import SOFTWARE_NAME
 
 # app specific libraries
 use_old_gui=0
@@ -18,6 +19,10 @@ import control.core as core
 class HcsApplication(QApplication):
     def __init__(self):
         super().__init__([])
+
+        self.setApplicationDisplayName(SOFTWARE_NAME)
+        self.setApplicationName(SOFTWARE_NAME)
+        self.setDesktopFileName(SOFTWARE_NAME)
 
 if __name__ == "__main__":
     app = HcsApplication()

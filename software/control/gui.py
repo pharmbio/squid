@@ -474,24 +474,33 @@ class MessageBox:
         mode:ClosedSet[str]('information','critical','warning','question'),
 
         text:Optional[str]=None,
+        button_override:Optional[int]=None
     ):
         self.title=title
         self.mode=mode
         self.text=text
 
+        self.button_override=button_override
+
     @TypecheckFunction
     def run(self)->Optional[QMessageBox.StandardButton]:
         if self.mode=='information':
-            return QMessageBox.information(None,self.title,self.text)
+            if not self.button_override is None:
+                return QMessageBox.information(None,self.title,self.text,self.button_override)
+            else:
+                return QMessageBox.information(None,self.title,self.text)
         elif self.mode=='critical':
+            assert not self.button_override
             return QMessageBox.critical(None,self.title,self.text)
         elif self.mode=='warning':
+            assert not self.button_override
             return QMessageBox.warning(None,self.title,self.text)
         elif self.mode=='question':
+            assert not self.button_override
             question_answer:ClosedSet[int](QMessageBox.Yes,QMessageBox.No)=QMessageBox.question(None,self.title,self.text)
             return question_answer
         else:
-            assert False
+            assert False, "unreachable (invalid messsagebox mode)"
 
 class BlankWidget(QWidget):
     def __init__(self,

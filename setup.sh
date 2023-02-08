@@ -20,7 +20,7 @@ sudo dpkg -i micro-2.0.11-amd64.deb
 # setup microscope python env (which is global env, since Qt is used for gui, which does not work inside virtualenv)
 pip3 install --upgrade setuptools pip
 # python dependencies for squid software (PyQt5 might not actually be required? seems like it is already installed via python3-pyqt5, same for pyqtgraph)
-pip3 install Pillow==9.3.* PyQt5==5.14.* pyqtgraph==0.12.* QtPy==2.2.* scipy==1.9.* numpy==1.23.* matplotlib pyserial pandas imageio opencv-python opencv-contrib-python lxml crc scikit-image tqdm
+pip3 install imagecodecs==2023.1.23 Pillow==9.3.* PyQt5==5.14.* pyqtgraph==0.12.* QtPy==2.2.* scipy==1.9.* numpy==1.23.* matplotlib pyserial pandas imageio opencv-python opencv-contrib-python lxml crc scikit-image tqdm
 
 # install orange
 virtualenv orange_venv

@@ -2,11 +2,15 @@
 import os 
 os.environ["QT_API"] = "pyqt5"
 
+from datetime import datetime
+
 from control._def import *
 from control.typechecker import TypecheckFunction, TypecheckClass
 from .configuration import Configuration, ConfigurationManager
 
 from typing import List, Tuple, Callable, Optional
+
+from pathlib import Path
 
 @TypecheckClass
 class GridDimensionConfig:
@@ -550,7 +554,8 @@ class Core(QObject):
         # set image saving location
         acquisition_data=config.as_json(well_index_to_name=True)
         acquisition_data.update(additional_data)
-        self.multipointController.prepare_folder_for_new_experiment(output_path=config.output_path,complete_experiment_data=acquisition_data) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
+
+        self.prepare_folder_for_new_experiment(output_path=config.output_path,complete_experiment_data=acquisition_data ) # todo change this to a callback (so that each image can be handled in a callback, not as batch or whatever)
 
         # set file format for saved images
         Acquisition.IMAGE_FORMAT=config.image_file_format # not super ergonomic, but currently the image file format is globally specified via this variable
@@ -565,6 +570,17 @@ class Core(QObject):
 
             plate_type=config.plate_type,
         )
+
+    @TypecheckFunction
+    def prepare_folder_for_new_experiment(self,output_path:str,complete_experiment_data:dict):
+        self.output_path = output_path
+        self.multipointController.output_path=output_path
+
+        self.recording_start_time = time.time()
+
+        # config : complete set of config used for the experiment
+        complete_data_path = Path(output_path) / 'parameters.json'
+        complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
 
     @TypecheckFunction
     def close(self):

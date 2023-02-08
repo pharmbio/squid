@@ -96,6 +96,12 @@ class ConfigurationManager(QObject):
         with open(filename, mode="w", encoding="utf-8") as json_file:
             json_file.write(json_tree_string)
 
+    def json_fom_file(filename:str)->dict:
+        with open(filename,mode="r",encoding="utf-8") as json_file:
+            json_tree=json.decoder.JSONDecoder().decode(json_file.read())
+            
+        return json_tree
+
     def read_configurations(self,filename:str):
         with open(filename,mode="r",encoding="utf-8") as json_file:
             json_tree=json.decoder.JSONDecoder().decode(json_file.read())

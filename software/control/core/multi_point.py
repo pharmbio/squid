@@ -7,7 +7,6 @@ from control._def import *
 import os
 import time
 import cv2
-from datetime import datetime
 
 import json
 import pandas as pd
@@ -156,7 +155,14 @@ class MultiPointWorker(QObject):
         self.autofocusController.autofocus()
         self.autofocusController.wait_till_autofocus_has_completed()
 
-    def image_config(self,config:Configuration,saving_path:str,profiler:Optional[Profiler]=None,counter_backlash:bool=True,x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None):
+    def image_config(self,
+        config:Configuration,
+        saving_path:str,
+        profiler:Optional[Profiler]=None,
+        counter_backlash:bool=True,
+        # the params below are just for gui display purposes
+        x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None,
+    ):
         """ take image for specified configuration and save to specified path """
 
         if 'USB Spectrometer' in config.name:
@@ -195,9 +201,10 @@ class MultiPointWorker(QObject):
                             image = image[:,:,1]
                     else:
                         image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
+                        
+                    image=numpy.asarray(image)
 
             with Profiler("actual enqueue",parent=enqueuesaveimages) as actualenqueueprof:
-                image=numpy.asarray(image)
                 self.image_saver.enqueue(path=saving_path,image=image,file_format=Acquisition.IMAGE_FORMAT)
 
         if not self.image_return is None:
@@ -602,33 +609,6 @@ class MultiPointController(QObject):
     def set_crop(self,crop_width:int,crop_height:int):
         self.crop_width = crop_width
         self.crop_height = crop_height
-
-    @TypecheckFunction
-    def prepare_folder_for_new_experiment(self,output_path:str,complete_experiment_data:dict):
-        # try generating unique experiment ID (that includes current timestamp) until successfull
-        while True:
-            now = datetime.now()
-            now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
-            now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
-
-            experiment_pathname = output_path + '_' + now_str
-            experiment_pathname = experiment_pathname.replace(' ', '_')
-            experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
-            experiment_path=Path(experiment_pathname)
-            if experiment_path.exists():
-                time.sleep(1) # wait until next second to get a unique experiment ID
-            else:
-                experiment_path.mkdir(parents=True) # create a new folder
-                self.output_path = experiment_pathname
-                break
-
-        self.recording_start_time = time.time()
-
-        # save different sets of config data to the experiment output directory
-
-        # config : complete set of config used for the experiment
-        complete_data_path = experiment_path / 'parameters.json'
-        complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
 
     @TypecheckFunction
     def set_selected_configurations(self, selected_configurations_name:List[str]):
