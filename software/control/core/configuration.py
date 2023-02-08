@@ -7,7 +7,6 @@ from control._def import *
 
 import json
 from pathlib import Path
-import control.utils_config as utils_config
 
 from typing import Optional, List, Union, Tuple, Any
 

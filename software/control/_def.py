@@ -784,6 +784,7 @@ OBJECTIVES:Dict[str,ObjectiveData]={
 
 @TypecheckClass
 class MachineConfiguration:
+
     # hardware specific stuff
     ROTATE_IMAGE_ANGLE:ClosedSet[int](-90,0,90,180)=0
     

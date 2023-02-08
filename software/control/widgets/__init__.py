@@ -102,7 +102,6 @@ An asterisk (*) will be displayed after the filename if the settings have been c
 These settings are continuously saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.
     """
 
-
 from .autofocus import AutofocusWidget
 from .live_control import LiveControlWidget
 from .multi_point import MultiPointWidget

@@ -116,7 +116,7 @@ class AcquisitionConfig:
     project_name:str
     plate_name:str
     well_list:List[Tuple[int,int]]
-    grid_mask:List[List[bool]]
+    grid_mask:numpy.ndarray
     grid_config:WellGridConfig
     af_software_channel:Optional[str]=None
     af_laser_on:bool
@@ -155,7 +155,7 @@ class AcquisitionConfig:
             project_name=data["project_name"],
             plate_name=data["plate_name"],
             well_list=well_list,
-            grid_mask=data["grid_mask"],
+            grid_mask=numpy.array(data["grid_mask"]),
             grid_config=WellGridConfig.from_json(data["grid_config"]),
             af_software_channel=data["af_software_channel"],
             af_laser_on=data["af_laser_on"],
@@ -191,7 +191,7 @@ class AcquisitionConfig:
             "af_laser_reference":self.af_laser_reference.as_json() if not self.af_laser_reference is None else None,
 
             "grid_config":self.grid_config.as_json(),
-            "grid_mask":self.grid_mask,
+            "grid_mask":self.grid_mask.tolist(),
             "channels_ordered":self.channels_ordered,
             "channels_config":[config.as_dict() for config in self.channels_config],
             "well_list":well_list,
@@ -478,7 +478,7 @@ class Core(QObject):
     def plate_type(self)->int:
         return MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
 
-    #@TypecheckFunction
+    @TypecheckFunction
     def acquire(self,
         config:AcquisitionConfig,
 
