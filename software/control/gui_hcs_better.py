@@ -28,17 +28,32 @@ class ConfigurationDatabase(QMainWindow):
             config=AcquisitionConfig.from_json(file)
 
             return VBox(
-                Label(config.output_path)
+                HBox(
+                    Label("plate type"),
+                    Label("cell line"),
+                ),
+                HBox(
+                    Checkbox("contains laser af calibration data",checked=not config.af_laser_reference is None,enabled=False),
+                    Checkbox("move to laser af reference z",checked=False,enabled=not config.af_laser_reference is None),
+                ),
+                HBox(
+                    Label(config.output_path),
+                    Label("timestamp"),
+                ),
+                Button("load me"),
             ).widget
 
         self.widget=VBox(
-            Label("load a file"),
+            Label("Load configuration data from..?"),
+            Label(""),
+            Button("Browse (anywhere)"),
+            Label(""),
+            Label("Load from calibrated reference database"),
             VBox(*[
                 create_referenceFile_widget(reference_file)
                 for reference_file
                 in [LAST_PROGRAM_STATE_BACKUP_FILE_PATH]
             ]),
-            Button("do load"),
             #with_margin=False
         ).widget
 
@@ -409,37 +424,45 @@ class Gui(QMainWindow):
         full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_str)
 
         # try generating unique experiment ID (that includes current timestamp) until successfull
-        while True:
+        def gen_dir_name(base_output_path:str)->Path:
             now = datetime.now()
             now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
             now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
 
-            experiment_pathname = full_output_path + '_' + now_str
+            experiment_pathname = base_output_path + '_' + now_str
             experiment_pathname = experiment_pathname.replace(' ', '_')
             experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
-            experiment_path=Path(experiment_pathname)
-            if experiment_path.exists():
-                time.sleep(1) # wait until next second to get a unique experiment ID
-            else:
-                if not dry:
-                    experiment_path.mkdir(parents=True) # create a new folder
-                break
+            return Path(experiment_pathname)
+
+        experiment_path=gen_dir_name(base_output_path=full_output_path)
+        while experiment_path.exists():
+            time.sleep(1) # wait until next second to get a unique experiment ID
+            experiment_path=gen_dir_name(base_output_path=full_output_path)
+            
+        if not dry:
+            experiment_path.mkdir(parents=True) # create a new folder
 
         return AcquisitionConfig(
             output_path=str(experiment_path),
             project_name=project_name_str,
             plate_name=plate_name_str,
+
             well_list=self.well_widget.get_selected_wells(),
+
             grid_mask=self.acquisition_widget.get_grid_mask(),
             grid_config=self.acquisition_widget.get_grid_data(),
-            #af_software_channel:Optional[str]=None,
-            af_laser_on=self.acquisition_widget.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked,
-            #af_laser_reference:Optional[LaserAutofocusData]=None,
+
+            af_software_channel=self.acquisition_widget.get_af_software_channel(only_when_enabled=True),
+            af_laser_on=self.acquisition_widget.get_af_laser_is_enabled(),
+            af_laser_reference=self.acquisition_widget.get_af_laser_reference_data(only_when_enabled=True),
+
             trigger_mode=TRIGGER_MODES_LIST[self.basic_settings.interactive_widgets.trigger_mode_dropdown.currentIndex()],
             pixel_format=self.core.main_camera.pixel_formats[self.basic_settings.interactive_widgets.pixel_format.currentIndex()],
             plate_type=self.well_widget.get_wellplate_type(),
+
             channels_ordered=self.acquisition_widget.get_selected_channels(),
             channels_config=self.imaging_channels_widget.get_channel_configurations(),
+
             image_file_format=self.acquisition_widget.get_image_file_format(),
         )
 
@@ -460,16 +483,18 @@ class Gui(QMainWindow):
         
         config_data=AcquisitionConfig.from_json(file_path=input_file)
         
-        #self.acquisition_widget.lineEdit_baseDir.setText()
+        #self.acquisition_widget.lineEdit_baseDir.setText() # todo : base_dir itself is not currently saved, only the final output dir, which contains the base plus other stuff, is. is that worth saving/loading, or does it not matter?
         self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
         self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
 
         self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
         self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))
+        
         self.acquisition_widget.set_image_file_format(config_data.image_file_format)
 
         self.acquisition_widget.set_grid_data(config_data.grid_config)
         self.acquisition_widget.set_grid_mask(config_data.grid_mask) # set mask after grid settings! (setting grid settings overwrites mask state)
+
         self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
         self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
         self.acquisition_widget.set_selected_channels(config_data.channels_ordered)

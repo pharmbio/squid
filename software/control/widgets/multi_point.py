@@ -9,7 +9,7 @@ from control._def import *
 
 from typing import Optional, Union, List, Tuple, Callable
 
-from control.core import Core, MultiPointController, ConfigurationManager, GridDimensionConfig, WellGridConfig, AcquisitionConfig
+from control.core import Core, MultiPointController, ConfigurationManager, GridDimensionConfig, WellGridConfig, AcquisitionConfig, LaserAutofocusData
 from control.typechecker import TypecheckFunction
 from control.gui import *
 
@@ -238,12 +238,12 @@ class MultiPointWidget:
             tooltip=ComponentLabels.SOFTWARE_AUTOFOCUS_TOOLTIP,
         ).widget
 
-        channel_names=[microscope_configuration.name for microscope_configuration in self.core.main_camera.configuration_manager.configurations]
+        self.af_software_channel_names=[microscope_configuration.name for microscope_configuration in self.core.main_camera.configuration_manager.configurations]
         self.af_channel_dropdown=Dropdown(
-            items=channel_names,
-            current_index=channel_names.index(self.multipointController.autofocus_channel_name),
+            items=self.af_software_channel_names,
+            current_index=self.af_software_channel_names.index(self.multipointController.autofocus_channel_name),
             tooltip=ComponentLabels.AF_CHANNEL_TOOLTIP,
-            on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",channel_names[index])
+            on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",self.af_software_channel_names[index])
         ).widget
 
         self.interactive_widgets.checkbox_laserAutofocus = Checkbox(
@@ -342,6 +342,44 @@ class MultiPointWidget:
         )
     
     @TypecheckFunction
+    def get_af_software_is_enabled(self)->bool:
+        return self.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked
+    
+    @TypecheckFunction
+    def get_af_software_channel(self,only_when_enabled:bool=True)->Optional[str]:
+        if only_when_enabled and not self.get_af_software_is_enabled():
+            return None
+        
+        return self.af_software_channel_names[self.af_channel_dropdown.currentIndex()]
+    
+    @TypecheckFunction
+    def get_af_laser_is_enabled(self)->bool:
+        return self.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked
+    
+    @TypecheckFunction
+    def get_af_laser_reference_data(self,only_when_enabled:bool=True)->Optional[LaserAutofocusData]:
+        if only_when_enabled and not self.get_af_laser_is_enabled():
+            return None
+        
+        z_um_at_reference=self.core.laserAutofocusController.reference_z_height_mm
+        assert type(z_um_at_reference) is float
+
+        return LaserAutofocusData(
+            x_reference=self.core.laserAutofocusController.x_reference,
+            um_per_px=self.core.laserAutofocusController.um_per_px,
+
+            z_um_at_reference=self.core.laserAutofocusController.reference_z_height_mm*1e3,
+
+            x_offset=self.core.laserAutofocusController.x_offset,
+            y_offset=self.core.laserAutofocusController.y_offset,
+            x_width=self.core.laserAutofocusController.width,
+            y_width=self.core.laserAutofocusController.height,
+
+            has_two_interfaces=self.core.laserAutofocusController.has_two_interfaces,
+            use_glass_top=self.core.laserAutofocusController.use_glass_top,
+        )
+    
+    @TypecheckFunction
     def set_selected_channels(self,new_selection:List[str]):
         for item_index in range(len(self.list_channel_names)):
             item=self.list_configurations.item(item_index)
@@ -384,19 +422,19 @@ class MultiPointWidget:
         self.well_grid_items_selected=[
             [
                 False 
-                for c 
+                for _c
                 in range(nx)
             ]
-            for r 
+            for _r
             in range(ny)
         ]
         self.well_grid_items=[
             [
                 None
-                for c 
+                for _c
                 in range(nx)
             ]
-            for r 
+            for _r
             in range(ny)
         ]
 

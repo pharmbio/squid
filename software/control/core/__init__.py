@@ -78,6 +78,9 @@ class LaserAutofocusData:
     x_reference:float
     um_per_px:float
 
+    z_um_at_reference:float
+    """ z position of objective in um when reference was set """
+
     x_offset:int
     y_offset:int
     x_width:int
@@ -90,6 +93,8 @@ class LaserAutofocusData:
         return {
             "x_reference":self.x_reference,
             "um_per_px":self.um_per_px,
+
+            "z_um_at_reference":self.z_um_at_reference,
 
             "x_offset":self.x_offset,
             "y_offset":self.y_offset,
@@ -105,6 +110,8 @@ class LaserAutofocusData:
             x_reference=s["x_reference"],
             um_per_px=s["um_per_px"],
 
+            z_um_at_reference=s["z_um_at_reference"],
+
             x_offset=s["x_offset"],
             y_offset=s["y_offset"],
             x_width=s["x_width"],
@@ -119,18 +126,30 @@ class AcquisitionConfig:
     output_path:str
     project_name:str
     plate_name:str
+
     well_list:List[Tuple[int,int]]
+
     grid_mask:numpy.ndarray
     grid_config:WellGridConfig
+
     af_software_channel:Optional[str]=None
     af_laser_on:bool
     af_laser_reference:Optional[LaserAutofocusData]=None
+
     trigger_mode:TriggerMode
     pixel_format:str
     plate_type:int
+
     channels_ordered:List[str]
     channels_config:List[Configuration]
+
     image_file_format:ImageFormat
+
+    # TODO:
+    # objective: str # responsible for magnification
+    # plate_type: str # e.g. multiple options for 384 from different manufacturers
+    # cell_line: str # responsible for lighing settings incl. channel-specific z offsets
+    # time_stamp:timestamp
 
     def from_json(file_path:Union[str,Path])->"AcquisitionConfig":
         with open(str(file_path),mode="r",encoding="utf-8") as json_file:
