@@ -92,7 +92,7 @@ class HasFramestyle(HasWidget):
             elif frame_style=="sunken":
                 self.widget.setFrameStyle(QFrame.Panel | QFrame.Sunken)
 
-        super().__init__()
+        super().__init__(**kwargs)
 
 class HasToolTip(HasWidget):
     def __init__(self,
@@ -305,7 +305,7 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
 
         super().__init__(**kwargs)
 
-class Label(TextSelectable,HasToolTip,HasWidget):
+class Label(HasFramestyle,TextSelectable,HasToolTip,HasWidget):
     def __init__(self,
         text:str,
         text_color:Optional[str]=None,
