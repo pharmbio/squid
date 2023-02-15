@@ -142,7 +142,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_set_reference.setDisabled(True)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IN_PROGRESS)
 
-        self.laserAutofocusController.set_reference(z_pos_mm=self.get_current_z_pos_in_mm)
+        self.laserAutofocusController.set_reference(z_pos_mm=self.get_current_z_pos_in_mm())
 
         # allow actual use of laser AF now
         self.call_after_set_reference()

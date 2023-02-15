@@ -5,7 +5,9 @@ os.environ["QT_API"] = "pyqt5"
 from qtpy.QtCore import QObject, Signal, QMutex, QEventLoop
 from qtpy.QtWidgets import QApplication
 
-from control._def import *
+from control._def import MACHINE_CONFIG
+from control.typechecker import TypecheckFunction
+from typing import Optional
 
 import time, math
 import numpy as np
@@ -157,6 +159,7 @@ class LaserAutofocusController(QObject):
                 else:
                     self.navigation.move_z(um_to_move/1000,wait_for_completion={})
 
+    @TypecheckFunction()
     def set_reference(self,z_pos_mm:float):
         assert self.is_initialized
 

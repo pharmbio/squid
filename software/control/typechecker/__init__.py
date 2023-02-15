@@ -1,4 +1,5 @@
 from ast import Assert
+import collections
 from typing import Union, Optional, List, TypeVar, Generic, Tuple, Any, ClassVar, Callable
 NoneType=type(None)
 from dataclasses import Field, field, dataclass, _MISSING_TYPE
@@ -7,8 +8,14 @@ from inspect import signature, Parameter, getmro
 
 from qtpy.QtCore import Signal, QObject
 
-from .util import *
-from . import module_checker
+try: # if imported as module
+    from .util import *
+    from . import module_checker
+except:
+    from util import *
+    import module_checker
+
+FUNCTION_TYPE=type(lambda:2)
 
 def type_match(et,v,_vt:Any=None)->TypeCheckResult:
     """
@@ -57,11 +64,13 @@ def type_match(et,v,_vt:Any=None)->TypeCheckResult:
         et_type_is_list=et.__origin__==list
         et_type_is_tuple=et.__origin__==tuple
         et_type_is_dict=et.__origin__==dict
+        et_type_is_callable=et.__origin__==collections.abc.Callable # this is really how this works
     except:
         et_type_is_union=False
         et_type_is_list=False
         et_type_is_tuple=False
         et_type_is_dict=False
+        et_type_is_callable=False
 
     if et_type_is_union:
         for arg in et.__args__:
@@ -103,6 +112,14 @@ def type_match(et,v,_vt:Any=None)->TypeCheckResult:
                 return TypeCheckResult(False,msg=f"dict key type mismatch {type_name(et_dict_key_type)} != {type_name(type(k))} at key {k}")
             if not type_match(et_dict_item_type,v):
                 return TypeCheckResult(False,msg=f"dict item type mismatch {type_name(et_dict_item_type)} != {type_name(type(v))} at key {v}")
+
+        return TypeCheckResult(True)
+    
+    elif et_type_is_callable:
+        if FUNCTION_TYPE!=vt and not callable(v):
+            return TypeCheckResult(False,msg=f"{type_name(vt)} is not callable")
+        
+        # TODO blindly accept any Callable as any other Callable (because type information about arguments is lost during runtime)
 
         return TypeCheckResult(True)
 
@@ -344,27 +361,45 @@ def TypecheckFunction(_f=None,*,check_defaults:bool=True)->Callable:
                     error_msg=f"in {full_function_name_and_position}, argument {arg_name}:{type_name(arg.annotation)} has invalid default value {arg.default}:{type_name(type(arg.default))}"
                     raise TypeError(error_msg)
 
-        potentially_positional_args={arg_name:arg.annotation for arg_name,arg in f_signature.parameters.items()}
+        arg_annotation_dict={arg_name:arg.annotation for arg_name,arg in f_signature.parameters.items()}
 
-        potentially_positional_args_key_list=list(potentially_positional_args.keys())
-        potentially_positional_args_value_list=list(potentially_positional_args.values())
+        arg_names=[arg_name for arg_name in f_signature.parameters.keys()]
+        arg_types=[arg.annotation for arg in f_signature.parameters.values()]
+
+        max_num_positional_args=0
+        for arg in f_signature.parameters.values():
+            if arg.kind in (arg.POSITIONAL_ONLY,arg.POSITIONAL_OR_KEYWORD):
+                max_num_positional_args+=1
 
         @wraps(f)
         def wrapper(*args,**kwargs):
-            if len(args)>len(potentially_positional_args_key_list):
-                error_msg=f"too many positional arguments to {full_function_name_and_position} (got {len(args)} instead of {len(potentially_positional_args_key_list)})"
+            if len(args)>max_num_positional_args:
+                error_msg=f"too many positional arguments to {full_function_name_and_position} (got {len(args)} instead of max. {max_num_positional_args})"
                 raise TypeError(error_msg)
 
             for arg_i,arg in enumerate(args):
 
-                arg_name=potentially_positional_args_key_list[arg_i]
+                arg_name=arg_names[arg_i]
                 if arg_name=="self":
                     continue
-                arg_expected_type=potentially_positional_args_value_list[arg_i]
+                arg_expected_type=arg_types[arg_i]
 
                 tmr=type_match(arg_expected_type,arg)
                 if not tmr:
-                    error_msg=f"runtime argument {arg_name} at position {arg_i} in {full_function_name_and_position} has invalid type: {tmr.msg}"
+                    error_msg=f"positional runtime argument {arg_name} at position {arg_i} in {full_function_name_and_position} has invalid type: {tmr.msg}"
+                    raise TypeError(error_msg)
+
+            for arg_i,(arg_name,arg_value) in enumerate(kwargs.items()):
+
+                if not arg_name in arg_annotation_dict:
+                    error_msg=f"unknown keyword runtime argument {arg_name} in {full_function_name_and_position}"
+                    raise TypeError(error_msg)
+
+                arg_expected_type=arg_annotation_dict[arg_name]
+
+                tmr=type_match(arg_expected_type,arg_value)
+                if not tmr:
+                    error_msg=f"keyword runtime argument {arg_name} in {full_function_name_and_position} has invalid type: {tmr.msg}"
                     raise TypeError(error_msg)
 
             res=f(*args,**kwargs)
@@ -408,14 +443,14 @@ class ClosedRange(Generic[T]):
             cls.arg = key
         else:
             try:
-                cls.arg = cls.arg[key] # type: ignore
+                cls.arg = cls.arg[key]
             except TypeError:
                 cls.arg = key
-        return super().__class_getitem__(key) # type: ignore
+        return super().__class_getitem__(key)
 
     def __init__(self,lower:T,upper:T,lb_incl:bool=True,ub_incl:bool=True):
         self.type_arg=self.arg
-        assert lower<upper # type: ignore
+        assert lower<upper
 
         tmr=type_match(self.arg,lower)
         assert tmr,f"lower bound invalid {tmr.msg}"
@@ -642,4 +677,71 @@ if __name__=="__main__":
     app.asd.connect(p)
     app.asd.emit(2.0)
     app.someattributethatdoesnotexist=2313
-    app.b=3
+    app.b=3.0
+
+    did_fail=False
+    try:
+        class A:
+            def __init__(self,a):
+                self.sf=a
+
+        class B:
+            def __init__(self):
+                pass
+            @TypecheckFunction
+            def something(self,a:float):
+                r=a
+
+        debugme_a=A(lambda:3.0)
+        debugme_b=B()
+        debugme_b.something(debugme_a.sf)
+    except:
+        did_fail=True
+    assert did_fail, "should have failed because type(debugme_a.sf)!=type(debugme_b.something.args['a'])"
+
+    did_fail=False
+    try:
+        class A:
+            def __init__(self,a):
+                self.sf=a
+
+        class B:
+            def __init__(self):
+                pass
+            @TypecheckFunction
+            def something(self,a:float):
+                r=a
+
+        debugme_a=A(lambda:3.0)
+        debugme_b=B()
+        debugme_b.something(a=debugme_a.sf)
+    except:
+        did_fail=True
+    assert did_fail, "should have failed because type(debugme_a.sf)!=type(debugme_b.something.args['a'])"
+
+    did_fail=False
+    try:
+        class B:
+            def __init__(self):
+                pass
+            @TypecheckFunction
+            def something(self,a:float,c:int):
+                r=a
+                x=c
+
+        b=B()
+        b.something(b=2.0,c=3)
+    except:
+        did_fail=True
+    assert did_fail, "unknown argument b given to b.something()"
+
+    #@TypecheckFunction
+    def somefunc(a:float,c:int)->str:
+        return f"{a}{c}"
+    
+    @TypecheckFunction
+    def take_callable_arg(a:Callable[[float,int],str])->str:
+        return a(3.0,2)
+    
+    take_callable_arg(somefunc)
+        
