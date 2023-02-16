@@ -214,7 +214,7 @@ class NavigationController(QObject):
         else:
             self.theta_pos_rad = theta_pos*MACHINE_CONFIG.STAGE_POS_SIGN_THETA*(2*math.pi/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_THETA*MACHINE_CONFIG.FULLSTEPS_PER_REV_THETA))
 
-        wellplate_format=WELLPLATE_FORMATS[384]
+        wellplate_format=WELLPLATE_FORMATS["Generic 384"]
         wellplate_format.pos_mm_to_well_index(x_mm=self.x_pos_mm,y_mm=self.y_pos_mm)
 
         # emit the updated position

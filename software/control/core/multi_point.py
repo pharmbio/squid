@@ -544,7 +544,7 @@ class MultiPointController(QObject):
         self.thread:Optional[QThread]=None
         self.parent = parent
 
-        self.plate_type=None
+        self.plate_type:Optional[str]=None
 
         # set some default values to avoid introducing new attributes outside constructor
         self.abort_acqusition_requested = False
@@ -620,7 +620,7 @@ class MultiPointController(QObject):
     def run_experiment(self,
         well_selection:Tuple[List[str],List[Tuple[float,float]]],
         on_new_acquisition:Optional[Callable[[AcqusitionProgress],None]],
-        plate_type:int,
+        plate_type:str,
 
         grid_mask:Optional[Any]=None,
         image_return:Optional[Any]=None,

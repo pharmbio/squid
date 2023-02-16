@@ -121,11 +121,15 @@ class LaserAutofocusData:
             use_glass_top=s["use_glass_top"],
         )
 
+DEFAULT_CELL_LINE_STR:str="unknown cells"
+DEFAULT_PLATE_TYPE_STR:str="Generic 384"
+
 @TypecheckClass
 class AcquisitionConfig:
     output_path:str
     project_name:str
     plate_name:str
+    cell_line: str # possibly responsible for lighing settings incl. channel-specific z offsets
 
     well_list:List[Tuple[int,int]]
 
@@ -138,7 +142,7 @@ class AcquisitionConfig:
 
     trigger_mode:TriggerMode
     pixel_format:str
-    plate_type:int
+    plate_type:str # e.g. multiple options for 384 from different manufacturers
 
     channels_ordered:List[str]
     channels_config:List[Configuration]
@@ -147,15 +151,13 @@ class AcquisitionConfig:
 
     # TODO:
     # objective: str # responsible for magnification
-    # plate_type: str # e.g. multiple options for 384 from different manufacturers
-    # cell_line: str # responsible for lighing settings incl. channel-specific z offsets
     # time_stamp:timestamp
 
     def from_json(file_path:Union[str,Path])->"AcquisitionConfig":
         with open(str(file_path),mode="r",encoding="utf-8") as json_file:
             data=json.decoder.JSONDecoder().decode(json_file.read())
 
-        plate_type=data["plate_type"]
+        plate_type=data["plate_type"] if "plate_type" in data else DEFAULT_PLATE_TYPE_STR
 
         well_list=data["well_list"]
         for i in range(len(well_list)):
@@ -177,17 +179,24 @@ class AcquisitionConfig:
             output_path=data["output_path"],
             project_name=data["project_name"],
             plate_name=data["plate_name"],
+            cell_line=data["cell_line"] if "cell_line" in data else DEFAULT_CELL_LINE_STR,
+
             well_list=well_list,
+
             grid_mask=numpy.array(data["grid_mask"]),
             grid_config=WellGridConfig.from_json(data["grid_config"]),
+
             af_software_channel=data["af_software_channel"],
             af_laser_on=data["af_laser_on"],
             af_laser_reference=af_laser_reference,
+
             trigger_mode=TriggerMode(data["trigger_mode"]),
             pixel_format=data["pixel_format"],
             plate_type=plate_type,
+
             channels_ordered=data["channels_ordered"],
             channels_config=[Configuration.from_json(config_dict) for config_dict in data["channels_config"]],
+
             image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0]
         )
 

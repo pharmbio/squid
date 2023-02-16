@@ -20,39 +20,55 @@ LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
 class ConfigurationDatabase(QMainWindow):
     def __init__(self,
-        parent:QWidget
+        parent:QWidget,
+
+        on_load_from_file:Callable[[Optional[str]],None],
     ):
         super().__init__(parent=parent)
+
+        self.on_load_from_file=on_load_from_file
 
         def create_referenceFile_widget(file:str)->QWidget:
             config=AcquisitionConfig.from_json(file)
 
-            return VBox(
-                HBox(
-                    Label("plate type"),
-                    Label("cell line"),
-                ),
-                HBox(
-                    Checkbox("contains laser af calibration data",checked=not config.af_laser_reference is None,enabled=False),
-                    Checkbox("move to laser af reference z",checked=False,enabled=not config.af_laser_reference is None),
-                ),
-                HBox(
-                    Label(config.output_path),
-                    Label("timestamp"),
-                ),
-                Button("load me"),
-            ).widget
+            laser_af_reference_is_present:bool=not config.af_laser_reference is None
+
+            return Dock(
+                Grid(
+                    [
+                        Label(f"Plate type: {config.plate_type}"),
+                        Label(f"Cell Line: {config.cell_line}"),
+                    ],
+                    [
+                        Checkbox("Load laser AF data",tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",checked=False,enabled=laser_af_reference_is_present),
+                        Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
+                    ],
+                    [
+                        Label("Timestamp: <timestamp>"),
+                    ],
+                    GridItem(
+                        Button("Load this reference",on_clicked=lambda _:self.on_load_from_file(file)),
+                        row=3,
+                        colSpan=2,
+                    )
+                ).widget,
+                title=f"File: {file}",
+                minimize_height=True,
+            )
 
         self.widget=VBox(
             Label("Load configuration data from..?"),
-            Label(""),
-            Button("Browse (anywhere)"),
-            Label(""),
-            Label("Load from calibrated reference database"),
+            Label(""), # empty line
+            Button("Browse (anywhere)",on_clicked=lambda _:self.on_load_from_file()),
+            Label(""), # empty line
+            Label("Load from calibrated reference database :"),
             VBox(*[
                 create_referenceFile_widget(reference_file)
                 for reference_file
-                in [LAST_PROGRAM_STATE_BACKUP_FILE_PATH]
+                in [
+                    LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                    LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                ]
             ]),
             #with_margin=False
         ).widget
@@ -76,6 +92,8 @@ class BasicSettings(QWidget):
 
         self.interactive_widgets=ObjectManager()
 
+        DEFAULT_CAMERA_PIXEL_INDEX_INT:int=self.main_camera.pixel_formats.index("Mono12") # list is expected to contain "Mono8" and "Mono12", and Mono12 has been chosen as default
+
         self.setLayout(VBox(
             HBox(
                 Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
@@ -86,17 +104,17 @@ class BasicSettings(QWidget):
                 Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
                 self.interactive_widgets.pixel_format == Dropdown(
                     items=self.main_camera.pixel_formats,
-                    current_index=self.main_camera.pixel_formats.index("Mono12"), # list contains "Mono8" and "Mono12"
+                    current_index=DEFAULT_CAMERA_PIXEL_INDEX_INT,
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                 ).widget,
             ),
             HBox(
-                self.interactive_widgets.save_all_config == Button("Save configuration",on_clicked=self.save_all_config).widget,
-                self.interactive_widgets.load_all_config == Button("Load configuration",on_clicked=self.open_config_load_popup).widget,
+                self.interactive_widgets.save_all_config == Button("Save configuration",on_clicked=lambda _btn:self.on_save_all_config()).widget,
+                self.interactive_widgets.load_all_config == Button("Load configuration",on_clicked=lambda _btn:self.on_load_all_config()).widget,
             ),
         ).layout)
 
-        self.set_main_camera_pixel_format(0) # default pixel format has been decided to be 8 bits
+        self.set_main_camera_pixel_format(DEFAULT_CAMERA_PIXEL_INDEX_INT)
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
@@ -116,21 +134,6 @@ class BasicSettings(QWidget):
     def set_main_camera_pixel_format(self,pixel_format_index:int):
         new_pixel_format=self.main_camera.pixel_formats[pixel_format_index]
         self.main_camera.camera.set_pixel_format(new_pixel_format)
-
-    def save_all_config(self):
-        self.on_save_all_config()
-
-    def load_all_config(self):
-        self.on_load_all_config()
-
-    def open_config_load_popup(self):
-        #self.on_load_all_config()
-
-        # open window instead to load config from database (calibrated laser AF and approximate focus z position based on combination wellplate type + cell line)
-        # also has interface to load only parts of a config file, e.g. checkboxes to select loading of certain parts of the whole-program config
-        
-        cdb=ConfigurationDatabase(parent=self.parent())
-        cdb.show()
 
 class Gui(QMainWindow):
     laser_af_validity_changed=Signal(bool)
@@ -383,11 +386,13 @@ class Gui(QMainWindow):
         if progress_data.last_completed_action=="finished acquisition":
             self.set_all_interactible_enabled(set_enabled=True)
 
+    @TypecheckFunction
     def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
         # get output paths
         base_dir_str=self.acquisition_widget.lineEdit_baseDir.text()
         project_name_str=self.acquisition_widget.lineEdit_projectName.text()
         plate_name_str=self.acquisition_widget.lineEdit_plateName.text()
+        cell_line_str=self.acquisition_widget.lineEdit_cellLine.text()
 
         if len(project_name_str)==0 and not allow_invalid_values:
             if dry:
@@ -446,6 +451,7 @@ class Gui(QMainWindow):
             output_path=str(experiment_path),
             project_name=project_name_str,
             plate_name=plate_name_str,
+            cell_line=cell_line_str,
 
             well_list=self.well_widget.get_selected_wells(),
 
@@ -477,15 +483,26 @@ class Gui(QMainWindow):
         self.get_all_config(dry=True,allow_invalid_values=True).save_json(file_path=output_file,well_index_to_name=True)
 
     def load_all_config(self):
-        input_file=FileDialog(mode="open",directory=".",caption="Load all configuration data",filter_type=FILTER_JSON).run()
-        if len(input_file)==0:
-            return
+        cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
+        cdb.show()
+
+    def load_config_from_file(self,file_path:Optional[str]=None):
+        """
+        if file_path is None, this function will open a dialog to ask for the file to loiad
+        """
+        if file_path is None:
+            input_file=FileDialog(mode="open",directory=".",caption="Load all configuration data",filter_type=FILTER_JSON).run()
+            if len(input_file)==0:
+                return
+        else:
+            input_file=file_path
         
         config_data=AcquisitionConfig.from_json(file_path=input_file)
         
         #self.acquisition_widget.lineEdit_baseDir.setText() # todo : base_dir itself is not currently saved, only the final output dir, which contains the base plus other stuff, is. is that worth saving/loading, or does it not matter?
         self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
         self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+        self.acquisition_widget.lineEdit_cellLine.setText(config_data.cell_line)
 
         self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
         self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))

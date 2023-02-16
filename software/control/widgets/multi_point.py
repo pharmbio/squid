@@ -5,11 +5,11 @@ from qtpy.QtWidgets import QFrame, QPushButton, QLineEdit, \
     QWidget, QSizePolicy, QApplication, QComboBox, QAbstractScrollArea
 from qtpy.QtGui import QIcon, QMouseEvent
 
-from control._def import *
+from control._def import AcquisitionStartResult, MACHINE_CONFIG, ImageFormat, Acquisition
 
 from typing import Optional, Union, List, Tuple, Callable
 
-from control.core import Core, MultiPointController, ConfigurationManager, GridDimensionConfig, WellGridConfig, AcquisitionConfig, LaserAutofocusData
+from control.core import Core, MultiPointController, ConfigurationManager, GridDimensionConfig, WellGridConfig, AcquisitionConfig, LaserAutofocusData, DEFAULT_CELL_LINE_STR
 from control.typechecker import TypecheckFunction
 from control.gui import *
 
@@ -136,19 +136,18 @@ class MultiPointWidget:
         self.interactive_widgets=ObjectManager()
 
         # add image saving options (path where to save)
-        self.btn_setBaseDir = Button('Browse',default=False).widget
+        self.btn_setBaseDir = Button('Browse',default=False,on_clicked=self.set_saving_dir).widget
         self.btn_setBaseDir.setIcon(QIcon('icon/folder.png'))
-        self.btn_setBaseDir.clicked.connect(self.set_saving_dir)
         
         self.lineEdit_baseDir = QLineEdit()
         self.lineEdit_baseDir.setReadOnly(True)
-        self.lineEdit_baseDir.setText('Choose a base saving directory')
-
         self.lineEdit_baseDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
         self.base_path_is_set = True
 
         self.lineEdit_projectName = QLineEdit()
         self.lineEdit_plateName = QLineEdit()
+        self.lineEdit_cellLine = QLineEdit()
+        self.lineEdit_cellLine.setText(DEFAULT_CELL_LINE_STR)
 
         self.image_format_widget=Dropdown(
             items=["BMP","TIF","TIF (compr.)"],
@@ -164,13 +163,17 @@ class MultiPointWidget:
             ],
             [
                 QLabel('Project Name:'),
-                GridItem(self.lineEdit_projectName,colSpan=3),
+                self.lineEdit_projectName,
+                GridItem(Label("Image Format:",tooltip="File format used for the saved images.\nTIF is a widely supported format, but might take up a lot of space.\nTIF (comp.) compresses images (lossless) before saving as TIF files, which can reduce the filesize, but may not be as widely compatible with other software.\nBMP should only be used under special circumstances.").widget,row=1),
+                self.image_format_widget,
             ],
             [
                 QLabel('Plate Name:'),
-                self.lineEdit_plateName,
-                QLabel("Image File Format:"),
-                self.image_format_widget,
+                GridItem(self.lineEdit_plateName,colSpan=3),
+            ],
+            [
+                QLabel('Cell line:'),
+                GridItem(self.lineEdit_cellLine,colSpan=3),
             ],
 
             with_margins=False,
@@ -292,7 +295,7 @@ class MultiPointWidget:
     def set_grid_mask(self,new_mask:numpy.ndarray):
         for row_i,row in enumerate(new_mask):
             for column_i,element in enumerate(row):
-                self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=element)
+                self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=bool(element))
 
     @TypecheckFunction
     def get_grid_mask(self)->numpy.ndarray:
@@ -455,6 +458,7 @@ class MultiPointWidget:
 
         self.well_grid_selector.set_children(flatten(self.well_grid_items))
 
+    @TypecheckFunction
     def toggle_well_grid_selection(self,_event_data:Any,row:int,column:int,override_selected_state:Optional[bool]=None):
         grid_item=self.well_grid_items[row][column]
         is_currently_selected=self.well_grid_items_selected[row][column]
@@ -470,6 +474,7 @@ class MultiPointWidget:
 
         grid_item.generate_stylesheet()
 
+    @TypecheckFunction
     def channel_list_rows_moved(self,_parent:QModelIndex,row_range_moved_start:int,row_range_moved_end:int,_destination:QModelIndex,row_index_drop_release:int):
         # saved items about to be moved
         dragged=self.list_channel_names[row_range_moved_start:row_range_moved_end+1]

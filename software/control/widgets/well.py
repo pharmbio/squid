@@ -82,15 +82,14 @@ class NavigationViewer(QFrame):
 
         self.setSizePolicy(QSizePolicy.Maximum,QSizePolicy.Maximum)
 
-    def set_wellplate_type(self,wellplate_type:Union[str,int]):
-        if type(wellplate_type)==int:
-            new_wellplate_type=WELLPLATE_NAMES[wellplate_type]
-        else:
-            new_wellplate_type=wellplate_type
-
-        assert new_wellplate_type in WELLPLATE_TYPE_IMAGE, f"{new_wellplate_type} is not a valid plate type"
+    def set_wellplate_type(self,wellplate_type:str):
+        try:
+            plate_format=WELLPLATE_FORMATS[wellplate_type]
+            plate_image=WELLPLATE_TYPE_IMAGE[plate_format.num_wells]
+        except:
+            raise ValueError(f"{wellplate_type} is not a valid plate type")
  
-        self.background_image=cv2.imread(WELLPLATE_TYPE_IMAGE[new_wellplate_type])
+        self.background_image=cv2.imread(plate_image)
  
         # current image is..
         self.current_image = np.copy(self.background_image)
@@ -99,7 +98,7 @@ class NavigationViewer(QFrame):
         self.image_height = self.background_image.shape[0]
         self.image_width = self.background_image.shape[1]
  
-        self.sample = new_wellplate_type
+        self.sample = wellplate_type
  
         camera_pixel_size_um=CAMERA_PIXEL_SIZE_UM[MACHINE_CONFIG.CAMERA_SENSOR]
         image_width_pixels=Acquisition.CROP_WIDTH # images are square
@@ -218,7 +217,7 @@ class WellSelectionWidget(QTableWidget):
     @TypecheckFunction
     def __init__(self, 
         move_to_index:Callable[[WellplateFormatPhysical,int,int],None], 
-        format: int,
+        format: str,
     ):
         self.move_to_index=move_to_index
         self.was_initialized=False
@@ -282,13 +281,8 @@ class WellSelectionWidget(QTableWidget):
         return self.name,self.coordinates_mm
  
     @TypecheckFunction
-    def set_wellplate_type(self,wellplate_type:Union[str,int]):
-        if type(wellplate_type)==str:
-            wellplate_type_int:int=int(wellplate_type.split(" ")[0])  # type: ignore
-        else:
-            wellplate_type_int:int=wellplate_type # type: ignore
- 
-        wellplate_type_format=WELLPLATE_FORMATS[wellplate_type_int]
+    def set_wellplate_type(self,wellplate_type:str): 
+        wellplate_type_format=WELLPLATE_FORMATS[wellplate_type]
         self.rows = wellplate_type_format.rows
         self.columns = wellplate_type_format.columns
         self.spacing_mm = wellplate_type_format.well_spacing_mm
@@ -297,14 +291,14 @@ class WellSelectionWidget(QTableWidget):
             old_layout=WELLPLATE_FORMATS[self.format]
             self.set_selectable_widgets(layout=old_layout)
  
-            self.format:int=wellplate_type_int
+            self.format=wellplate_type
  
             self.setRowCount(self.rows)
             self.setColumnCount(self.columns)
  
             self.setData()
         else:
-            self.format=wellplate_type_int
+            self.format=wellplate_type
  
             QTableWidget.__init__(self, self.rows, self.columns)
  
@@ -419,7 +413,7 @@ class WellWidget(QWidget):
                 self.interactive_widgets.clear_well_selection == Button("Clear selection",tooltip="Deselects all wells in the well selection widget above.",on_clicked=lambda _btn:self.interactive_widgets.well_selection.set_selected_wells(new_selection=[])).widget,
             ),
             self.interactive_widgets.navigation_viewer == NavigationViewer(
-                sample = WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT],
+                sample = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,
                 xy_pos_changed=xy_pos_changed,
             ),
 

@@ -474,7 +474,7 @@ class MessageBox:
         mode:ClosedSet[str]('information','critical','warning','question'),
 
         text:Optional[str]=None,
-        button_override:Optional[int]=None
+        button_override:Optional[QMessageBox.StandardButtons]=None
     ):
         self.title=title
         self.mode=mode

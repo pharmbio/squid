@@ -375,6 +375,10 @@ class WellplateFormatPhysical:
     rows:int
     columns:int
 
+    @property
+    def num_wells(self)->int:
+        return self.rows*self.columns
+
     def imageable_origin(self)->Tuple[float,float]:
         """
         
@@ -385,7 +389,7 @@ class WellplateFormatPhysical:
         
         """
 
-        wellplate_format_384=WELLPLATE_FORMATS[384]
+        wellplate_format_384=WELLPLATE_FORMATS["Generic 384"]
 
         # explanation for math below:
         #   A1 coordinates for wellplate type are coordinates for center of well A1, so offset half the well size towards top left for origin
@@ -533,7 +537,7 @@ class WellplateFormatPhysical:
             )
     
     def limit_unsafe(self,calibrated:bool=False)->"SoftwareStagePositionLimits":
-        physical_wellplate_format=self # WELLPLATE_FORMATS[384]
+        physical_wellplate_format=self
 
         if calibrated:
             # these values are manually calibrated to be upper left coordinates of well B2 (instead of A1!)
@@ -583,8 +587,8 @@ class WellplateFormatPhysical:
 
         return not is_in_bounds
 
-WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
-    6:WellplateFormatPhysical(
+WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
+    "Generic 6":WellplateFormatPhysical(
         well_size_mm = 34.94,
         well_spacing_mm = 39.2,
         A1_x_mm = 24.55,
@@ -593,7 +597,7 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
         rows = 2,
         columns = 3,
     ),
-    12:WellplateFormatPhysical(
+    "Generic 12":WellplateFormatPhysical(
         well_size_mm = 22.05,
         well_spacing_mm = 26,
         A1_x_mm = 24.75,
@@ -602,7 +606,7 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
         rows = 3,
         columns = 4,
     ),
-    24:WellplateFormatPhysical(
+    "Generic 24":WellplateFormatPhysical(
         well_size_mm = 15.54,
         well_spacing_mm = 19.3,
         A1_x_mm = 17.05,
@@ -611,7 +615,7 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
         rows = 4,
         columns = 6,
     ),
-    96:WellplateFormatPhysical(
+    "Generic 96":WellplateFormatPhysical(
         well_size_mm = 6.21,
         well_spacing_mm = 9,
         A1_x_mm = 14.3,
@@ -620,7 +624,7 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
         rows = 8,
         columns = 12,
     ),
-    384:WellplateFormatPhysical(
+    "Generic 384":WellplateFormatPhysical(
         well_size_mm = 3.3,
         well_spacing_mm = 4.5,
         A1_x_mm = 12.05,
@@ -630,23 +634,20 @@ WELLPLATE_FORMATS:Dict[int,WellplateFormatPhysical]={
         columns = 24,
     )
 }
-WELLPLATE_NAMES:Dict[int,str]={
-    i:f"{i} well plate"
-    for i in WELLPLATE_FORMATS.keys()
-}
+WELLPLATE_NAMES=set(WELLPLATE_FORMATS.keys())
 
 WELLPLATE_TYPE_IMAGE={
-    WELLPLATE_NAMES[384] : 'images/384_well_plate_1509x1010.png',
-    WELLPLATE_NAMES[96]  : 'images/96_well_plate_1509x1010.png',
-    WELLPLATE_NAMES[24]  : 'images/24_well_plate_1509x1010.png',
-    WELLPLATE_NAMES[12]  : 'images/12_well_plate_1509x1010.png',
-    WELLPLATE_NAMES[6]   : 'images/6_well_plate_1509x1010.png'
+    384 : 'images/384_well_plate_1509x1010.png',
+    96  : 'images/96_well_plate_1509x1010.png',
+    24  : 'images/24_well_plate_1509x1010.png',
+    12  : 'images/12_well_plate_1509x1010.png',
+    6   : 'images/6_well_plate_1509x1010.png'
 }
 
-assert WELLPLATE_FORMATS[384].well_name_to_index("A01",check_valid=False)==(0,0)
-assert WELLPLATE_FORMATS[384].well_name_to_index("B02",check_valid=False)==(1,1)
-assert WELLPLATE_FORMATS[384].well_index_to_name(row=0,column=0,check_valid=False)=="A01"
-assert WELLPLATE_FORMATS[384].well_index_to_name(row=1,column=1,check_valid=False)=="B02"
+assert WELLPLATE_FORMATS["Generic 384"].well_name_to_index("A01",check_valid=False)==(0,0)
+assert WELLPLATE_FORMATS["Generic 384"].well_name_to_index("B02",check_valid=False)==(1,1)
+assert WELLPLATE_FORMATS["Generic 384"].well_index_to_name(row=0,column=0,check_valid=False)=="A01"
+assert WELLPLATE_FORMATS["Generic 384"].well_index_to_name(row=1,column=1,check_valid=False)=="B02"
 
 @dataclass(frozen=True,repr=True)
 class SoftwareStagePositionLimits:
@@ -686,7 +687,7 @@ class BrightfieldSavingMode(str,Enum):
 class MutableMachineConfiguration(QObject):
     # things that can change in hardware (manual changes)
     DEFAULT_OBJECTIVE:str = '10x (Mitutoyo)'
-    WELLPLATE_FORMAT:ClosedSet[int](6,12,24,96,384) = 96
+    WELLPLATE_FORMAT:str = "Generic 384"
 
     # things that can change in software
     DEFAULT_TRIGGER_MODE:TriggerMode = TriggerMode.SOFTWARE
@@ -695,7 +696,7 @@ class MutableMachineConfiguration(QObject):
     MULTIPOINT_BF_SAVING_OPTION:BrightfieldSavingMode = BrightfieldSavingMode.RAW
 
     objective_change:Signal=Signal(str)
-    wellplate_format_change:Signal=Signal(int)
+    wellplate_format_change:Signal=Signal(str)
     trigger_mode_change:Signal=Signal(TriggerMode)
     focuse_measure_operator_change:Signal=Signal(FocusMeasureOperators)
     autofocus_channel_change:Signal=Signal(str)
