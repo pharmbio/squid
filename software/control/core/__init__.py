@@ -121,7 +121,7 @@ class LaserAutofocusData:
             use_glass_top=s["use_glass_top"],
         )
 
-DEFAULT_CELL_LINE_STR:str="unknown cells"
+DEFAULT_CELL_LINE_STR:str="<unknown>"
 DEFAULT_PLATE_TYPE_STR:str="Generic 384"
 
 @TypecheckClass
@@ -149,9 +149,8 @@ class AcquisitionConfig:
 
     image_file_format:ImageFormat
 
-    # TODO:
-    # objective: str # responsible for magnification
-    # time_stamp:timestamp
+    objective:str = ""
+    timestamp:str = ""
 
     def from_json(file_path:Union[str,Path])->"AcquisitionConfig":
         with open(str(file_path),mode="r",encoding="utf-8") as json_file:
@@ -197,7 +196,10 @@ class AcquisitionConfig:
             channels_ordered=data["channels_ordered"],
             channels_config=[Configuration.from_json(config_dict) for config_dict in data["channels_config"]],
 
-            image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0]
+            image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0],
+
+            timestamp=[data["timestamp"] if "timestamp" in data else ""],
+            objective=[data["objective"] if "objective" in data else ""],
         )
 
         return config
@@ -217,6 +219,9 @@ class AcquisitionConfig:
             "trigger_mode":self.trigger_mode,
             "pixel_format":self.pixel_format,
             "plate_type":self.plate_type,
+
+            "timestamp":self.timestamp,
+            "objective":self.objective,
 
             "af_software_channel":self.af_software_channel,
             "af_laser_on":self.af_laser_on,

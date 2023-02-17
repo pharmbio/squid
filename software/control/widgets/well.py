@@ -356,7 +356,7 @@ class WellSelectionWidget(QTableWidget):
         for i in range(layout.rows):
             for j in range(layout.columns):
                 item = QTableWidgetItem()
-                item_is_selectable=layout.is_well_reachable(row=i,column=j,allow_corners=False)
+                item_is_selectable=layout.is_well_reachable(row=i,column=j)
                 item_flags=set_selectable(item.flags(),selectable=item_is_selectable)
                 item.setFlags(item_flags)
                 if not item_is_selectable:

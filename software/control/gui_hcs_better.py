@@ -1,4 +1,4 @@
-from typing import Optional, Callable, List, Union, Any
+from typing import Optional, Callable, List, Union, Any, Tuple
 import time, math, os
 from datetime import datetime
 from pathlib import Path
@@ -270,9 +270,6 @@ class Gui(QMainWindow):
 
         # some metadata written to the config file, in addition to the settings directly used for imaging
         additional_data={
-            'project_name':whole_acquisition_config.project_name,
-            'plate_name':whole_acquisition_config.plate_name,
-            'timestamp':datetime.now().replace(microsecond=0).isoformat(sep='_'),
             'microscope_name':MACHINE_CONFIG.MACHINE_NAME,
         }
 
@@ -389,10 +386,12 @@ class Gui(QMainWindow):
     @TypecheckFunction
     def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
         # get output paths
-        base_dir_str=self.acquisition_widget.lineEdit_baseDir.text()
-        project_name_str=self.acquisition_widget.lineEdit_projectName.text()
-        plate_name_str=self.acquisition_widget.lineEdit_plateName.text()
-        cell_line_str=self.acquisition_widget.lineEdit_cellLine.text()
+        base_dir_str:str=self.acquisition_widget.lineEdit_baseDir.text()
+        project_name_str:str=self.acquisition_widget.lineEdit_projectName.text()
+        plate_name_str:str=self.acquisition_widget.lineEdit_plateName.text()
+        cell_line_str:str=self.acquisition_widget.lineEdit_cellLine.text()
+
+        objective_str:str="<unspecified>" # TODO
 
         if len(project_name_str)==0 and not allow_invalid_values:
             if dry:
@@ -411,8 +410,8 @@ class Gui(QMainWindow):
             "/":"forward slash",
             "\\":"backward slash",
             "\t":"tab",
-            "\n":"newline? (enter key)",
-            "\r":"carriage return?! contact support (patrick/dan)!",
+            "\n":"newline",
+            "\r":"carriage return",
         }
         if not allow_invalid_values:
             for C,char_name in FORBIDDEN_CHARS.items():
@@ -429,17 +428,15 @@ class Gui(QMainWindow):
         full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_str)
 
         # try generating unique experiment ID (that includes current timestamp) until successfull
-        def gen_dir_name(base_output_path:str)->Path:
+        def gen_dir_name(base_output_path:str)->Tuple[str,Path]:
             now = datetime.now()
             now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
-            now_str = now.isoformat(sep='_')  # separate with date and time with _ (rather than T or space)
+            now_str = now.isoformat(sep=' ') # will look like 'YYYY-MM-DD HH:MM:SS'
 
-            experiment_pathname = base_output_path + '_' + now_str
-            experiment_pathname = experiment_pathname.replace(' ', '_')
-            experiment_pathname = experiment_pathname.replace(':', '.') # windows does not support colon in filenames
-            return Path(experiment_pathname)
+            experiment_pathname = base_output_path + '_' + now_str.replace(":",".").replace(" ","_") # replace problematic/forbidden characters in filename
+            return now_str,Path(experiment_pathname)
 
-        experiment_path=gen_dir_name(base_output_path=full_output_path)
+        timestamp_str,experiment_path=gen_dir_name(base_output_path=full_output_path)
         while experiment_path.exists():
             time.sleep(1) # wait until next second to get a unique experiment ID
             experiment_path=gen_dir_name(base_output_path=full_output_path)
@@ -470,6 +467,9 @@ class Gui(QMainWindow):
             channels_config=self.imaging_channels_widget.get_channel_configurations(),
 
             image_file_format=self.acquisition_widget.get_image_file_format(),
+            timestamp=timestamp_str,
+
+            objective=objective_str,
         )
 
     def save_all_config(self):

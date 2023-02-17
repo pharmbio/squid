@@ -27,7 +27,7 @@ from tqdm import tqdm
 import control.widgets as widgets
 from control.camera import Camera
 import control.core as core
-from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile, Configuration
+from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile, Configuration, DEFAULT_CELL_LINE_STR, DEFAULT_PLATE_TYPE_STR
 import control.microcontroller as microcontroller
 from control._def import *
 from control.core.displacement_measurement import DisplacementMeasurementController
@@ -690,8 +690,8 @@ class OctopiGUI(QMainWindow):
         reference_files:List[ReferenceFile]=[
             ReferenceFile(
                 path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
-                plate_type="generic 384",
-                cell_line="unknown cells"
+                plate_type=DEFAULT_PLATE_TYPE_STR,
+                cell_line=DEFAULT_CELL_LINE_STR
             ),
         ]
 

@@ -369,11 +369,30 @@ class WellplateFormatPhysical:
     A1_x_mm:float
     A1_y_mm:float
 
-    number_of_skip:int
-    """ layers of disabled outer wells """
-
     rows:int
     columns:int
+
+    number_of_skip:int
+    """ layers of disabled outer wells """
+    corners_forbidden:bool=False
+    """ if corners are forbidden wells/positions (because of physical conflicts) """
+
+    brand:str=""
+    #"url":"",
+    
+    plate_length_mm:float=float("nan")
+    plate_width_mm:float=float("nan")
+    plate_height_mm:float=float("nan")
+    
+    well_depth_mm:float=float("nan")
+    well_diameter_mm:float=float("nan")
+    
+    column_spacing_mm:float=float("nan")
+    row_spacing_mm:float=float("nan")
+
+    column_offset_mm:float=float("nan")
+    row_offset_mm:float=float("nan")
+    well_bottom_offset_mm:float=float("nan")
 
     @property
     def num_wells(self)->int:
@@ -456,7 +475,7 @@ class WellplateFormatPhysical:
         return row,column
 
     @TypecheckFunction
-    def is_well_reachable(self,row:int,column:int,allow_corners:bool=False)->bool:
+    def is_well_reachable(self,row:int,column:int)->bool:
         row_lower_bound=0 + self.number_of_skip
         row_upper_bound=self.rows-1-self.number_of_skip
         column_lower_bound=0 + self.number_of_skip
@@ -464,7 +483,7 @@ class WellplateFormatPhysical:
 
         well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
         
-        if not allow_corners:
+        if not self.corners_forbidden:
             is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
             is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
             is_in_top_right_corner    = ( row == row_lower_bound ) and ( column == column_upper_bound )
@@ -480,7 +499,7 @@ class WellplateFormatPhysical:
         this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
         """
         for c in range(self.columns):
-            if not self.is_well_reachable(row=row,column=c,allow_corners=False and self.number_of_skip==0 and self.columns==24):
+            if not self.is_well_reachable(row=row,column=c):
                 return True
 
         return False
@@ -491,7 +510,7 @@ class WellplateFormatPhysical:
         this function is used to check for invalid wells within the generally reachable area, so wells within the outer skip area are ignored here!
         """
         for r in range(self.rows):
-            if not self.is_well_reachable(row=r,column=column,allow_corners=False and self.number_of_skip==0 and self.columns==24):
+            if not self.is_well_reachable(row=r,column=column):
                 return True
 
         return False
@@ -630,8 +649,35 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         A1_x_mm = 12.05,
         A1_y_mm = 9.05,
         number_of_skip = 0,
+        corners_forbidden=True,
         rows = 16,
         columns = 24,
+    ),
+	"384-FS-142761":WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        corners_forbidden=True,
+        rows = 16,
+        columns = 24,
+
+		brand="Thermo Fischer Scientific Nunc MicroWell",
+		
+		plate_length_mm=127.8,
+		plate_width_mm=85.5,
+		plate_height_mm=14.4,
+		
+		well_depth_mm=11.600,
+		well_diameter_mm=3.7,
+		
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
+
+		column_offset_mm=12.1,
+		row_offset_mm=9.0,
+		well_bottom_offset_mm=1.7
     )
 }
 WELLPLATE_NAMES=set(WELLPLATE_FORMATS.keys())
@@ -686,7 +732,7 @@ class BrightfieldSavingMode(str,Enum):
 @TypecheckClass(check_assignment=True)
 class MutableMachineConfiguration(QObject):
     # things that can change in hardware (manual changes)
-    DEFAULT_OBJECTIVE:str = '10x (Mitutoyo)'
+    DEFAULT_OBJECTIVE:str = '20x (Olympus)'
     WELLPLATE_FORMAT:str = "Generic 384"
 
     # things that can change in software
