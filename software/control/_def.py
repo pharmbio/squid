@@ -359,18 +359,23 @@ class AutofocusConfig:
 
 @dataclass(frozen=True)
 class WellplateFormatPhysical:
-    """ physical characteristics of a wellplate type """
-
-    well_size_mm:float # diameter
     """ physical (and logical) well plate layout """
 
-    well_spacing_mm:float # mm from top left of one well to top left of next well (same in both axis)
+    well_size_mm:float # diameter
+    """ should be equal to well_diameter_mm (pending removal) """ # TODO remove
+
+    well_spacing_mm:float
+    """ distance from center of one well to center of adjacent well (_assumed_ same in both axis) """ # TODO remove? maybe make this a property and raise exception if row_spacing_mm!=column_spacing_mm
 
     A1_x_mm:float
+    """ should be equal to column_offset_mm (pending removal) """ # TODO remove
     A1_y_mm:float
+    """ should be equal to row_offset_mm (pending removal) """ # TODO remove
 
     rows:int
+    """ number of rows """
     columns:int
+    """ number of columns """
 
     number_of_skip:int
     """ layers of disabled outer wells """
@@ -378,21 +383,32 @@ class WellplateFormatPhysical:
     """ if corners are forbidden wells/positions (because of physical conflicts) """
 
     brand:str=""
-    #"url":"",
+    """ name of plate product line incl. manufacturer name (should be unique, human-readable identifier) """
+    product_url:Optional[str]=None
+    """ url to product spec sheet"""
+    additional_info:Optional[str]=None
+    """ if there is more info about the plate than is already contained in this structure, it can be provided here """
     
     plate_length_mm:float=float("nan")
     plate_width_mm:float=float("nan")
     plate_height_mm:float=float("nan")
     
     well_depth_mm:float=float("nan")
+    """ z distance from top to bottom of well """
     well_diameter_mm:float=float("nan")
+    """ distance between opposite walls in a well (does not necessarily imply circular wells) """
     
     column_spacing_mm:float=float("nan")
+    """ distance between centers of adjacent wells in the same row """
     row_spacing_mm:float=float("nan")
+    """ distance between centers of adjacent wells in the same column """
 
     column_offset_mm:float=float("nan")
+    """ distance of well A1 to left edge of well plate """
     row_offset_mm:float=float("nan")
+    """ distance of well A1 to top edge of well plate """
     well_bottom_offset_mm:float=float("nan")
+    """ distance of well bottom to bottom of wellplate """ # TODO check this. should not include bottom seal/foil (what do manufacturers specify?)
 
     @property
     def num_wells(self)->int:
@@ -483,7 +499,7 @@ class WellplateFormatPhysical:
 
         well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
         
-        if not self.corners_forbidden:
+        if self.corners_forbidden:
             is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
             is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
             is_in_top_right_corner    = ( row == row_lower_bound ) and ( column == column_upper_bound )

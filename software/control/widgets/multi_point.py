@@ -1,5 +1,5 @@
 # qt libraries
-from qtpy.QtCore import Qt, QModelIndex, QSize, Signal, QEvent
+from qtpy.QtCore import Qt, QModelIndex, QSize, Signal, QEvent, QObject
 from qtpy.QtWidgets import QFrame, QPushButton, QLineEdit, \
     QLabel, QAbstractItemView, QProgressBar, QDesktopWidget, \
     QWidget, QSizePolicy, QApplication, QComboBox, QAbstractScrollArea
@@ -97,7 +97,7 @@ NZ_max=10
 Nt_min=1
 Nt_max=10
 
-class MultiPointWidget:
+class MultiPointWidget(QObject):
     @property
     def multipointController(self)->MultiPointController:
         return self.core.multipointController
@@ -115,6 +115,8 @@ class MultiPointWidget:
     grid_widget:QWidget
     imaging_widget:QWidget
 
+    position_mask_has_changed:Signal=Signal()
+
     def __init__(self,
         core:Core,
 
@@ -124,6 +126,8 @@ class MultiPointWidget:
         signal_laser_af_validity_changed:Signal,
     ):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
+
+        super().__init__()
         
         self.core = core
         self.start_experiment=start_experiment
@@ -180,34 +184,66 @@ class MultiPointWidget:
         ).widget
 
         # add imaging grid configuration options
-        self.entry_deltaX = SpinBoxDouble(minimum=delta_x_min,maximum=delta_x_max,step=delta_x_step,default=self.multipointController.deltaX,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_deltaX = SpinBoxDouble(
+            minimum=delta_x_min,
+            maximum=delta_x_max,
+            step=delta_x_step,
+            default=self.multipointController.deltaX,
+            num_decimals=3,
+            keyboard_tracking=False,
+            enabled=self.multipointController.NX > 1
+        ).widget
 
         self.entry_NX = SpinBoxInteger(minimum=NX_min,maximum=NX_max,default=self.multipointController.NX,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaX.setDisabled(new_value==1),
-            self.grid_changed
+            lambda _btn:self.grid_changed(True)
         ]).widget
 
-        self.entry_deltaY = SpinBoxDouble(minimum=delta_y_min,maximum=delta_y_max,step=delta_y_step,default=self.multipointController.deltaY,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_deltaY = SpinBoxDouble(
+            minimum=delta_y_min,
+            maximum=delta_y_max,
+            step=delta_y_step,
+            default=self.multipointController.deltaY,
+            num_decimals=3,
+            keyboard_tracking=False,
+            enabled=self.multipointController.NY > 1
+        ).widget
         
         self.entry_NY = SpinBoxInteger(minimum=NY_min,maximum=NY_max,default=self.multipointController.NY,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaY.setDisabled(new_value==1),
-            self.grid_changed
+            lambda _btn:self.grid_changed(True)
         ]).widget
 
-        self.entry_deltaZ = SpinBoxDouble(minimum=delta_y_min,maximum=delta_y_max,step=delta_y_step,default=self.multipointController.deltaZ,num_decimals=3,keyboard_tracking=False).widget
+        self.entry_deltaZ = SpinBoxDouble(
+            minimum=delta_z_min,
+            maximum=delta_z_max,
+            step=delta_y_step,
+            default=self.multipointController.deltaZ,
+            num_decimals=3,
+            keyboard_tracking=False,
+            enabled=self.multipointController.NZ > 1
+        ).widget
         
         self.entry_NZ = SpinBoxInteger(minimum=NZ_min,maximum=NZ_max,default=self.multipointController.NZ,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaZ.setDisabled(new_value==1),
         ]).widget
         
-        self.entry_dt = SpinBoxDouble(minimum=delta_t_min,maximum=delta_t_max,step=delta_t_step,default=self.multipointController.deltat,num_decimals=3,keyboard_tracking=False,).widget
+        self.entry_dt = SpinBoxDouble(
+            minimum=delta_t_min,
+            maximum=delta_t_max,
+            step=delta_t_step,
+            default=self.multipointController.deltat,
+            num_decimals=3,
+            keyboard_tracking=False,
+            enabled=self.multipointController.Nt > 1
+        ).widget
 
         self.entry_Nt = SpinBoxInteger(minimum=Nt_min,maximum=Nt_max,default=self.multipointController.Nt,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_dt.setDisabled(new_value==1),
         ]).widget
 
         self.well_grid_selector=None
-        self.grid_changed()
+        self.grid_changed(True)
         assert not self.well_grid_selector is None
 
         self.grid_widget=Dock(
@@ -290,16 +326,6 @@ class MultiPointWidget:
         self.is_laser_af_initialized=new_validity
         self.interactive_widgets.checkbox_laserAutofocus.setEnabled(new_validity)
         self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Unchecked) # uncheck it when validity change to invalid, but also uncheck otherwise because why not
-    
-    @TypecheckFunction
-    def set_grid_mask(self,new_mask:numpy.ndarray):
-        for row_i,row in enumerate(new_mask):
-            for column_i,element in enumerate(row):
-                self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=bool(element))
-
-    @TypecheckFunction
-    def get_grid_mask(self)->numpy.ndarray:
-        return numpy.array(self.well_grid_items_selected)
 
     @TypecheckFunction
     def set_grid_data(self,new_grid_data:WellGridConfig):
@@ -316,8 +342,12 @@ class MultiPointWidget:
         self.entry_dt.setValue(new_grid_data.t.d)
         self.entry_Nt.setValue(new_grid_data.t.N)
 
+        for row_i,row in enumerate(new_grid_data.mask):
+            for column_i,element in enumerate(row):
+                self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=bool(element))
+
         # manually call callback to refresh acquisition preview in navigation viewer widget
-        self.grid_changed()
+        self.grid_changed(True)
 
     @TypecheckFunction
     def get_grid_data(self)->WellGridConfig:
@@ -342,6 +372,7 @@ class MultiPointWidget:
                 N=self.entry_Nt.value(),
                 unit="s",
             ),
+            mask=numpy.array(self.well_grid_items_selected)
         )
     
     @TypecheckFunction
@@ -410,53 +441,62 @@ class MultiPointWidget:
         return list(ImageFormat)[self.image_format_widget.currentIndex()]
 
     @TypecheckFunction
-    def grid_changed(self,_new_value:int=0):
+    def grid_changed(self,Nxy_has_changed:bool=True):
         """ is called with new value if nx/ny changes """
 
-        size=QDesktopWidget().width()*0.06
+        if Nxy_has_changed:
+            size=QDesktopWidget().width()*0.06
 
-        nx=self.entry_NX.value()
-        ny=self.entry_NY.value()
+            nx=self.entry_NX.value()
+            ny=self.entry_NY.value()
 
-        if self.well_grid_selector is None:
-            self.well_grid_selector=BlankWidget(height=size,width=size,background_color="black",children=[],tooltip="Grid imaging mask.\n\nSelected positions (lightblue) will be imaged inside each well.")
-            self.well_grid_selector.setFixedSize(size,size)
-
-        self.well_grid_items_selected=[
-            [
-                False 
-                for _c
-                in range(nx)
-            ]
-            for _r
-            in range(ny)
-        ]
-        self.well_grid_items=[
-            [
-                None
-                for _c
-                in range(nx)
-            ]
-            for _r
-            in range(ny)
-        ]
-
-        # 1px between items
-        item_width=int((size-(nx-1))//nx)
-        item_height=int((size-(ny-1))//ny)
-        for c in range(nx):
-            for r in range(ny):
-                new_item=BlankWidget(
-                    height=item_height,
-                    width=item_width,
-                    offset_top=r*item_height+r,
-                    offset_left=c*item_width+c,
-                    on_mousePressEvent=lambda event_data,r=r,c=c:self.toggle_well_grid_selection(event_data,row=r,column=c)
+            if self.well_grid_selector is None:
+                self.well_grid_selector=BlankWidget(
+                    height=size,
+                    width=size,
+                    background_color="black",
+                    children=[],
+                    tooltip="Grid imaging mask.\n\nSelected positions (lightblue) will be imaged inside each well.",
                 )
-                self.well_grid_items[r][c]=new_item
-                self.toggle_well_grid_selection(_event_data=None,row=r,column=c)
+                self.well_grid_selector.setFixedSize(size,size)
 
-        self.well_grid_selector.set_children(flatten(self.well_grid_items))
+            self.well_grid_items_selected=[
+                [
+                    False 
+                    for _c
+                    in range(nx)
+                ]
+                for _r
+                in range(ny)
+            ]
+            self.well_grid_items=[
+                [
+                    None
+                    for _c
+                    in range(nx)
+                ]
+                for _r
+                in range(ny)
+            ]
+
+            # 1px between items
+            item_width=int((size-(nx-1))//nx)
+            item_height=int((size-(ny-1))//ny)
+            for c in range(nx):
+                for r in range(ny):
+                    new_item=BlankWidget(
+                        height=item_height,
+                        width=item_width,
+                        offset_top=r*item_height+r,
+                        offset_left=c*item_width+c,
+                        on_mousePressEvent=lambda event_data,r=r,c=c:self.toggle_well_grid_selection(event_data,row=r,column=c) or self.grid_changed(False)
+                    )
+                    self.well_grid_items[r][c]=new_item
+                    self.toggle_well_grid_selection(_event_data=None,row=r,column=c)
+
+            self.well_grid_selector.set_children(flatten(self.well_grid_items))
+
+        self.position_mask_has_changed.emit()
 
     @TypecheckFunction
     def toggle_well_grid_selection(self,_event_data:Any,row:int,column:int,override_selected_state:Optional[bool]=None):

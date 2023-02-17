@@ -223,10 +223,7 @@ class Gui(QMainWindow):
         ).widget)
 
         # on change of deltax, deltay, wellselection: self.change_acquisition_preview()
-        self.acquisition_widget.entry_deltaX.valueChanged.connect(lambda:self.change_acquisition_preview())
-        self.acquisition_widget.entry_deltaY.valueChanged.connect(lambda:self.change_acquisition_preview())
-        self.acquisition_widget.entry_NX.valueChanged.connect(lambda:self.change_acquisition_preview())
-        self.acquisition_widget.entry_NY.valueChanged.connect(lambda:self.change_acquisition_preview())
+        self.acquisition_widget.position_mask_has_changed.connect(lambda:self.change_acquisition_preview())
         self.well_widget.interactive_widgets.well_selection.itemSelectionChanged.connect(lambda:self.change_acquisition_preview())
 
     def change_acquisition_preview(self):
@@ -452,7 +449,6 @@ class Gui(QMainWindow):
 
             well_list=self.well_widget.get_selected_wells(),
 
-            grid_mask=self.acquisition_widget.get_grid_mask(),
             grid_config=self.acquisition_widget.get_grid_data(),
 
             af_software_channel=self.acquisition_widget.get_af_software_channel(only_when_enabled=True),
@@ -510,7 +506,6 @@ class Gui(QMainWindow):
         self.acquisition_widget.set_image_file_format(config_data.image_file_format)
 
         self.acquisition_widget.set_grid_data(config_data.grid_config)
-        self.acquisition_widget.set_grid_mask(config_data.grid_mask) # set mask after grid settings! (setting grid settings overwrites mask state)
 
         self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
         self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)

@@ -868,12 +868,12 @@ class OctopiGUI(QMainWindow):
 
             well_list=self.wellSelectionWidget.currently_selected_well_indices,
             
-            grid_mask=self.multiPointWidget.well_grid_items_selected,
             grid_config=WellGridConfig(
                 x=GridDimensionConfig(d=self.multipointController.deltaX,N=self.multipointController.NX,unit="mm"),
                 y=GridDimensionConfig(d=self.multipointController.deltaY,N=self.multipointController.NY,unit="mm"),
                 z=GridDimensionConfig(d=self.multipointController.deltaZ,N=self.multipointController.NZ,unit="mm"),
                 t=GridDimensionConfig(d=self.multipointController.deltat,N=self.multipointController.Nt,unit="s"),
+                mask=self.multiPointWidget.well_grid_items_selected,
             ),
 
             af_software_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None,
@@ -1023,7 +1023,7 @@ class OctopiGUI(QMainWindow):
             raise ValueError(f"software af channel {af_channel} is not a valid imaging channel!")
 
         # load grid item selection mask
-        for row_i,row in enumerate(config.grid_mask):
+        for row_i,row in enumerate(config.grid_config.mask):
             for column_i,mask in enumerate(row):
                 self.multiPointWidget.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=mask)
 

@@ -38,6 +38,7 @@ class WellGridConfig:
     y:GridDimensionConfig
     z:GridDimensionConfig
     t:GridDimensionConfig
+    mask:numpy.ndarray
 
     def as_json(self)->dict:
         return {
@@ -45,6 +46,7 @@ class WellGridConfig:
             "y":self.y.as_json(),
             "z":self.z.as_json(),
             "t":self.t.as_json(),
+            "mask":self.mask.tolist()
         }
 
     def from_json(s:dict)->"WellGridConfig":
@@ -52,7 +54,8 @@ class WellGridConfig:
             x=GridDimensionConfig.from_json(s["x"]),
             y=GridDimensionConfig.from_json(s["y"]),
             z=GridDimensionConfig.from_json(s["z"]),
-            t=GridDimensionConfig.from_json(s["t"])
+            t=GridDimensionConfig.from_json(s["t"]),
+            mask=numpy.array(s["mask"]),
         )
     
     @TypecheckFunction
@@ -69,7 +72,8 @@ class WellGridConfig:
             for j in range(self.x.N):
                 x=base_x+j*self.x.d
                 
-                coords.append((x,y))
+                if self.mask[i,j]:
+                    coords.append((x,y))
 
         return coords
 
@@ -133,7 +137,6 @@ class AcquisitionConfig:
 
     well_list:List[Tuple[int,int]]
 
-    grid_mask:numpy.ndarray
     grid_config:WellGridConfig
 
     af_software_channel:Optional[str]=None
@@ -182,7 +185,6 @@ class AcquisitionConfig:
 
             well_list=well_list,
 
-            grid_mask=numpy.array(data["grid_mask"]),
             grid_config=WellGridConfig.from_json(data["grid_config"]),
 
             af_software_channel=data["af_software_channel"],
@@ -228,7 +230,6 @@ class AcquisitionConfig:
             "af_laser_reference":self.af_laser_reference.as_json() if not self.af_laser_reference is None else None,
 
             "grid_config":self.grid_config.as_json(),
-            "grid_mask":self.grid_mask.tolist(),
             "channels_ordered":self.channels_ordered,
             "channels_config":[config.as_dict() for config in self.channels_config],
             "well_list":well_list,
@@ -596,7 +597,7 @@ class Core(QObject):
         # start experiment, and return thread that actually does the imaging (thread.finished can be connected to some callback)
         return self.multipointController.run_experiment(
             well_selection = ( well_list_names, well_list_physical_pos ),
-            grid_mask = config.grid_mask,
+            grid_mask = config.grid_config.mask,
 
             on_new_acquisition = on_new_acquisition,
             image_return=image_return,
