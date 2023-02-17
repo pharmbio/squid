@@ -103,7 +103,7 @@ class AutofocusWidget:
         else:
             self.laser_af_debug_display=None
 
-        self.laser_af_control=LaserAutofocusControlWidget(
+        self.laser_af_control:LaserAutofocusControlWidget=LaserAutofocusControlWidget(
             laser_af_controller,
             get_current_z_pos_in_mm=get_current_z_pos_in_mm,
             laser_af_validity_changed=laser_af_validity_changed,

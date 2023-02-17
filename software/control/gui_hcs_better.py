@@ -2,6 +2,7 @@ from typing import Optional, Callable, List, Union, Any, Tuple
 import time, math, os
 from datetime import datetime
 from pathlib import Path
+from glob import glob
 
 from qtpy.QtCore import Qt, QEvent, Signal
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
@@ -22,7 +23,7 @@ class ConfigurationDatabase(QMainWindow):
     def __init__(self,
         parent:QWidget,
 
-        on_load_from_file:Callable[[Optional[str]],None],
+        on_load_from_file:Callable[[Optional[str],bool],None],
     ):
         super().__init__(parent=parent)
 
@@ -33,6 +34,8 @@ class ConfigurationDatabase(QMainWindow):
 
             laser_af_reference_is_present:bool=not config.af_laser_reference is None
 
+            workaround={'load_laser_af_data_requested':False}
+
             return Dock(
                 Grid(
                     [
@@ -40,14 +43,20 @@ class ConfigurationDatabase(QMainWindow):
                         Label(f"Cell Line: {config.cell_line}"),
                     ],
                     [
-                        Checkbox("Load laser AF data",tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",checked=False,enabled=laser_af_reference_is_present),
+                        Checkbox(
+                            "Load laser AF data",
+                            tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
+                            checked=False,
+                            enabled=laser_af_reference_is_present,
+                            on_stateChanged=lambda _s,w=workaround:w.update({"load_laser_af_data_requested":True})
+                        ),
                         Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
                     ],
                     [
-                        Label("Timestamp: <timestamp>"),
+                        Label(f"Timestamp: {config.timestamp}"),
                     ],
                     GridItem(
-                        Button("Load this reference",on_clicked=lambda _:self.on_load_from_file(file)),
+                        Button("Load this reference",on_clicked=lambda _,w=workaround:self.on_load_from_file(file,w["load_laser_af_data_requested"])),
                         row=3,
                         colSpan=2,
                     )
@@ -67,7 +76,7 @@ class ConfigurationDatabase(QMainWindow):
                 for reference_file
                 in [
                     LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
-                    LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                    *(glob("reference_config_files/*"))
                 ]
             ]),
             #with_margin=False
@@ -453,7 +462,7 @@ class Gui(QMainWindow):
 
             af_software_channel=self.acquisition_widget.get_af_software_channel(only_when_enabled=True),
             af_laser_on=self.acquisition_widget.get_af_laser_is_enabled(),
-            af_laser_reference=self.acquisition_widget.get_af_laser_reference_data(only_when_enabled=True),
+            af_laser_reference=None if not self.acquisition_widget.get_af_laser_is_enabled() else self.autofocus_widget.laser_af_control.get_reference_data(),
 
             trigger_mode=TRIGGER_MODES_LIST[self.basic_settings.interactive_widgets.trigger_mode_dropdown.currentIndex()],
             pixel_format=self.core.main_camera.pixel_formats[self.basic_settings.interactive_widgets.pixel_format.currentIndex()],
@@ -482,7 +491,7 @@ class Gui(QMainWindow):
         cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
         cdb.show()
 
-    def load_config_from_file(self,file_path:Optional[str]=None):
+    def load_config_from_file(self,file_path:Optional[str]=None,go_to_z_reference:bool=False):
         """
         if file_path is None, this function will open a dialog to ask for the file to loiad
         """
@@ -511,6 +520,19 @@ class Gui(QMainWindow):
         self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
         self.acquisition_widget.set_selected_channels(config_data.channels_ordered)
         self.imaging_channels_widget.set_channel_configurations(config_data.channels_config)
+
+        self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
+        self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
+
+        if go_to_z_reference:
+            z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
+            print(f"focus - moving objective to {z_mm=}")
+            
+            if False: # TODO
+                self.core.navigation.move_z_to(z_mm=z_mm) # this does not work for some reason?
+            else:
+                z_mm_relative=z_mm-self.core.navigation.z_pos_mm
+                self.core.navigation.move_z(z_mm=z_mm_relative)
 
     def closeEvent(self, event:QEvent):
 

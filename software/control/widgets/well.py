@@ -391,9 +391,9 @@ class WellWidget(QWidget):
 
         self.interactive_widgets=ObjectManager()
 
-        self.wellplate_types=list(WELLPLATE_FORMATS.keys())
+        self.wellplate_types=list(WELLPLATE_NAMES)
         self.interactive_widgets.wellplate_dropdown == Dropdown(
-            items=[str(t) for t in self.wellplate_types],
+            items=self.wellplate_types,
             current_index=self.wellplate_types.index(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT),
             on_currentIndexChanged=self.change_wellplate_type_by_index
         ).widget
@@ -422,23 +422,26 @@ class WellWidget(QWidget):
 
         self.setSizePolicy(QSizePolicy.Maximum,QSizePolicy.Maximum)
 
+    @TypecheckFunction
     def change_wellplate_type_by_index(self,new_index:int):
         new_wellplate_type=self.wellplate_types[new_index]
         self.change_wellplate_type_by_type(new_wellplate_type)
 
-    def change_wellplate_type_by_type(self,new_wellplate_type:int):
+    @TypecheckFunction
+    def change_wellplate_type_by_type(self,new_wellplate_type:str):
         self.interactive_widgets.well_selection.set_wellplate_type(new_wellplate_type)
         self.interactive_widgets.navigation_viewer.set_wellplate_type(new_wellplate_type)
+        self.interactive_widgets.wellplate_dropdown.setCurrentIndex(self.wellplate_types.index(new_wellplate_type))
 
-    def get_wellplate_type(self)->int:
-        """
-        return an int representing the wellplate type (e.g. 6/12/384)
-        """
+    @TypecheckFunction
+    def get_wellplate_type(self)->str:
         return self.wellplate_types[self.interactive_widgets.wellplate_dropdown.currentIndex()]
     
+    @TypecheckFunction
     def set_selected_wells(self,new_selection:List[Tuple[int,int]]):
         self.interactive_widgets.well_selection.set_selected_wells(new_selection)
     
+    @TypecheckFunction
     def get_selected_wells(self)->List[Tuple[int,int]]:
         return self.interactive_widgets.well_selection.currently_selected_well_indices
     
@@ -451,6 +454,7 @@ class WellWidget(QWidget):
             self.interactive_widgets.clear_well_selection,
         ]
     
+    @TypecheckFunction
     def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
         for widget in self.get_all_interactive_widgets():
             if not widget in exceptions:

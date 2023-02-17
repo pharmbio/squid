@@ -1,7 +1,7 @@
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import QApplication, QFrame, QLabel, QDoubleSpinBox, QGridLayout
 
-from control.core import LaserAutofocusController
+from control.core import LaserAutofocusController, LaserAutofocusData
 from control.gui import *
 
 SET_REFERENCE_BUTTON_TEXT_IDLE="Set as reference plane"
@@ -185,6 +185,45 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_move_to_target.setDisabled(False)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
+
+    
+    @TypecheckFunction
+    def get_reference_data(self)->LaserAutofocusData:
+        return LaserAutofocusData(
+            x_reference=self.laserAutofocusController.x_reference,
+            um_per_px=self.laserAutofocusController.um_per_px,
+
+            z_um_at_reference=self.laserAutofocusController.reference_z_height_mm*1e3,
+
+            x_offset=self.laserAutofocusController.x_offset,
+            y_offset=self.laserAutofocusController.y_offset,
+            x_width=self.laserAutofocusController.width,
+            y_width=self.laserAutofocusController.height,
+
+            has_two_interfaces=self.laserAutofocusController.has_two_interfaces,
+            use_glass_top=self.laserAutofocusController.use_glass_top,
+        )
+    
+    @TypecheckFunction
+    def set_reference_data(self,reference:LaserAutofocusData):
+        self.laserAutofocusController.initialize_manual(
+            x_offset=reference.x_offset,
+            y_offset=reference.y_offset,
+            width=reference.x_width,
+            height=reference.y_width,
+            um_per_px=reference.um_per_px,
+            x_reference=reference.x_reference
+        )
+
+        self.laserAutofocusController.x_reference=reference.x_reference
+
+        self.laserAutofocusController.has_two_interfaces=reference.has_two_interfaces
+        self.laserAutofocusController.use_glass_top=reference.use_glass_top
+
+        self.call_after_initialization()
+        self.call_after_set_reference()
+
+        self.laser_af_validity_changed.emit(True)
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:

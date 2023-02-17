@@ -159,7 +159,9 @@ class AcquisitionConfig:
         with open(str(file_path),mode="r",encoding="utf-8") as json_file:
             data=json.decoder.JSONDecoder().decode(json_file.read())
 
-        plate_type=data["plate_type"] if "plate_type" in data else DEFAULT_PLATE_TYPE_STR
+        plate_type= data["plate_type"] if "plate_type" in data else DEFAULT_PLATE_TYPE_STR
+        timestamp = data["timestamp"]  if "timestamp"  in data else ""
+        objective = data["objective"]  if "objective"  in data else ""
 
         well_list=data["well_list"]
         for i in range(len(well_list)):
@@ -200,8 +202,8 @@ class AcquisitionConfig:
 
             image_file_format=[image_format for image_format in ImageFormat if image_format.name==data["image_file_format"]][0],
 
-            timestamp=[data["timestamp"] if "timestamp" in data else ""],
-            objective=[data["objective"] if "objective" in data else ""],
+            timestamp=timestamp,
+            objective=objective,
         )
 
         return config

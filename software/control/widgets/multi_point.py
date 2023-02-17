@@ -389,29 +389,10 @@ class MultiPointWidget(QObject):
     @TypecheckFunction
     def get_af_laser_is_enabled(self)->bool:
         return self.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked
-    
+
     @TypecheckFunction
-    def get_af_laser_reference_data(self,only_when_enabled:bool=True)->Optional[LaserAutofocusData]:
-        if only_when_enabled and not self.get_af_laser_is_enabled():
-            return None
-        
-        z_um_at_reference=self.core.laserAutofocusController.reference_z_height_mm
-        assert type(z_um_at_reference) is float
-
-        return LaserAutofocusData(
-            x_reference=self.core.laserAutofocusController.x_reference,
-            um_per_px=self.core.laserAutofocusController.um_per_px,
-
-            z_um_at_reference=self.core.laserAutofocusController.reference_z_height_mm*1e3,
-
-            x_offset=self.core.laserAutofocusController.x_offset,
-            y_offset=self.core.laserAutofocusController.y_offset,
-            x_width=self.core.laserAutofocusController.width,
-            y_width=self.core.laserAutofocusController.height,
-
-            has_two_interfaces=self.core.laserAutofocusController.has_two_interfaces,
-            use_glass_top=self.core.laserAutofocusController.use_glass_top,
-        )
+    def set_af_laser_is_enabled(self,af_laser_on:bool):
+        self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Checked if af_laser_on else Qt.Unchecked)
     
     @TypecheckFunction
     def set_selected_channels(self,new_selection:List[str]):
