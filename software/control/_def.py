@@ -623,15 +623,15 @@ class WellplateFormatPhysical:
         return not is_in_bounds
 
 WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
-    "Generic 6":WellplateFormatPhysical(
-        well_size_mm = 34.94,
-        well_spacing_mm = 39.2,
-        A1_x_mm = 24.55,
-        A1_y_mm = 23.01,
-        number_of_skip = 0,
-        rows = 2,
-        columns = 3,
-    ),
+    #"Generic 6":WellplateFormatPhysical(
+    #    well_size_mm = 34.94,
+    #    well_spacing_mm = 39.2,
+    #    A1_x_mm = 24.55,
+    #    A1_y_mm = 23.01,
+    #    number_of_skip = 0,
+    #    rows = 2,
+    #    columns = 3,
+    #),
     "Generic 12":WellplateFormatPhysical(
         well_size_mm = 22.05,
         well_spacing_mm = 26,
@@ -641,15 +641,15 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         rows = 3,
         columns = 4,
     ),
-    "Generic 24":WellplateFormatPhysical(
-        well_size_mm = 15.54,
-        well_spacing_mm = 19.3,
-        A1_x_mm = 17.05,
-        A1_y_mm = 13.67,
-        number_of_skip = 0,
-        rows = 4,
-        columns = 6,
-    ),
+    #"Generic 24":WellplateFormatPhysical(
+    #    well_size_mm = 15.54,
+    #    well_spacing_mm = 19.3,
+    #    A1_x_mm = 17.05,
+    #    A1_y_mm = 13.67,
+    #    number_of_skip = 0,
+    #    rows = 4,
+    #    columns = 6,
+    #),
     "Generic 96":WellplateFormatPhysical(
         well_size_mm = 6.21,
         well_spacing_mm = 9,
@@ -701,9 +701,9 @@ WELLPLATE_NAMES=set(WELLPLATE_FORMATS.keys())
 WELLPLATE_TYPE_IMAGE={
     384 : 'images/384_well_plate_1509x1010.png',
     96  : 'images/96_well_plate_1509x1010.png',
-    24  : 'images/24_well_plate_1509x1010.png',
+    #24  : 'images/24_well_plate_1509x1010.png', # these files dont exist
     12  : 'images/12_well_plate_1509x1010.png',
-    6   : 'images/6_well_plate_1509x1010.png'
+    #6   : 'images/6_well_plate_1509x1010.png', # these files dont exist
 }
 
 assert WELLPLATE_FORMATS["Generic 384"].well_name_to_index("A01",check_valid=False)==(0,0)

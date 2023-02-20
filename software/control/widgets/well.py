@@ -391,15 +391,12 @@ class WellWidget(QWidget):
 
         self.interactive_widgets=ObjectManager()
 
-        self.wellplate_types=list(WELLPLATE_NAMES)
+        self.wellplate_types=sorted(list(WELLPLATE_NAMES),key=lambda v:f"{int(v.split(' ')[1]):03}" if v.startswith("Generic") else v)
         self.interactive_widgets.wellplate_dropdown == Dropdown(
             items=self.wellplate_types,
             current_index=self.wellplate_types.index(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT),
             on_currentIndexChanged=self.change_wellplate_type_by_index
         ).widget
-        for wpt in [0,2]: # disable 6 and 24 wellplate types because we dont have images for the navigator for those
-            item=self.interactive_widgets.wellplate_dropdown.model().item(wpt)
-            item.setFlags(item.flags() & ~Qt.ItemIsEnabled) # type: ignore
 
         self.setLayout(VBox(
             self.interactive_widgets.well_selection == WellSelectionWidget(
