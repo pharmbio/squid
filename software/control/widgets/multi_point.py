@@ -21,7 +21,7 @@ import numpy
 
 class ComponentLabels(str,Enum):
     BUTTON_START_ACQUISITION_IDLE_TEXT="Start Acquisition"
-    BUTTON_START_ACQUISITION_RUNNING_TEXT="Abort Acquisition"
+    BUTTON_START_ACQUISITION_RUNNING_TEXT="Cancel Acquisition"
 
     IMAGE_FORMAT_TOOLTIP="change file format for images acquired with the multi point acquisition function"
     COMPRESSION_TOOLTIP="Enable (lossless) image file compression (only supported by TIF)"
