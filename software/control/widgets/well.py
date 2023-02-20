@@ -392,9 +392,21 @@ class WellWidget(QWidget):
         self.interactive_widgets=ObjectManager()
 
         self.wellplate_types=sorted(list(WELLPLATE_NAMES),key=lambda v:f"{int(v.split(' ')[1]):03}" if v.startswith("Generic") else v)
+        wellplate_dropdown_tooltip_str:str="Wellplate Types:\n\n"
+        for wellplate_type in self.wellplate_types:
+            wellplate_format=WELLPLATE_FORMATS[wellplate_type]
+            wellplate_type_tooltip=wellplate_type+":"
+            wellplate_type_tooltip+=f"\n\tnum wells: {wellplate_format.num_wells}"
+            if len(wellplate_format.brand)>0:
+                wellplate_type_tooltip+="\n\tBrand: "+wellplate_format.brand
+            else:
+                wellplate_type_tooltip+="\n\tBrand: <unknown>"
+            wellplate_dropdown_tooltip_str+=wellplate_type_tooltip+"\n\n"
+
         self.interactive_widgets.wellplate_dropdown == Dropdown(
             items=self.wellplate_types,
             current_index=self.wellplate_types.index(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT),
+            tooltip=wellplate_dropdown_tooltip_str,
             on_currentIndexChanged=self.change_wellplate_type_by_index
         ).widget
 
