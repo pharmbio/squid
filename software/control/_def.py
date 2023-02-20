@@ -680,6 +680,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
 
 		brand="Thermo Fischer Scientific Nunc MicroWell",
+        product_url="",
 		
 		plate_length_mm=127.8,
 		plate_width_mm=85.5,
@@ -694,7 +695,111 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		column_offset_mm=12.1,
 		row_offset_mm=9.0,
 		well_bottom_offset_mm=1.7
-    )
+    ),
+    "384-AGI-204628":WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        corners_forbidden=True,
+        rows = 16,
+        columns = 24,
+
+		brand="Agilent",
+        product_url="",
+		
+		plate_length_mm=127.8,
+		plate_width_mm=85.5,
+		plate_height_mm=14.4,
+		
+		well_depth_mm=11.500,
+		well_diameter_mm=3.7,
+		
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
+
+		column_offset_mm=12.1,
+		row_offset_mm=8.99
+    ),
+    "384-GR-781091":WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        corners_forbidden=True,
+        rows = 16,
+        columns = 24,
+
+		brand="Greiner",
+        product_url="",
+		
+		plate_length_mm=127.76,
+		plate_width_mm=85.48,
+		plate_height_mm=14.4,
+		
+		well_depth_mm=11.500,
+		well_diameter_mm=3.7,
+		
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
+
+		column_offset_mm=12.1,
+		row_offset_mm=8.99
+    ),
+    "384-FA-353962":WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        corners_forbidden=True,
+        rows = 16,
+        columns = 24,
+
+		brand="Corning Falcon Optilux",
+        product_url="",
+		
+		plate_length_mm=127.76,
+		plate_width_mm=85.48,
+		plate_height_mm=14.4,
+		
+		well_depth_mm=11.500,
+		well_diameter_mm=3.7,
+		
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
+
+		column_offset_mm=12.1,
+		row_offset_mm=8.99
+    ),
+    "384-PE-6057302":WellplateFormatPhysical(
+        well_size_mm = 3.3,
+        well_spacing_mm = 4.5,
+        A1_x_mm = 12.05,
+        A1_y_mm = 9.05,
+        number_of_skip = 0,
+        corners_forbidden=True,
+        rows = 16,
+        columns = 24,
+
+		brand="Perkinelmer PhenoPlate/Cell",
+        product_url="",
+		
+		plate_length_mm=127.76,
+		plate_width_mm=85.48,
+		plate_height_mm=14.35,
+		
+		well_depth_mm=13.100,
+		well_diameter_mm=3.7,
+		
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
+
+		column_offset_mm=12.1,
+		row_offset_mm=8.99
+    ),
 }
 WELLPLATE_NAMES=set(WELLPLATE_FORMATS.keys())
 
