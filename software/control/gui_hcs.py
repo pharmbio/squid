@@ -1,1500 +1,546 @@
-# python libraries
-import time, os, sys, traceback
-
+from typing import Optional, Callable, List, Union, Any, Tuple
+import time, math, os
+from datetime import datetime
 from pathlib import Path
-from typing import Union
+from glob import glob
 
-from queue import Queue
-from threading import Thread, Lock
+from qtpy.QtCore import Qt, QEvent, Signal
+from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
 
-# qt libraries
-from qtpy.QtCore import Qt, QEvent, Signal, QItemSelectionModel
-from qtpy.QtWidgets import QMainWindow, QWidget, QLabel, QDesktopWidget, QSlider, QWidget, QApplication, QTableWidgetSelectionRange, QMessageBox
-
-import pyqtgraph as pg
-import pyqtgraph.dockarea as dock
-
-# other libraries
-import numpy
-
-from PIL import ImageEnhance, Image
-
-from control.typechecker import TypecheckFunction
-
-from tqdm import tqdm
-
-# app specific libraries
-import control.widgets as widgets
 from control.camera import Camera
-import control.core as core
-from control.core import WellGridConfig, GridDimensionConfig, AcquisitionConfig, LaserAutofocusData, ReferenceFile, Configuration, DEFAULT_CELL_LINE_STR, DEFAULT_PLATE_TYPE_STR
-import control.microcontroller as microcontroller
-from control._def import *
-from control.core.displacement_measurement import DisplacementMeasurementController
-from control.gui import *
-
-# setup hook to catch exception and display them 
-def excepthook(exc_type, exc_value, exc_tb):
-    tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-    print(tb)
-    MessageBox(title="Exception occured!",mode="warning",text=f"An exception occured in the code somwhere:\n\n{tb}").run()
-
-    sys.__excepthook__(exc_type, exc_value, exc_tb)
-
-# this makes qt crash all the damn time
-#sys.excepthook = excepthook
+from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME
+TRIGGER_MODES_LIST=list(TriggerMode)
+from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely, MessageBox, HasWidget
+from control.core import Core, ReferenceFile, CameraWrapper, AcquisitionConfig
+from control.core.configuration import Configuration, ConfigurationManager
+import control.widgets as widgets
+from control.widgets import ComponentLabel
+from control.typechecker import TypecheckFunction
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
-LIVE_BUTTON_IDLE_TEXT="Start Live"
-LIVE_BUTTON_RUNNING_TEXT="Stop Live"
-LIVE_BUTTON_TOOLTIP="""Start/Stop live image view
+class ConfigurationDatabase(QMainWindow):
+    def __init__(self,
+        parent:QWidget,
 
-Records images multiple times per second, up to the specified maximum FPS (to the right).
+        on_load_from_file:Callable[[Optional[str],bool],None],
+    ):
+        super().__init__(parent=parent)
 
-Useful for manual investigation of a plate and/or imaging settings.
+        self.on_load_from_file=on_load_from_file
 
-Note that this can lead to strong photobleaching. Consider using the Snap button instead.
-"""
-BTN_SNAP_LABEL="Snap"
-BTN_SNAP_TOOLTIP="Take a single image in the selected channel.\n\nThe image will not be saved, just displayed."
-BTN_SNAP_ALL_LABEL="Snap selection"
-BTN_SNAP_ALL_TOOLTIP="Take one image in all channels and display them in the multi-point acqusition panel.\n\nThe images will not be saved."
-BTN_SNAP_ALL_CHANNEL_SELECT_LABEL="Change selection"
-BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP="Change selection of channels imaged when clicking the button on the left."
-BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL="Apply z offset"
-BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP="Move to specified offset for all imaging channels. Requires laser autofocus to be initialized."
+        def create_referenceFile_widget(file:str)->QWidget:
+            config=AcquisitionConfig.from_json(file)
 
-EXPOSURE_TIME_LABEL="Exposure time:"
-EXPOSURE_TIME_TOOLTIP="""
-Exposure time is the time the camera sensor records a single image.
+            laser_af_reference_is_present:bool=not config.af_laser_reference is None
 
-Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light).
+            workaround={'load_laser_af_data_requested':False}
 
-Range is 0.01ms to 968.0ms
-"""
-ANALOG_GAIN_LABEL="Analog gain:"
-ANALOG_GAIN_TOOLTIP="""
-Analog gain increases the camera sensor sensitiviy.
-
-Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise.
-
-Note that a value of zero means that a (visible) will still be recorded.
-
-Range is 0.0 to 24.0
-"""
-CHANNEL_OFFSET_LABEL="Z Offset:"
-CHANNEL_OFFSET_TOOLTIP="Channel/Light source specific Z offset used in multipoint acquisition.\nCan be used to focus on cell organelles in different Z planes."
-ILLUMINATION_LABEL="Illumination:"
-ILLUMINATION_TOOLTIP="""
-Illumination %.
-
-Fraction of laser power used for illumination of the sample.
-
-Similar effect as exposure time, e.g. the signal is about the same at 50% illumination as it is at half the exposure time.
-
-Range is 0.1 - 100.0 %.
-"""
-CAMERA_PIXEL_FORMAT_TOOLTIP="""
-Camera pixel format
-
-MONO8 means monochrome (grey-scale) 8bit
-MONO12 means monochrome 12bit
-
-More bits can capture more detail (8bit can capture 2^8 intensity values, 12bit can capture 2^12), but also increase file size.
-Due to file format restrictions, Mono12 takes up twice the storage of Mono8 (not the expected 50%).
-"""
-
-FPS_TOOLTIP="""
-Maximum number of frames per second that are recorded while live.
-
-The actual number of recorded frames per second may be smaller because of the exposure time, e.g. 5 images with 300ms exposure time each don't fit into a single second.
-"""
-BTN_SAVE_CONFIG_LABEL="save config to file"
-BTN_SAVE_CONFIG_TOOLTIP="save settings related to all imaging modes/channels in a new file (this will open a window where you can specify the location to save the config file)"
-BTN_LOAD_CONFIG_LABEL="load config from file"
-BTN_LOAD_CONFIG_TOOLTIP="load settings related to all imaging modes/channels from a file (this will open a window where you will specify the file to load)"
-CONFIG_FILE_LAST_PATH_LABEL="config. file:"
-CONFIG_FILE_LAST_PATH_TOOLTIP="""
-Configuration file that was loaded last.
-
-If no file has been manually loaded, this will show the path to the default configuration file where the currently displayed settings are always saved.
-If a file has been manually loaded at some point, the last file that was loaded will be displayed.
-
-An asterisk (*) will be displayed after the filename if the settings have been changed since a file has been loaded.
-
-These settings are continuously saved into the default configuration file and restored when the program is started up again, they do NOT automatically overwrite the last configuration file that was loaded.
-"""
-
-CHANNEL_COLORS={
-    0:"grey", # bf led full
-    1:"grey", # bf led left half
-    2:"grey", # bf led right half
-    15:"darkRed", # 730
-    13:"red", # 638
-    14:"green", # 561
-    12:"blue", # 488
-    11:"purple", # 405
-}
-
-def format_seconds_nicely(sec:float)->str:
-    hours=int(sec//3600)
-    sec-=hours*3600
-    minutes=int(sec//60)
-    sec-=minutes*60
-    return f"{hours:3}h {minutes:2}m {sec:4.1f}s"
-
-
-TRIGGER_MODES_LIST=[
-    TriggerMode.SOFTWARE,
-    TriggerMode.HARDWARE,
-]
-
-class ImageArrayDisplayQueue(QObject):
-    @TypecheckFunction
-    def __init__(self,gui:Any):
-        QObject.__init__(self)
-        self.queue:Queue = Queue(16) # max 16 items in the queue
-        self.image_lock:Lock = Lock()
-        self.stop_signal_received:bool = False
-        self.thread = Thread(target=self.process_queue) # type: ignore
-        self.thread.start()
-        self.counter:int = 0
-        self.gui=gui
-
-    @TypecheckFunction
-    def process_queue(self):
-        while True:            
-            # process the queue
-            try:
-                [image,source] = self.queue.get(timeout=0.1)
-                self.image_lock.acquire(True)
-
-                self.gui.display_in_image_array(image,source)
-
-                self.counter = self.counter + 1
-                self.queue.task_done()
-
-                self.image_lock.release()
-            except:
-                # if queue is empty, and signal was received, terminate the thread
-                if self.stop_signal_received:
-                    return
-                            
-    def enqueue(self,image:numpy.ndarray,source:int):
-        if self.stop_signal_received:
-            print('! critical - attempted to display image even though stop signal was received!')
-        try:
-            self.queue.put_nowait([image,source])
-        except:
-            print('! critical - imagearraydisplay queue is full, image discarded!')
-
-    @TypecheckFunction
-    def close(self):
-        self.queue.join()
-        self.stop_signal_received = True
-        self.thread.join()
-
-class ImageDisplayQueue(QObject):
-    @TypecheckFunction
-    def __init__(self,gui:Any):
-        QObject.__init__(self)
-        self.queue:Queue = Queue(16) # max 16 items in the queue
-        self.image_lock:Lock = Lock()
-        self.stop_signal_received:bool = False
-        self.thread = Thread(target=self.process_queue) # type: ignore
-        self.thread.start()
-        self.counter:int = 0
-        self.gui=gui
-
-    @TypecheckFunction
-    def process_queue(self):
-        while True:            
-            # process the queue
-            try:
-                image = self.queue.get(timeout=0.1)
-                self.image_lock.acquire(True)
-
-                self.gui.imageDisplayWindow.display_image(image)
-                QApplication.processEvents()
-
-                self.counter = self.counter + 1
-                self.queue.task_done()
-
-                self.image_lock.release()
-            except:
-                # if queue is empty, and signal was received, terminate the thread
-                if self.stop_signal_received:
-                    return
-                            
-    def enqueue(self,image:numpy.ndarray):
-        if self.stop_signal_received:
-            print('! critical - attempted to display image even though stop signal was received!')
-        try:
-            self.queue.put_nowait(image)
-        except:
-            print('! critical - imagedisplay queue is full, image discarded!')
-
-    @TypecheckFunction
-    def close(self):
-        self.queue.join()
-        self.stop_signal_received = True
-        self.thread.join()
-
-class OctopiGUI(QMainWindow):
-
-    @property
-    def configurationManager(self)->core.ConfigurationManager:
-        return self.core.configurationManager
-    @property
-    def streamHandler(self)->core.StreamHandler:
-        return self.core.streamHandler
-    @property
-    def liveController(self)->core.LiveController:
-        return self.core.liveController
-    @property
-    def navigation(self)->core.NavigationController:
-        return self.core.navigation
-    @property
-    def autofocusController(self)->core.AutoFocusController:
-        return self.core.autofocusController
-    @property
-    def multipointController(self)->core.MultiPointController:
-        return self.core.multipointController
-    @property
-    def imageSaver(self)->core.ImageSaver:
-        return self.core.imageSaver
-    @property
-    def camera(self)->Camera:
-        return self.core.camera
-    @property
-    def focus_camera(self)->Camera:
-        return self.core.focus_camera.camera
-    @property
-    def microcontroller(self)->microcontroller.Microcontroller:
-        return self.core.microcontroller
-    @property
-    def configurationManager_focus_camera(self)->core.ConfigurationManager:
-        return self.core.configurationManager_focus_camera
-    @property
-    def streamHandler_focus_camera(self)->core.StreamHandler:
-        return self.core.streamHandler_focus_camera
-    @property
-    def liveController_focus_camera(self)->core.LiveController:
-        return self.core.liveController_focus_camera
-    @property
-    def displacementMeasurementController(self)->DisplacementMeasurementController:
-        return self.core.displacementMeasurementController
-    @property
-    def laserAutofocusController(self)->core.LaserAutofocusController:
-        return self.core.laserAutofocusController
-
-    @property
-    def project_name_str(self)->str:
-        return self.multiPointWidget.lineEdit_projectName.text()
-    @property
-    def plate_name_str(self)->str:
-        return self.multiPointWidget.lineEdit_plateName.text()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.core=core.Core(home=not bool(int(os.environ.get('skip_homing') or 0))) # var is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
-
-        self.named_widgets=ObjectManager()
-
-        self.streamHandler.packet_image_to_write.connect(self.imageSaver.enqueue)
-        self.streamHandler.signal_new_frame_received.connect(self.liveController.on_new_frame)
-
-        # load window
-        self.imageDisplayWindow = widgets.ImageDisplayWindow(draw_crosshairs=True)
-        self.imageArrayDisplayWindow = widgets.ImageArrayDisplayWindow(self.configurationManager)
-
-        default_well_plate=WELLPLATE_NAMES[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
-
-        # load widgets
-        self.wellSelectionWidget    = widgets.WellSelectionWidget(
-            move_to_index=self.core.navigation.move_to_index,
-            format=MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT
-        )
-        self.navigationWidget       = widgets.NavigationWidget(self.core)
-        self.autofocusWidget        = widgets.AutoFocusWidget(
-            software_af_controller=self.core.autofocusController,
-            configuration_manager=self.core.main_camera.configuration_manager,
-            on_set_all_callbacks_enabled=self.set_all_interactibles_enabled,
-        )
-        self.multiPointWidget       = widgets.MultiPointWidget(self.core,gui=self)
-        self.navigationViewer       = widgets.NavigationViewer(sample=default_well_plate)
-
-        self.imageArrayDisplayQueue=ImageArrayDisplayQueue(gui=self) # if multipointworker runs sync (instead of async in its own thread), emitting image to display directly increases imaging by 2 hours (!)
-        self.core.multipointController.image_to_display_multi.connect(self.imageArrayDisplayQueue.enqueue)
-        self.imageDisplayQueue=ImageDisplayQueue(gui=self)
-        self.core.multipointController.image_to_display.connect(self.imageDisplay.enqueue)
-
-        self.imaging_mode_config_managers={}
-
-        imaging_modes_widget_list=[]
-        imaging_modes_wide_widgets=[]
-        for config_num,config in enumerate(self.configurationManager.configurations):
-            config_manager=ObjectManager()
-
-            imaging_modes_wide_widgets.extend([
-                GridItem(
-                    Label(config.name,tooltip=config.automatic_tooltip(),text_color=CHANNEL_COLORS[config.illumination_source]).widget,
-                    row=config_num*2,colSpan=2
-                ),
-                GridItem(
-                    config_manager.snap == Button(BTN_SNAP_LABEL,tooltip=BTN_SNAP_TOOLTIP,
-                        on_clicked=lambda btn_state,c=config: self.snap_single(btn_state,config=self.configurationManager.config_by_name(c.name))
-                    ).widget,
-                    row=config_num*2,column=2,colSpan=2
-                )
-            ])
-
-            imaging_modes_widget_list.extend([
-                [
-                    GridItem(None,colSpan=4),
-                    Label(ILLUMINATION_LABEL,tooltip=ILLUMINATION_TOOLTIP).widget,
-                    config_manager.illumination_strength == SpinBoxDouble(
-                        minimum=0.1,maximum=100.0,step=0.1,
-                        default=config.illumination_intensity,
-                        tooltip=ILLUMINATION_TOOLTIP,
-                        on_valueChanged=[
-                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_illumination_intensity(val),
-                            self.configurationManager.save_configurations,
-                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                        ]
-                    ).widget,
-                ],
-                [   
-                    Label(EXPOSURE_TIME_LABEL,tooltip=EXPOSURE_TIME_TOOLTIP).widget,
-                    config_manager.exposure_time == SpinBoxDouble(
-                        minimum=self.liveController.camera.EXPOSURE_TIME_MS_MIN,
-                        maximum=self.liveController.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
-                        default=config.exposure_time_ms,
-                        tooltip=EXPOSURE_TIME_TOOLTIP,
-                        on_valueChanged=[
-                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_exposure_time(val),
-                            self.configurationManager.save_configurations,
-                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                        ]
-                    ).widget,
-                    Label(ANALOG_GAIN_LABEL,tooltip=ANALOG_GAIN_TOOLTIP).widget,
-                    config_manager.analog_gain == SpinBoxDouble(
-                        minimum=0.0,maximum=24.0,step=0.1,
-                        default=config.analog_gain,
-                        tooltip=ANALOG_GAIN_TOOLTIP,
-                        on_valueChanged=[
-                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_analog_gain(val),
-                            self.configurationManager.save_configurations,
-                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                        ]
-                    ).widget,
-                    Label(CHANNEL_OFFSET_LABEL,tooltip=CHANNEL_OFFSET_TOOLTIP).widget,
-                    config_manager.z_offset == SpinBoxDouble(
-                        minimum=-30.0,maximum=30.0,step=0.1,
-                        default=config.channel_z_offset,
-                        tooltip=CHANNEL_OFFSET_TOOLTIP,
-                        on_valueChanged=[
-                            lambda val,c=config: self.configurationManager.config_by_name(c.name).set_offset(val),
-                            self.configurationManager.save_configurations,
-                            lambda btn:self.set_illumination_config_path_display(btn,set_config_changed=True),
-                        ]
-                    ).widget,
-                ]
-            ])
-
-            self.imaging_mode_config_managers[config.mode_id]=config_manager
-
-        self.add_image_inspection()
-
-        self.named_widgets.laserAutofocusControlWidget == widgets.LaserAutofocusControlWidget(
-            get_current_z_pos_in_mm=self.navigationWidget.real_pos_z,
-            laserAutofocusController=self.laserAutofocusController
-        )
-        self.named_widgets.laserAutofocusControlWidget.btn_set_reference.clicked.connect(lambda _btn_state:self.multiPointWidget.checkbox_laserAutofocus.setDisabled(False))
-
-        self.named_widgets.live == ObjectManager()
-        self.imagingModes=VBox(
-            # snap and channel config section
-            HBox(
-                self.named_widgets.snap_all_button == Button(BTN_SNAP_ALL_LABEL,tooltip=BTN_SNAP_ALL_TOOLTIP,on_clicked=self.snap_selected),
-                self.named_widgets.snap_all_channel_selection == Button(BTN_SNAP_ALL_CHANNEL_SELECT_LABEL,tooltip=BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP,on_clicked=self.snap_all_open_channel_selection).widget,
-                self.named_widgets.snap_all_with_offset_checkbox == Checkbox(label=BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL,tooltip=BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP).widget,
-            ),
-
-            Dock(
+            return Dock(
                 Grid(
-                    *flatten([
-                        imaging_modes_widget_list,
-                        imaging_modes_wide_widgets
-                    ])
-                ).widget,
-                "Imaging mode settings"
-            ),
-
-            # config save/load section
-            Dock(
-                VBox(
-                    HBox(
-                        self.named_widgets.save_config_button == Button(BTN_SAVE_CONFIG_LABEL,tooltip=BTN_SAVE_CONFIG_TOOLTIP,on_clicked=self.save_illumination_config),
-                        self.named_widgets.load_config_button == Button(BTN_LOAD_CONFIG_LABEL,tooltip=BTN_LOAD_CONFIG_TOOLTIP,on_clicked=self.load_illumination_config),
-                    ),
-                    HBox(
-                        Label(CONFIG_FILE_LAST_PATH_LABEL,tooltip=CONFIG_FILE_LAST_PATH_TOOLTIP),
-                        self.named_widgets.last_configuration_file_path == Label("").widget,
+                    [
+                        Label(f"Plate type: {config.plate_type}"),
+                        Label(f"Cell Line: {config.cell_line}"),
+                    ],
+                    [
+                        Checkbox(
+                            "Load laser AF data",
+                            tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
+                            checked=False,
+                            enabled=laser_af_reference_is_present,
+                            on_stateChanged=lambda _s,w=workaround:w.update({"load_laser_af_data_requested":True})
+                        ),
+                        Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
+                    ],
+                    [
+                        Label(f"Timestamp: {config.timestamp}"),
+                    ],
+                    GridItem(
+                        Button("Load this reference",on_clicked=lambda _,w=workaround:self.on_load_from_file(file,w["load_laser_af_data_requested"])),
+                        row=3,
+                        colSpan=2,
                     )
                 ).widget,
-                "Illumination Settings I/O"
-            ),
+                title=f"File: {file}",
+                minimize_height=True,
+            )
 
-            # numerical investigation section
-            self.histogramWidget,
-            #self.backgroundSliderContainer, # TODO disabled because it did not actually seem super useful
-
-            Dock(
-                VBox(
-                    self.imageEnhanceWidget,
-                    HBox(
-                        self.named_widgets.live.button == Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget,
-                        self.named_widgets.live.channel_dropdown == Dropdown(items=[config.name for config in self.configurationManager.configurations],current_index=0).widget,
-                        Label("max. FPS",tooltip=FPS_TOOLTIP),
-                        self.named_widgets.live.fps == SpinBoxDouble(minimum=1.0,maximum=10.0,step=0.1,default=5.0,num_decimals=1,tooltip=FPS_TOOLTIP).widget,
-                    ),
-                ).widget,
-                "Live Imaging"
-            ),
-
-            Dock(self.navigationWidget,"Navigation",True).widget,
-
-            # autofocus section
-            Dock(self.named_widgets.laserAutofocusControlWidget,title="Laser AF",minimize_height=True).widget,
-            Dock(self.autofocusWidget,title="Software AF",minimize_height=True).widget,
+        self.widget=VBox(
+            Label("Load configuration data from..?"),
+            Label(""), # empty line
+            Button("Browse (anywhere)",on_clicked=lambda _:self.on_load_from_file()),
+            Label(""), # empty line
+            Label("Load from calibrated reference database :"),
+            VBox(*[
+                create_referenceFile_widget(reference_file)
+                for reference_file
+                in [
+                    LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
+                    *(glob("reference_config_files/*"))
+                ]
+            ]),
+            #with_margin=False
         ).widget
 
-        self.channel_included_in_snap_all_flags=[True for c in self.configurationManager.configurations]
+        self.setCentralWidget(self.widget)
 
-        self.set_illumination_config_path_display(new_path=self.configurationManager.config_filename,set_config_changed=False)
+        self.setWindowTitle("Configuration Database")
 
-        self.recordTabWidget = TabBar(
-            Tab(self.multiPointWidget, "Acquisition"),
-            Tab(self.imagingModes,"Setup"),
-        ).widget
-
-        wellplate_types_str=list(WELLPLATE_NAMES.values())
-        self.named_widgets.wellplate_selector == Dropdown(
-            items=wellplate_types_str,
-            current_index=wellplate_types_str.index(default_well_plate),
-            on_currentIndexChanged=lambda wellplate_type_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"WELLPLATE_FORMAT",tuple(WELLPLATE_FORMATS.keys())[wellplate_type_index])
-        ).widget
-        # disable 6 and 24 well wellplates, because images of these plates are missing
-        for wpt in [0,2]:
-            item=self.named_widgets.wellplate_selector.model().item(wpt)
-            item.setFlags(item.flags() & ~Qt.ItemIsEnabled) # type: ignore
-
-        self.navigationViewWrapper=VBox(
-            HBox(
-                Label("wellplate overview").widget,
-                Button("clear history",on_clicked=self.navigationViewer.clear_history).widget,
-                Label("Change plate type:").widget,
-                self.named_widgets.wellplate_selector
-            ).layout,
-            self.navigationViewer
-        ).layout
-
-        self.multiPointWidget.grid.layout.addWidget(self.wellSelectionWidget,6,0,1,4)
-        self.multiPointWidget.grid.layout.addLayout(self.navigationViewWrapper,7,0,1,4)
-
-        # layout widgets
+class BasicSettings(QWidget):
+    def __init__(self,
+        main_camera:Camera,
         
-        # transfer the layout to the central widget
-        self.centralWidget:QWidget = VBox(
+        on_save_all_config:Callable[[],None],
+        on_load_all_config:Callable[[],None],
+    ):
+        super().__init__()
+
+        self.main_camera=main_camera
+        self.on_save_all_config=on_save_all_config
+        self.on_load_all_config=on_load_all_config
+
+        self.interactive_widgets=ObjectManager()
+
+        DEFAULT_CAMERA_PIXEL_INDEX_INT:int=self.main_camera.pixel_formats.index("Mono12") # list is expected to contain "Mono8" and "Mono12", and Mono12 has been chosen as default
+
+        self.setLayout(VBox(
             HBox(
                 Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
-                self.named_widgets.trigger_mode_dropdown == Dropdown(
+                self.interactive_widgets.trigger_mode_dropdown == Dropdown(
                     items=TRIGGER_MODES_LIST,
-                    current_index=0,
-                    on_currentIndexChanged=lambda new_index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_TRIGGER_MODE",TRIGGER_MODES_LIST[new_index])
+                    current_index=TRIGGER_MODES_LIST.index(TriggerMode.SOFTWARE),
                 ).widget,
                 Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
-                self.named_widgets.pixel_format == Dropdown(
-                    items=self.core.main_camera.pixel_formats,
-                    current_index=0, # default pixel format is 8 bits
+                self.interactive_widgets.pixel_format == Dropdown(
+                    items=self.main_camera.pixel_formats,
+                    current_index=DEFAULT_CAMERA_PIXEL_INDEX_INT,
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
-                    tooltip="",
                 ).widget,
             ),
             HBox(
-                self.named_widgets.save_all_config == Button("Save configuration",on_clicked=self.save_all_config),
-                self.named_widgets.load_all_config == Button("Load configuration",on_clicked=self.open_config_load_popup),
+                self.interactive_widgets.save_all_config == Button("Save configuration",on_clicked=lambda _btn:self.on_save_all_config()).widget,
+                self.interactive_widgets.load_all_config == Button("Load configuration",on_clicked=lambda _btn:self.on_load_all_config()).widget,
             ),
-            self.recordTabWidget
-        ).widget
-        
-        desktopWidget = QDesktopWidget()
-        width_min = int(0.96*desktopWidget.width())
-        height_min = int(0.9*desktopWidget.height())
+        ).layout)
 
-        # laser af section
-        LASER_AUTOFOCUS_LIVE_CONTROLLER_ENABLED=True
-        if LASER_AUTOFOCUS_LIVE_CONTROLLER_ENABLED:
-            self.liveControlWidget_focus_camera = widgets.LiveControlWidget(
-                self.liveController_focus_camera,
-                self.configurationManager_focus_camera,
-                on_new_frame=lambda image:self.laserAutofocusController.image_to_display.emit(image)
-            )
-            self.imageDisplayWindow_focus = widgets.ImageDisplayWindow(draw_crosshairs=True)
-
-            dock_laserfocus_image_display = Dock(
-                widget=self.imageDisplayWindow_focus.widget,
-                title='Focus Camera Image Display'
-            ).widget
-            dock_laserfocus_liveController = Dock(
-                title='Focus Camera Controller',
-                widget=VBox(
-                    self.liveControlWidget_focus_camera,
-                    HBox(
-                        Button("measure",on_clicked=self.calibrate_displacement),
-                        self.named_widgets.displacement_accuracy_granularity == SpinBoxInteger(minimum=1,maximum=20,default=7,step=1),
-                        self.named_widgets.displacement_accuracy_halfrange == SpinBoxDouble(minimum=100.0,maximum=300.0,default=150.0,step=10.0),
-                    ),
-                    self.named_widgets.displacement_graph_widget == pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
-                ).widget,
-                fixed_width=self.liveControlWidget_focus_camera.minimumSizeHint().width()
-            ).widget
-
-            laserfocus_dockArea = dock.DockArea()
-            laserfocus_dockArea.addDock(dock_laserfocus_image_display)
-            laserfocus_dockArea.addDock(dock_laserfocus_liveController,'right',relativeTo=dock_laserfocus_image_display)
-
-            # connections
-            self.laserAutofocusController.image_to_display.connect(self.imageDisplayWindow_focus.display_image)
-
-            self.streamHandler_focus_camera.signal_new_frame_received.connect(self.liveController_focus_camera.on_new_frame)
-
-        # make connections
-        self.navigation.xPos.connect(self.navigationWidget.set_pos_x)
-        self.navigation.yPos.connect(self.navigationWidget.set_pos_y)
-        self.navigation.zPos.connect(self.navigationWidget.set_pos_z)
-        self.navigation.signal_joystick_button_pressed.connect(self.autofocusController.autofocus)
-        self.navigation.xyPos.connect(self.navigationViewer.update_current_fov)
-
-        self.imageDisplay.image_to_display.connect(self.processLiveImage) # internally calls self.imageDisplayWindow.display_image, among other things
-
-        self.autofocusController.image_to_display.connect(self.imageDisplayWindow.display_image)
-
-        self.multipointController.signal_register_current_fov.connect(self.navigationViewer.add_history)
-
-        # if well selection changes, or dx/y or Nx/y change, redraw preview
-        self.wellSelectionWidget.itemSelectionChanged.connect(self.on_well_selection_change)
-
-        self.multiPointWidget.entry_deltaX.valueChanged.connect(self.on_well_selection_change)
-        self.multiPointWidget.entry_deltaY.valueChanged.connect(self.on_well_selection_change)
-
-        self.multiPointWidget.entry_NX.valueChanged.connect(self.on_well_selection_change)
-        self.multiPointWidget.entry_NY.valueChanged.connect(self.on_well_selection_change)
-
-        # image display windows
-        self.imageDisplayTabs = TabBar(
-            Tab(self.imageDisplayWindow.widget, "Single View"),
-            Tab(self.imageArrayDisplayWindow, "Multi View"),
-            Tab(laserfocus_dockArea,"Laser AF Signal"),
-        ).widget
-
-        main_dockArea = dock.DockArea()
-        main_dockArea.addDock(Dock(
-            title='Image Display',
-            widget=self.imageDisplayTabs
-        ).widget)
-        main_dockArea.addDock(Dock(
-            title='Controls',
-            widget=self.centralWidget, 
-            fixed_width=width_min*0.25, stretch_x=1,stretch_y=None
-        ).widget,'right')
-
-        self.setCentralWidget(main_dockArea)
-        self.setMinimumSize(width_min,height_min)
-
-    def add_image_inspection(self,
-        brightness_adjust_min:float=0.1,
-        brightness_adjust_max:float=5.0,
-
-        contrast_adjust_min:float=0.1,
-        contrast_adjust_max:float=5.0,
-
-        histogram_log_display_default:bool=True
-    ):
-        self.histogramWidget=pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
-        self.histogramWidget.view=self.histogramWidget.addViewBox()
-
-        # add panel to change image settings
-        self.imageBrightnessAdjust=HBox(
-            Label("View Brightness:"),
-            SpinBoxDouble(
-                minimum=brightness_adjust_min,
-                maximum=brightness_adjust_max,
-                default=1.0,
-                step=0.1,
-                on_valueChanged=self.set_brightness,
-            )
-        ).layout
-        self.imageBrightnessAdjust.value=1.0
-
-        self.imageContrastAdjust=HBox(
-            Label("View Contrast:"),
-            SpinBoxDouble(
-                minimum=contrast_adjust_min,
-                maximum=contrast_adjust_max,
-                default=1.0,
-                step=0.1,
-                on_valueChanged=self.set_contrast,
-            )
-        ).layout
-        self.imageContrastAdjust.value=1.0
-
-        self.histogram_log_scale=histogram_log_display_default
-        self.histogramLogScaleCheckbox=Checkbox(
-            label="Histogram Log scale",
-            checked=self.histogram_log_scale*2, # convert from bool to weird tri-stateable value (i.e. 0,1,2 where 0 is unchecked, 2 is checked, and 1 is in between. if this is set to 1, the button will become to tri-stable)
-            tooltip="Display Y-Axis of the histogram with a logrithmic scale? (uses linear scale if disabled/unchecked)",
-            on_stateChanged=self.set_histogram_log_scale,
-        )
-
-        self.imageEnhanceWidget=HBox(
-            self.imageBrightnessAdjust,
-            self.imageContrastAdjust,
-            self.histogramLogScaleCheckbox,
-        ).layout
-        self.last_raw_image=None
-        self.last_image_data=None
-
-        self.backgroundSlider=QSlider(Qt.Horizontal)
-        self.backgroundSlider.setTickPosition(QSlider.TicksBelow)
-        self.backgroundSlider.setRange(1,255)
-        self.backgroundSlider.setSingleStep(1)
-        self.backgroundSlider.setTickInterval(16)
-        self.backgroundSlider.valueChanged.connect(self.set_background)
-        self.backgroundSlider.setValue(10)
-
-        self.backgroundSNRValueText=QLabel("SNR: undefined")
-
-        self.backgroundHeader=HBox( QLabel("Background"), self.backgroundSNRValueText ).layout
-
-        self.backgroundSliderContainer=VBox(
-            self.backgroundHeader,
-            self.backgroundSlider
-        ).layout
-
-    def open_config_load_popup(self):
-        somewidget=QMainWindow(self)
-        reference_files:List[ReferenceFile]=[
-            ReferenceFile(
-                path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
-                plate_type=DEFAULT_PLATE_TYPE_STR,
-                cell_line=DEFAULT_CELL_LINE_STR
-            ),
-        ]
-
-        def reference_file_to_widget(reference_file)->QWidget:
-            def load_reference_file(_btn_state):
-                self.load_all_config_from(reference_file.path)
-            def load_and_close(_btn_state,somewidget):
-                self.load_all_config_from(reference_file.path)
-                self.layout().removeWidget(somewidget)
-                somewidget.hide()
-                somewidget.close()
-                del somewidget
-
-            return Grid(
-                [Label("Path:"),Label(str(reference_file.path))],
-                [Label("Plate type:"),Label(reference_file.plate_type)],
-                [Label("Cell line:"),Label(reference_file.cell_line)],
-                [Button("load as reference",on_clicked=load_reference_file),Button("load and close window",on_clicked=lambda x,w=somewidget: load_and_close(x,w))],
-            )
-
-        vbox_widgets=[
-            Button("Browse to load config file",on_clicked=self.load_all_config),
-            Label(""),
-            Label("Load config as it was when program was last closed:"),
-            *[
-                reference_file_to_widget(reference_file)
-                for reference_file
-                in reference_files
-            ],
-        ]
-        somewidget.setCentralWidget(VBox(*vbox_widgets).widget)
-        somewidget.show()
-
-    def calibrate_displacement(self):
-        """ this is a debug function to the laser AF system """
-        half_range=self.named_widgets.displacement_accuracy_halfrange.widget.value()
-        num_measurements=101
-        x=numpy.linspace(-half_range,half_range,num_measurements)
-        y0=x.copy()
-        y1=numpy.zeros_like(x)
-        y2=numpy.zeros_like(x)
-
-        try:
-            _=self.named_widgets.displacement_graph_widget.view
-        except:
-            self.named_widgets.displacement_graph_widget.view=self.named_widgets.displacement_graph_widget.addViewBox()
-        try:
-            _=self.named_widgets.displacement_graph_widget.plot
-            self.named_widgets.displacement_graph_widget.plot.clear()
-        except:
-            self.named_widgets.displacement_graph_widget.plot=self.named_widgets.displacement_graph_widget.addPlot(0,0,title="displacement",viewBox=self.named_widgets.displacement_graph_widget.view)
-
-        um_to_mm=1e-3
-        z_mm_clear_backlash=self.microcontroller.clear_z_backlash_mm
-        displacement_measurement_granularity=self.named_widgets.displacement_accuracy_granularity.widget.value()
-
-        total_moved_distance=0.0
-        with self.core.focus_camera.ensure_streaming():
-            for i,x_i in enumerate(tqdm(x)):
-                if i==0:
-                    move_z_distance_um=x_i
-
-                    self.core.navigation.move_z(z_mm=-z_mm_clear_backlash+move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-                    self.core.navigation.move_z(z_mm=z_mm_clear_backlash,wait_for_completion={},wait_for_stabilization=True)
-                else:
-                    move_z_distance_um=x_i-x[i-1]
-
-                    self.core.navigation.move_z(z_mm=move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-                    
-                measured_displacement=self.core.laserAutofocusController.measure_displacement(displacement_measurement_granularity)
-
-                y1[i]=measured_displacement
-
-                total_moved_distance+=move_z_distance_um
-
-        move_z_distance_um=-total_moved_distance
-        self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-
-        total_moved_distance=0.0
-        with self.core.focus_camera.ensure_streaming():
-            for i,x_i in enumerate(tqdm(x)):
-                if i==0:
-                    move_z_distance_um=x_i
-
-                    self.core.navigation.move_z(z_mm=z_mm_clear_backlash-move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-                    self.core.navigation.move_z(z_mm=-z_mm_clear_backlash,wait_for_completion={},wait_for_stabilization=True)
-                else:
-                    move_z_distance_um=x_i-x[i-1]
-
-                    self.core.navigation.move_z(z_mm=-move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-                    
-                measured_displacement=self.core.laserAutofocusController.measure_displacement(displacement_measurement_granularity)
-
-                y2[num_measurements-1-i]=measured_displacement
-
-                QApplication.processEvents()
-
-                total_moved_distance+=move_z_distance_um
-
-        move_z_distance_um=total_moved_distance
-        self.core.navigation.move_z(move_z_distance_um*um_to_mm,wait_for_completion={},wait_for_stabilization=True)
-
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0,pen=pg.mkPen(color="green"))
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y1,pen=pg.mkPen(color="orange"))
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y2,pen=pg.mkPen(color="yellow"))
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0-y1,pen=pg.mkPen(color="red"))
-        self.named_widgets.displacement_graph_widget.plot.plot(x=x,y=y0-y2,pen=pg.mkPen(color="purple"))
-
-        y1rmsd=numpy.sqrt(numpy.sum((y0-y1)**2))
-        y2rmsd=numpy.sqrt(numpy.sum((y0-y2)**2))
-        print(f"{y1rmsd=}, {y2rmsd=}")
+        self.set_main_camera_pixel_format(DEFAULT_CAMERA_PIXEL_INDEX_INT)
 
     @TypecheckFunction
-    def set_main_camera_pixel_format(self,pixel_format_index:int):
-        new_pixel_format=self.core.main_camera.pixel_formats[pixel_format_index]
-        self.core.main_camera.camera.set_pixel_format(new_pixel_format)
-
-    @TypecheckFunction
-    def get_selected_channel_names(self,ordered:bool)->List[str]:
-        selected_channel_list:List[str]=[item.text() for item in self.multiPointWidget.list_configurations.selectedItems()]
-        if not ordered:
-            return selected_channel_list
-
-        # 'sort' list according to current order in widget
-        imaging_channel_list=[channel for channel in self.multiPointWidget.list_configurations.list_channel_names if channel in selected_channel_list]
-        return imaging_channel_list
-
-    @TypecheckFunction
-    def get_output_dir(self,require_names_present:bool)->str:
-        base_dir_str=self.multiPointWidget.lineEdit_baseDir.text()
-        project_name_str=self.project_name_str
-        plate_name_str=self.plate_name_str
-
-        if require_names_present and len(project_name_str)==0:
-            MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
-            raise RuntimeError("project name empty")
-        if require_names_present and len(plate_name_str)==0:
-            MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
-            raise RuntimeError("wellplate name empty")
-
-        FORBIDDEN_NAME_CHARS=" ,:/\\\t\n\r"
-        for C in FORBIDDEN_NAME_CHARS:
-            try:
-                char_name={
-                    " ":"space",
-                    ",":"comma",
-                    ":":"colon",
-                    "/":"forward slash",
-                    "\\":"backward slash",
-                    "\t":"tab",
-                    "\n":"newline? (enter key)",
-                    "\r":"carriage return?! contact support (patrick/dan)!",
-                }[C]
-            except KeyError:
-                print(f"unknown character name '{C}'")
-                char_name=""
-
-            if C in project_name_str:
-                MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
-                raise RuntimeError("forbidden character in experiment name")
-
-            if C in plate_name_str:
-                MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
-                raise RuntimeError("forbidden character in wellplate name")
-
-        return str(Path(base_dir_str)/project_name_str/plate_name_str)
-
-    def get_all_config(self,include_laser_af_reference:bool=False)->AcquisitionConfig:
-
-        config=AcquisitionConfig(
-            output_path=self.get_output_dir(require_names_present=False),
-            project_name=self.project_name_str,
-            plate_name=self.plate_name_str,
-
-            well_list=self.wellSelectionWidget.currently_selected_well_indices,
-            
-            grid_config=WellGridConfig(
-                x=GridDimensionConfig(d=self.multipointController.deltaX,N=self.multipointController.NX,unit="mm"),
-                y=GridDimensionConfig(d=self.multipointController.deltaY,N=self.multipointController.NY,unit="mm"),
-                z=GridDimensionConfig(d=self.multipointController.deltaZ,N=self.multipointController.NZ,unit="mm"),
-                t=GridDimensionConfig(d=self.multipointController.deltat,N=self.multipointController.Nt,unit="s"),
-                mask=self.multiPointWidget.well_grid_items_selected,
-            ),
-
-            af_software_channel=self.multipointController.autofocus_channel_name if self.multipointController.do_autofocus else None,
-            af_laser_on=self.core.multipointController.do_reflection_af,
-
-            channels_ordered=self.get_selected_channel_names(ordered=True),
-            channels_config=self.core.configurationManager.configurations,
-
-            plate_type=self.core.plate_type,
-
-            trigger_mode=MACHINE_CONFIG.MUTABLE_STATE.DEFAULT_TRIGGER_MODE,
-            pixel_format=self.core.main_camera.camera.pixel_format.value.name,
-
-            image_file_format=Acquisition.IMAGE_FORMAT,
-        )
-
-        if include_laser_af_reference and self.laserAutofocusController.is_initialized:
-            config.af_laser_reference=LaserAutofocusData(
-                x_reference=self.laserAutofocusController.x_reference,
-                um_per_px=self.laserAutofocusController.um_per_px,
-
-                x_offset=self.laserAutofocusController.x_offset,
-                y_offset=self.laserAutofocusController.y_offset,
-                x_width=self.laserAutofocusController.width,
-                y_width=self.laserAutofocusController.height,
-
-                has_two_interfaces=self.laserAutofocusController.has_two_interfaces,
-                use_glass_top=self.laserAutofocusController.use_glass_top,
-            )
-
-        return config
-
-    def save_all_config(self):
-        file_path=FileDialog(mode="save",caption="File to save the whole config to",filter_type=FILTER_JSON).run()
-        if file_path=="":
-            return
-
-        if not file_path.endswith(".json"):
-            file_path+=".json"
-            
-        self.get_all_config(include_laser_af_reference=True).save_json(file_path=file_path,well_index_to_name=True)
-
-        print(f"config i/o - saved to {file_path}")
-
-    def load_all_config(self):
-        file_path=FileDialog(mode="open",caption="File to load the whole config from",filter_type=FILTER_JSON).run()
-        if file_path=="":
-            return
-
-        self.load_all_config_from(file_path=file_path)
-
-    def load_all_config_from(self,file_path):
-        config:AcquisitionConfig=AcquisitionConfig.from_json(file_path=file_path)
-        
-        # load plate type (this will clear all selected wells)
-        MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT=config.plate_type
-
-        # load grid data (this will clear the grid mask)
-        self.multiPointWidget.entry_NX.setValue(config.grid_config.x.N)
-        self.multiPointWidget.entry_NY.setValue(config.grid_config.y.N)
-        self.multiPointWidget.entry_NZ.setValue(config.grid_config.z.N)
-        self.multiPointWidget.entry_Nt.setValue(config.grid_config.t.N)
-
-        self.multiPointWidget.entry_deltaX.setValue(config.grid_config.x.d)
-        self.multiPointWidget.entry_deltaY.setValue(config.grid_config.y.d)
-        self.multiPointWidget.entry_deltaZ.setValue(config.grid_config.z.d)
-        self.multiPointWidget.entry_dt.setValue(    config.grid_config.t.d)
-
-        # load selected wells (and block the selectionChanged signal until it is done, which would redraw some gui components for every single selected well, which takes several seconds)
-        self.wellSelectionWidget.blockSignals(True)
-
-        for well in self.wellSelectionWidget.selectedIndexes():
-            row=well.row()
-            column=well.column()
-
-            # self.wellSelectionWidget.itemAt(row,column).setSelected(True) # this does not work for some reason?! is replaced with the setCurrentCell call below (code preserved here for a more enlightened time)
-            self.wellSelectionWidget.setCurrentCell(row,column,QItemSelectionModel.Deselect)
-
-        well_list:List[Tuple[int,int]]=config.well_list
-        for well in well_list:
-            row,column=well
-
-            # self.wellSelectionWidget.itemAt(row,column).setSelected(True) # this does not work for some reason?! is replaced with the setCurrentCell call below (code preserved here for a more enlightened time)
-            self.wellSelectionWidget.setCurrentCell(row,column,QItemSelectionModel.Select)
-
-        self.wellSelectionWidget.blockSignals(False)
-        self.wellSelectionWidget.itemSelectionChanged.emit()
-
-        QApplication.processEvents()
-
-        # load channel selection
-        # 1) unselect all currently selected items
-        for currently_selected_item in self.multiPointWidget.list_configurations.selectedItems():
-            #self.multiPointWidget.list_configurations.itemClicked.emit(currently_selected_item)
-            currently_selected_item.setSelected(False)
-        # 2) iterate over all items in list, and select the ones with a name in the list of selected items
-        channel_items=[self.multiPointWidget.list_configurations.item(row) for row in range(self.multiPointWidget.list_configurations.count())]
-        for channel_name in config.channels_ordered:
-            item_with_name=[item for item in channel_items if item.text()==channel_name][0]
-            item_with_name.setSelected(True)
-            # TODO change order of channels if required
-
-        # load imaging channel configuration
-        for new_config in config.channels_config:
-            self.configurationManager.replace_config_with(new_config)
-
-        self.reload_configuration_into_gui(new_file_path=file_path)
-
-        # for project and plate names respectively: if file contains a name, and gui item was empty, load names. otherwise, don't.
-        avoided_projectname_overwrite=False
-        avoided_platename_overwrite=False
-        data_project_name:str=config.project_name
-        if data_project_name!="" and self.multiPointWidget.lineEdit_projectName.text()=="":
-            self.multiPointWidget.lineEdit_projectName.setText(data_project_name)
-        else:
-            avoided_projectname_overwrite=True
-        data_plate_name:str=config.plate_name
-        if data_plate_name!="" and self.multiPointWidget.lineEdit_plateName.text()=="":
-            self.multiPointWidget.lineEdit_plateName.setText(data_plate_name)
-        else:
-            avoided_platename_overwrite=True
-
-        if avoided_platename_overwrite or avoided_projectname_overwrite:
-            text=""
-            if data_project_name!="" and avoided_projectname_overwrite:
-                text+=f"Did not replace existing PROJECT name with '{data_project_name}' (from config file).\n\n"
-            if data_plate_name!="" and avoided_platename_overwrite:
-                text+=f"Did not replace existing PLATE name with '{data_plate_name}' (from config file).\n\n"
-            text+="Copy the project/plate name from this message box if you want to replace them. (manually)"
-            #MessageBox(title="project/plate name not replaced",mode="information",text=text).run()
-        
-        # load software af data
-        software_af_on:bool=not config.af_software_channel is None
-        if software_af_on:
-            self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Checked)
-        else:
-            self.multiPointWidget.checkbox_withAutofocus.setCheckState(Qt.Unchecked)
-
-        if software_af_on:
-            af_channel=config.af_software_channel
-            for m_i,microscope_configuration in enumerate(self.configurationManager.configurations):
-                if microscope_configuration.name==af_channel:
-                    self.multiPointWidget.af_channel_dropdown.setCurrentIndex(m_i)
-
-                    break
-
-            raise ValueError(f"software af channel {af_channel} is not a valid imaging channel!")
-
-        # load grid item selection mask
-        for row_i,row in enumerate(config.grid_config.mask):
-            for column_i,mask in enumerate(row):
-                self.multiPointWidget.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=mask)
-
-        # load trigger mode and camera pixel format
-        self.named_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config.trigger_mode))
-        self.named_widgets.pixel_format.setCurrentIndex([i for i,pixel_format in enumerate(self.core.main_camera.pixel_formats) if pixel_format==config.pixel_format][0])
-
-        self.multiPointWidget.image_format_widget.setCurrentIndex(list(ImageFormat).index(config.image_file_format))
-
-        if not config.af_laser_reference is None:
-            if self.laserAutofocusController.is_initialized:
-                MessageBox(title="laser af reference not loaded",mode="information",text="did not load laser autofocus reference from file because laser af is already intialized.").run()
-                
-            else:
-                self.laserAutofocusController.initialize_manual(
-                    x_offset=config.af_laser_reference.x_offset,
-                    y_offset=config.af_laser_reference.y_offset,
-                    width=config.af_laser_reference.x_width,
-                    height=config.af_laser_reference.y_width,
-                    um_per_px=config.af_laser_reference.um_per_px,
-                    x_reference=config.af_laser_reference.x_reference
-                )
-
-                self.laserAutofocusController.x_reference=config.af_laser_reference.x_reference # for some internal reasons needs to be overwritten after 'constructor' above
-
-                self.laserAutofocusController.has_two_interfaces=config.af_laser_reference.has_two_interfaces
-                self.laserAutofocusController.use_glass_top=config.af_laser_reference.use_glass_top
-
-                self.named_widgets.laserAutofocusControlWidget.call_after_initialization()
-                self.named_widgets.laserAutofocusControlWidget.call_after_set_reference()
-
-                self.multiPointWidget.checkbox_laserAutofocus.setEnabled(True)
-
-        if config.af_laser_on:
-            if self.laserAutofocusController.is_initialized:
-                self.multiPointWidget.checkbox_laserAutofocus.setCheckState(Qt.Checked)
-            else:
-                MessageBox(title="cannot turn on laser AF",mode="information",text="config file indicates laser AF should be turned on, but the laser AF is not initialized\n(it has not been initialized already, and config file contains no initialization data).\nPlease initialize the laser AF, then turn it on manually (or load the config file again after intialization).").run()
-
-        print(f"config i/o - loaded from {file_path}")
-
-    # @TypecheckFunction # dont check because signal cannot yet be checked properly
-    def start_experiment(self,additional_data:dict={})->Optional[Signal]:
-        self.navigationViewer.register_preview_fovs()
-
-        acquisition_thread=self.core.acquire(
-            self.get_all_config(),
-
-            on_new_acquisition=self.on_step_completed,
-            headless=False, # allow display of gui components like warning messages
-
-            additional_data=additional_data,
-        )
-        
-        if acquisition_thread is None:
-            return None
-
-        return acquisition_thread.finished
-
-    def set_num_acquisitions(self,num:int):
-        self.acquisition_progress=0
-        self.total_num_acquisitions=num
-        self.acquisition_start_time=time.monotonic()
-        self.multiPointWidget.progress_bar.setValue(0)
-        self.multiPointWidget.progress_bar.setMinimum(0)
-        self.multiPointWidget.progress_bar.setMaximum(num)
-
-    def on_step_completed(self,step:str):
-        if step=="x": # x (in well)
-            pass
-        elif step=="y": # y (in well)
-            pass
-        elif step=="z": # z (in well)
-            pass
-        elif step=="t": # time
-            pass
-        elif step=="c": # channel
-            # this is the innermost callback
-            # for each one of these, one image is actually taken
-
-            self.acquisition_progress+=1
-            self.multiPointWidget.progress_bar.setValue(self.acquisition_progress)
-
-            time_elapsed_since_start=time.monotonic()-self.acquisition_start_time
-            approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
-
-            elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
-            if self.acquisition_progress==self.total_num_acquisitions:
-                self.multiPointWidget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
-            else:
-                approx_time_left_str=format_seconds_nicely(approx_time_left)
-                done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
-                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
-                self.multiPointWidget.progress_bar.setFormat(progress_bar_text)
-
-    def abort_experiment(self):
-        self.multipointController.request_abort_aquisition()
-
-    def well_click_callback(self,event,i,j):
-        """ TODO : implement custom well selection widget """
-        self.named_widgets.wells[i*16+j].setStyleSheet("QWidget {background-color: blue;}")
-
-    def get_all_interactible_widgets(self)->list:
-        ret=[
-            self.named_widgets.trigger_mode_dropdown,
-            self.named_widgets.pixel_format,
-
-            self.named_widgets.save_all_config,
-            self.named_widgets.load_all_config,
-
-            self.named_widgets.snap_all_button,
-            self.named_widgets.snap_all_with_offset_checkbox, # currently disabled because they are not implemented
-
-            self.named_widgets.save_config_button,
-            self.named_widgets.load_config_button,
-
-            self.named_widgets.live.button,
-            self.named_widgets.live.channel_dropdown,
-            self.named_widgets.live.fps,
-
-            self.named_widgets.laserAutofocusControlWidget,
-            self.autofocusWidget,
-
-            self.navigationWidget,
-
-            *(self.multiPointWidget.get_all_interactible_widgets()),
-
-            self.named_widgets.wellplate_selector,
+    def get_all_interactive_widgets(self)->List[QWidget]:
+        return [
+            self.interactive_widgets.trigger_mode_dropdown,
+            self.interactive_widgets.pixel_format,
+            self.interactive_widgets.save_all_config,
+            self.interactive_widgets.load_all_config
         ]
-
-        for _id,manager in self.imaging_mode_config_managers.items():
-            ret.append(manager.illumination_strength)
-            ret.append(manager.exposure_time)
-            ret.append(manager.analog_gain)
-            ret.append(manager.z_offset)
-            ret.append(manager.snap)
-
-        return ret
-
-    def set_all_interactibles_enabled(self,enable:bool,exceptions:list=[]):
-        """
-        set interactible state for all interactible widgets in the whole gui.
-        allows certain widgets to be excluded from applying the new interactible state ('exceptions' argument).
-
-        can be used e.g. to disable all widgets that interact with the hardware while imaging is in progress to avoid conflicts.
-        """
-
-        for widget in self.get_all_interactible_widgets():
+    
+    @TypecheckFunction
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        for widget in self.get_all_interactive_widgets():
             if not widget in exceptions:
-                if isinstance(widget,QWidget):
-                    widget.setEnabled(enable)
-                elif isinstance(widget,HasWidget):
-                    widget.widget.setEnabled(enable)
+                widget.setEnabled(set_enabled)
 
-    def toggle_live(self,button_pressed:bool):
-        """
-        take images at regular time intervals in the selected channel.
+    def set_main_camera_pixel_format(self,pixel_format_index:int):
+        new_pixel_format=self.main_camera.pixel_formats[pixel_format_index]
+        self.main_camera.camera.set_pixel_format(new_pixel_format)
 
-        can be used e.g. to view the impact of a new z position on image focus.
-        """
-        if button_pressed:
-            self.live_stop_requested=False
+class Gui(QMainWindow):
+    laser_af_validity_changed=Signal(bool)
 
-            # go live
-            self.named_widgets.live.button.setText(LIVE_BUTTON_RUNNING_TEXT)
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(SOFTWARE_NAME)
 
-            channel_index=self.named_widgets.live.channel_dropdown.currentIndex()
-            config=self.configurationManager.configurations[channel_index]
-            fps=self.named_widgets.live.fps.value()
+        # skip_homing is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
+        do_home=not bool(int(os.environ.get('skip_homing') or 0))
 
-            self.set_all_interactibles_enabled(False,exceptions=[
-                self.named_widgets.live.button,
-                self.navigationWidget,
-            ])
+        self.core=Core(home=do_home)
 
-            with self.camera.wrapper.ensure_streaming():
-                last_imaging_time=0.0
-                while True:
-                    current_time=time.monotonic()
-                    if current_time-last_imaging_time > 1/fps:
-                        self.snap_single(_button_state=True,config=config,display_in_image_array_display=True,preserve_existing_histogram=False)
-                        last_imaging_time=current_time
+        self.basic_settings=BasicSettings(
+            main_camera=self.core.main_camera,
 
-                    QApplication.processEvents()
+            on_save_all_config=self.save_all_config,
+            on_load_all_config=self.load_all_config,
+        )
 
-                    if self.live_stop_requested:
-                        # leave live
-                        self.named_widgets.live.button.setText(LIVE_BUTTON_IDLE_TEXT)
-                        
-                        self.set_all_interactibles_enabled(True)
+        self.imaging_channels_widget=widgets.ImagingChannels(
+            configuration_manager=self.core.main_camera.configuration_manager,
+            camera_wrapper=self.core.main_camera,
 
-                        break
-        else:
-            self.live_stop_requested=True
+            on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[self.imaging_channels_widget.interactive_widgets.live_button]),
+            move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um)
+        )
+        self.acquisition_widget=widgets.MultiPointWidget(
+            self.core,
 
-    def set_illumination_config_path_display(self,_button_state:Any=None,new_path:Optional[str]=None,set_config_changed:Optional[bool]=None):
-        if not set_config_changed is None:
-            self.configuration_has_been_changed_since_last_load=set_config_changed
-        if not new_path is None:
-            self.last_loaded_configuration_file=new_path
+            start_experiment=self.start_experiment,
+            abort_experiment=self.abort_experiment,
 
-        path_label_text=self.last_loaded_configuration_file
-        if self.configuration_has_been_changed_since_last_load:
-            path_label_text+=" *"
-        self.named_widgets.last_configuration_file_path.setText(path_label_text)
+            signal_laser_af_validity_changed=self.laser_af_validity_changed,
+        )
+        self.well_widget=widgets.WellWidget(
+            on_move_to_index=self.core.navigation.move_to_index,
+            xy_pos_changed=self.core.navigation.xyPos,
+        )
+        self.position_widget=widgets.NavigationWidget(
+            self.core,
+            on_loading_position_toggle=self.loading_position_toggle
+        )
+        self.autofocus_widget=widgets.AutofocusWidget(
+            laser_af_controller = self.core.laserAutofocusController,
+            software_af_controller = self.core.autofocusController,
+            get_current_z_pos_in_mm = lambda:self.core.navigation.z_pos_mm,
 
-    def save_illumination_config(self,_button_state:bool):
-        """ save illumination configuration to a file (GUI callback) """
+            on_set_all_callbacks_enabled=self.set_all_interactible_enabled,
 
-        save_path=FileDialog(mode='save',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Save current illumination config where?").run()
+            configuration_manager=self.core.main_camera.configuration_manager,
+            laser_af_validity_changed=self.laser_af_validity_changed,
+        )
 
-        if save_path!="":
-            if not save_path.endswith(".json"):
-                save_path=save_path+".json"
-            print(f"saving config to {save_path}")
-            self.configurationManager.write_configuration(save_path)
-
-            self.set_illumination_config_path_display(new_path=save_path,set_config_changed=False)
-
-    def load_illumination_config(self,_button_state:bool):
-        """ load illumination configuration from a file (GUI callback) """
-
-        if self.liveController.camera.is_live:
-            print("! warning: cannot load illumination settings while live !")
-            return
-        
-        load_path=FileDialog(mode='open',directory=MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH,caption="Load which illumination config?",filter_type=FILTER_JSON).run()
-
-        if load_path!="":
-            print(f"loading config from {load_path}")
-
-            try:
-                self.configurationManager.read_configurations(load_path)
-            except KeyError as e:
-                MessageBox(title="invalid config",mode="warning",text="Config file contains invalid data. (Could not be automatically read, try opening in a text editor manually).").run()
-                print(str(e))
-            self.reload_configuration_into_gui(new_file_path=load_path)
-
-    def reload_configuration_into_gui(self,new_file_path:str):
-        for config in self.configurationManager.configurations:
-            self.imaging_mode_config_managers[config.mode_id].illumination_strength.setValue(config.illumination_intensity)
-            self.imaging_mode_config_managers[config.mode_id].exposure_time.setValue(config.exposure_time_ms)
-            self.imaging_mode_config_managers[config.mode_id].analog_gain.setValue(config.analog_gain)
-            self.imaging_mode_config_managers[config.mode_id].z_offset.setValue(config.channel_z_offset)
-
-        self.set_illumination_config_path_display(new_path=new_file_path,set_config_changed=False)
-
-    def snap_single(self,_button_state,
-        config:core.Configuration,
-        display_in_image_array_display:bool=True,
-        preserve_existing_histogram:bool=False,
-        move_to_target:bool=False,
-    ):
-        if move_to_target:
-            self.laserAutofocusController.move_to_target(config.channel_z_offset)
-
-        image=self.liveController.snap(config)
-        histogram_color=CHANNEL_COLORS[config.illumination_source]
-        self.processLiveImage(image,histogram_color=histogram_color,preserve_existing_histogram=preserve_existing_histogram)
-        QApplication.processEvents()
-
-        if display_in_image_array_display:
-            self.display_in_image_array(image,config)
-            QApplication.processEvents()
-
-    def display_in_image_array(self,image,source:Union[Configuration,int]):
-        if isinstance(source,Configuration):
-            illumination_source=source.illumination_source
-        else:
-            illumination_source=source
-
-        self.imageArrayDisplayWindow.display_image(image,illumination_source)
-
-    def snap_all(self,_button_state,snap_enable_list:Optional[List[bool]]=None):
-        move_to_target=bool(self.named_widgets.snap_all_with_offset_checkbox.checkState()) # can be 0 (unchecked) or 1(partially checked) or 2(checked)
-
-        with self.camera.wrapper.ensure_streaming():
-            for config_i,config in enumerate(self.configurationManager.configurations):
-                if snap_enable_list is None or snap_enable_list[config_i]:
-                    self.snap_single(_button_state,config,display_in_image_array_display=True,preserve_existing_histogram=True,move_to_target=move_to_target)
-
-    def snap_selected(self,_button):
-        self.snap_all(None,self.channel_included_in_snap_all_flags)
-
-    def snap_all_open_channel_selection(self,_button):
-        somewidget=QMainWindow(self)
-
-        vbox_widgets=[
-            Label("Tick the channels you want to image.\n(this menu will not initiate imaging)")
-        ]
-
-        for config_i,config in enumerate(self.configurationManager.configurations):
-            def toggle_selection(i):
-                self.channel_included_in_snap_all_flags[i]=not self.channel_included_in_snap_all_flags[i]
-
-            vbox_widgets.append(Checkbox(config.name,checked=self.channel_included_in_snap_all_flags[config_i],on_stateChanged=lambda _btn,i=config_i:toggle_selection(i)))
-                         
-        somewidget.setCentralWidget(VBox(*vbox_widgets).widget)
-        somewidget.show()
-
-    def set_background(self,new_background_value:int):
-        self.backgroundSlider.value=new_background_value
-        self.processLiveImage()
-
-    @TypecheckFunction
-    def set_histogram_log_scale(self,state:Union[bool,int]):
-        if type(state)==int:
-            state=bool(state)
-
-        self.histogram_log_scale=state
-        self.processLiveImage(calculate_histogram=True)
-
-    @TypecheckFunction
-    def set_brightness(self,value:float):
-        """ value<1 darkens image, value>1 brightens image """
-
-        self.imageBrightnessAdjust.value=value
-
-        self.processLiveImage()
-
-    @TypecheckFunction
-    def set_contrast(self,value:float):
-        """ value<1 decreases image contrast, value>1 increases image contrast """
-
-        self.imageContrastAdjust.value=value
-
-        self.processLiveImage()
-
-    # callback for newly acquired images in live view (that saves last live image and recalculates histogram or image view on request based on last live image)
-    @TypecheckFunction
-    def processLiveImage(self,
-        image_data:Optional[numpy.ndarray]=None,
-        calculate_histogram:Optional[bool]=None,
-        histogram_color:str="white",
-        preserve_existing_histogram:bool=False
-    ):
-        """
-        display image and histogram of pixel values.
-        if image_data is None, then the last displayed image is shown and used for histogram calculation, otherwise the new image overwrites the last one.
-        if calculate_histogram is None, the histogram is only calculated when a new image has been provided.
-        """
-
-        # if there is a new image, save it, and force histogram calculation
-        if not image_data is None:
-            self.last_image_data=image_data
-            calculate_histogram=True
-
-        def image_type_max_value(_image):
-            if _image.dtype==numpy.uint8:
-                return 2**8-1
-            elif _image.dtype==numpy.uint16:
-                return 2**16-1
-            else:
-                raise Exception(f"{_image.dtype=} unimplemented")
-
-        # calculate histogram
-        if calculate_histogram and not self.last_image_data is None:
-            image_data=self.last_image_data
-            max_value=image_type_max_value(image_data)
-
-            bins=numpy.linspace(0,max_value,129,dtype=image_data.dtype)
-            hist,bins=numpy.histogram(image_data,bins=bins)
-            hist=hist.astype(numpy.float32)
-            if self.histogram_log_scale:
-                hist_nonzero_mask=hist!=0
-                hist[hist_nonzero_mask]=numpy.log(hist[hist_nonzero_mask])
-            hist=hist/hist.max() # normalize to [0;1]
-
-            self.histogramWidget.view.setLimits(
-                xMin=0,
-                xMax=max_value,
-                yMin=0.0,
-                yMax=1.0,
-                minXRange=bins[4],
-                maxXRange=bins[-1],
-                minYRange=1.0,
-                maxYRange=1.0,
+        self.setCentralWidget(HBox(
+            TabBar(*[
+                Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
+                Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
+                *([] if self.autofocus_widget.laser_af_debug_display is None else
+                    [Tab(title="Laser AF debug",widget=self.autofocus_widget.laser_af_debug_display)]
+                ),
+                *([] if self.autofocus_widget.software_af_debug_display is None else
+                    [Tab(title="Software AF debug",widget=self.autofocus_widget.software_af_debug_display)]
+                ),
+            ]),
+            VBox(
+                self.basic_settings,
+                TabBar(
+                    Tab(title="Acquisition",widget=VBox(
+                        self.acquisition_widget.storage_widget,
+                        self.acquisition_widget.grid_widget,
+                        self.acquisition_widget.imaging_widget,
+                        self.well_widget,
+                    ).widget),
+                    Tab(title="Lighting and Focus",widget=VBox(
+                        self.imaging_channels_widget.snap_channels,
+                        self.imaging_channels_widget.channel_config,
+                        self.imaging_channels_widget.live_config,
+                        Dock(
+                            self.position_widget,
+                            "Objective/Stage position"
+                        ),
+                        self.autofocus_widget.af_control,
+                    ).widget)
+                )
             )
-            self.histogramWidget.view.setRange(xRange=(0,max_value))
+        ).widget)
 
-            plot_kwargs={'x':bins[:-1],'y':hist,'pen':pg.mkPen(color=histogram_color)}
-            try:
-                if not preserve_existing_histogram:
-                    self.histogramWidget.plot_data.clear()
-                self.histogramWidget.plot_data.plot(**plot_kwargs)
-            except:
-                self.histogramWidget.plot_data=self.histogramWidget.addPlot(0,0,title="Histogram",viewBox=self.histogramWidget.view,**plot_kwargs)
-                self.histogramWidget.plot_data.hideAxis("left")
+        # on change of deltax, deltay, wellselection: self.change_acquisition_preview()
+        self.acquisition_widget.position_mask_has_changed.connect(lambda:self.change_acquisition_preview())
+        self.well_widget.interactive_widgets.well_selection.itemSelectionChanged.connect(lambda:self.change_acquisition_preview())
 
-        # if there is data to display, apply contrast/brightness settings, then actually display the data
-        # also do not actually apply enhancement if brightness and contrast are set to 1.0 (which does not nothing)
-        if not self.last_image_data is None:
-            image=self.last_image_data
-
-            # since integer conversion truncates or whatever instead of scaling, scale manually
-            if image.dtype==numpy.uint16:
-                truncated_image=numpy.uint8(image>>8)
-            else:
-                truncated_image=image
-            
-            # estimate SNR (signal to noise ratio)
-            snr_text="SNR: undefined"
-            foreground_mask=image>self.backgroundSlider.value
-            if foreground_mask.any() and not foreground_mask.all():
-                foreground_mean=truncated_image[foreground_mask].mean()
-                background_mean=truncated_image[~foreground_mask].mean()
-
-                if background_mean>0.0:
-                    snr_value=foreground_mean/background_mean
-                    
-                    snr_text=f"SNR: {snr_value:.1f}"
-
-            self.backgroundSNRValueText.setText(snr_text)
-
-            # adjust image brightness and contrast (if required)
-            if not (self.imageBrightnessAdjust.value==1.0 and self.imageContrastAdjust.value==1.0):
-                image=Image.fromarray(truncated_image) # requires image to be uint8
-
-                if self.imageBrightnessAdjust.value!=1.0:
-                    brightness_enhancer = ImageEnhance.Brightness(image)
-                    image=brightness_enhancer.enhance(self.imageBrightnessAdjust.value)
-
-                if self.imageContrastAdjust.value!=1.0:
-                    contrast_enhancer = ImageEnhance.Contrast(image)
-                    image=contrast_enhancer.enhance(self.imageContrastAdjust.value)
-
-                image=numpy.asarray(image) # numpy.array could also be used, but asarray does not copy the image data (read only view)
-
-            # display newly enhanced image
-            self.imageDisplayWindow.display_image(image)
-
-        # if there is neither a new nor an old image, only brightness/contrast settings have been changed but there is nothing to display
-        pass
-
-    def on_well_selection_change(self):
-        # clear display
-        self.navigationViewer.clear_history()
-
+    def change_acquisition_preview(self):
         # make sure the current selection is contained in selection buffer, then draw each pov
-        self.wellSelectionWidget.itemselectionchanged()
+        self.well_widget.interactive_widgets.well_selection.itemselectionchanged()
         preview_fov_list=[]
-        for well_row,well_column in self.wellSelectionWidget.currently_selected_well_indices:
-            x_well,y_well=WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].well_index_to_mm(well_row,well_column)
-            for x_grid_item,y_grid_item in self.multipointController.grid_positions_for_well(x_well,y_well):
+        for well_row,well_column in self.well_widget.interactive_widgets.well_selection.currently_selected_well_indices:
+            wellplate_format=WELLPLATE_FORMATS[self.well_widget.get_wellplate_type()]
+            for x_grid_item,y_grid_item in self.acquisition_widget.get_grid_data().grid_positions_for_well(well_row=well_row,well_column=well_column,plate_type=wellplate_format):
                 LIGHT_GREY=(160,)*3
                 RED_ISH=(255,50,140)
-                if self.core.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
+                if wellplate_format.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
                     grid_item_color=RED_ISH
                 else:
                     grid_item_color=LIGHT_GREY
 
-                self.navigationViewer.draw_fov(x_grid_item,y_grid_item,color=grid_item_color)
-                preview_fov_list.append((x_grid_item,y_grid_item))
-
-        self.navigationViewer.preview_fovs=preview_fov_list
+                preview_fov_list.append((x_grid_item,y_grid_item,grid_item_color))
         
         # write view to display buffer
-        if not self.navigationViewer.last_fov_drawn is None:
-            self.navigationViewer.draw_fov(*self.navigationViewer.last_fov_drawn,self.navigationViewer.box_color)
+        self.well_widget.interactive_widgets.navigation_viewer.set_preview_list(preview_fov_list)
+
+    def loading_position_toggle(self,loading_position_enter:bool):
+        """
+        callback for when the status of the stage changes with regards to the loading position
+        i.e. is called when the stage should enter or leave the loading position
+        """
+        if loading_position_enter: # entering loading position
+            self.set_all_interactible_enabled(set_enabled=False,exceptions=[self.position_widget.btn_goToLoadingPosition]) # disable everything except the single button that can leave the loading position
+            self.core.navigation.loading_position_enter()
+
+        else: # leaving loading position
+            self.core.navigation.loading_position_leave()
+            self.set_all_interactible_enabled(set_enabled=True)
+
+    def start_experiment(self,dry:bool=False)->Union[AcquisitionStartResult,AcquisitionConfig]:
+
+        whole_acquisition_config:AcquisitionConfig=self.get_all_config(dry=dry)
+
+        if dry:
+            return AcquisitionStartResult(whole_acquisition_config,"dry")
+
+        # some metadata written to the config file, in addition to the settings directly used for imaging
+        additional_data={
+            'microscope_name':MACHINE_CONFIG.MACHINE_NAME,
+        }
+
+        self.set_all_interactible_enabled(set_enabled=False,exceptions=[self.acquisition_widget.btn_startAcquisition])
+        QApplication.processEvents()
+
+        # actually start imaging
+        try:
+            acquisition_thread=self.core.acquire(
+                whole_acquisition_config,
+                additional_data=additional_data,
+
+                on_new_acquisition=self.on_step_completed,
+                image_return=self.handle_acquired_image,
+            )
+        
+        except Exception as e:
+            MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {str(e)}").run()
+            self.set_all_interactible_enabled(set_enabled=True)
+            return AcquisitionStartResult(whole_acquisition_config,exception=e)
+        
+        if acquisition_thread is None:
+            return AcquisitionStartResult(whole_acquisition_config,"done")
+
+        return AcquisitionStartResult(whole_acquisition_config,async_signal_on_finish=acquisition_thread.finished)
+        
+    def handle_acquired_image(self,image_data:AcquisitionImageData):
+        self.imaging_channels_widget.live_display.display_image(image_data.image,name=f"{image_data.config.name} in well {image_data.well_name}")
+        self.imaging_channels_widget.channel_display.display_image(image_data.image,image_data.config.illumination_source)
+
+        # AcquisitionImageData has fields:
+        #   image:numpy.ndarray
+        #   path:str
+        #   config:Configuration
+        #   x:Optional[int]
+        #   y:Optional[int]
+        #   z:Optional[int]
+        #   well_name
+    
+    def abort_experiment(self):
+        print("aborting acquisition on button press")
+        self.core.multipointController.request_abort_aquisition()
+        # todo kill acquisition thread here if it exists
+        
+    @TypecheckFunction
+    def get_all_interactive_widgets(self)->List[QWidget]:
+        return flatten([
+            self.basic_settings.get_all_interactive_widgets(),
+            self.imaging_channels_widget.get_all_interactive_widgets(),
+            self.acquisition_widget.get_all_interactive_widgets(),
+            self.well_widget.get_all_interactive_widgets(),
+            self.position_widget.get_all_interactive_widgets(),
+            self.autofocus_widget.get_all_interactive_widgets(),
+        ])
+
+    def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
+        self.basic_settings.set_all_interactible_enabled(set_enabled,exceptions)
+        self.imaging_channels_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.acquisition_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.well_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.position_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.autofocus_widget.set_all_interactible_enabled(set_enabled,exceptions)
+
+    def on_step_completed(self,progress_data:AcqusitionProgress):
+        """
+        this function is called every time the acquisition thread considers something to be done
+        the first time this function is called (i.e. very few completed steps noted by the acqusition thread), the progress bar is initialized to the full length
+        aside, this function will display the progress of the acqusition thread, including an approximation of the imaging time remaining
+        """
+        if progress_data.last_completed_action=="acquisition_cancelled":
+            time_elapsed_since_start=progress_data.last_step_completion_time-progress_data.start_time
+            approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
+
+            elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
+            self.acquisition_widget.progress_bar.setFormat(f"cancelled. (acquired {progress_data.completed_steps}/{self.total_num_acquisitions:4} images in {elapsed_time_str})")
+            self.set_all_interactible_enabled(set_enabled=True)
+            return
+        
+        if progress_data.completed_steps<=1:
+            self.total_num_acquisitions=progress_data.total_steps
+            self.acquisition_widget.progress_bar.setValue(0)
+            self.acquisition_widget.progress_bar.setMinimum(0)
+            self.acquisition_widget.progress_bar.setMaximum(progress_data.total_steps)
+
+            self.well_widget.interactive_widgets.navigation_viewer.redraw_fovs()
+
+            self.completed_steps=0
+
+        if self.completed_steps<progress_data.completed_steps:
+            self.completed_steps=progress_data.completed_steps
+
+            self.acquisition_progress=progress_data.completed_steps
+            self.acquisition_widget.progress_bar.setValue(self.acquisition_progress)
+
+            time_elapsed_since_start=progress_data.last_step_completion_time-progress_data.start_time
+            approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
+
+            elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
+            if self.acquisition_progress==self.total_num_acquisitions:
+                self.acquisition_widget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
+            else:
+                approx_time_left_str=format_seconds_nicely(approx_time_left)
+                done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
+                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
+                self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
+            
+            if not math.isnan(progress_data.last_imaged_coordinates[0]):
+                self.well_widget.interactive_widgets.navigation_viewer.add_history(*progress_data.last_imaged_coordinates)
+                QApplication.processEvents()
+
+        if progress_data.last_completed_action=="finished acquisition":
+            self.set_all_interactible_enabled(set_enabled=True)
 
     @TypecheckFunction
+    def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
+        # get output paths
+        base_dir_str:str=self.acquisition_widget.lineEdit_baseDir.text()
+        project_name_str:str=self.acquisition_widget.lineEdit_projectName.text()
+        plate_name_str:str=self.acquisition_widget.lineEdit_plateName.text()
+        cell_line_str:str=self.acquisition_widget.lineEdit_cellLine.text()
+
+        objective_str:str="<unspecified>" # TODO
+
+        if len(project_name_str)==0 and not allow_invalid_values:
+            if dry:
+                MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+            raise RuntimeError("project name empty")
+        if len(plate_name_str)==0 and not allow_invalid_values:
+            if dry:
+                MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
+            raise RuntimeError("wellplate name empty")
+
+        # check validity of output path names
+        FORBIDDEN_CHARS={
+            " ":"space",
+            ",":"comma",
+            ":":"colon",
+            "/":"forward slash",
+            "\\":"backward slash",
+            "\t":"tab",
+            "\n":"newline",
+            "\r":"carriage return",
+        }
+        if not allow_invalid_values:
+            for C,char_name in FORBIDDEN_CHARS.items():
+                if C in project_name_str:
+                    if dry:
+                        MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                    raise RuntimeError("forbidden character in experiment name")
+
+                if C in plate_name_str:
+                    if dry:
+                        MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                    raise RuntimeError("forbidden character in wellplate name")
+
+        full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_str)
+
+        # try generating unique experiment ID (that includes current timestamp) until successfull
+        def gen_dir_name(base_output_path:str)->Tuple[str,Path]:
+            now = datetime.now()
+            now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
+            now_str = now.isoformat(sep=' ') # will look like 'YYYY-MM-DD HH:MM:SS'
+
+            experiment_pathname = base_output_path + '_' + now_str.replace(":",".").replace(" ","_") # replace problematic/forbidden characters in filename
+            return now_str,Path(experiment_pathname)
+
+        timestamp_str,experiment_path=gen_dir_name(base_output_path=full_output_path)
+        while experiment_path.exists():
+            time.sleep(1) # wait until next second to get a unique experiment ID
+            experiment_path=gen_dir_name(base_output_path=full_output_path)
+            
+        if not dry:
+            experiment_path.mkdir(parents=True) # create a new folder
+
+        return AcquisitionConfig(
+            output_path=str(experiment_path),
+            project_name=project_name_str,
+            plate_name=plate_name_str,
+            cell_line=cell_line_str,
+
+            well_list=self.well_widget.get_selected_wells(),
+
+            grid_config=self.acquisition_widget.get_grid_data(),
+
+            af_software_channel=self.acquisition_widget.get_af_software_channel(only_when_enabled=True),
+            af_laser_on=self.acquisition_widget.get_af_laser_is_enabled(),
+            af_laser_reference=None if not self.acquisition_widget.get_af_laser_is_enabled() else self.autofocus_widget.laser_af_control.get_reference_data(),
+
+            trigger_mode=TRIGGER_MODES_LIST[self.basic_settings.interactive_widgets.trigger_mode_dropdown.currentIndex()],
+            pixel_format=self.core.main_camera.pixel_formats[self.basic_settings.interactive_widgets.pixel_format.currentIndex()],
+            plate_type=self.well_widget.get_wellplate_type(),
+
+            channels_ordered=self.acquisition_widget.get_selected_channels(),
+            channels_config=self.imaging_channels_widget.get_channel_configurations(),
+
+            image_file_format=self.acquisition_widget.get_image_file_format(),
+            timestamp=timestamp_str,
+
+            objective=objective_str,
+        )
+
+    def save_all_config(self):
+        output_file=FileDialog(mode="save",directory=".",caption="Save all configuration data",filter_type=FILTER_JSON).run()
+        if len(output_file)==0:
+            return
+        
+        if not output_file.endswith(".json"):
+            output_file+=".json"
+    
+        self.get_all_config(dry=True,allow_invalid_values=True).save_json(file_path=output_file,well_index_to_name=True)
+
+    def load_all_config(self):
+        cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
+        cdb.show()
+
+    def load_config_from_file(self,file_path:Optional[str]=None,go_to_z_reference:bool=False):
+        """
+        if file_path is None, this function will open a dialog to ask for the file to loiad
+        """
+        if file_path is None:
+            input_file=FileDialog(mode="open",directory=".",caption="Load all configuration data",filter_type=FILTER_JSON).run()
+            if len(input_file)==0:
+                return
+        else:
+            input_file=file_path
+        
+        config_data=AcquisitionConfig.from_json(file_path=input_file)
+        
+        #self.acquisition_widget.lineEdit_baseDir.setText() # todo : base_dir itself is not currently saved, only the final output dir, which contains the base plus other stuff, is. is that worth saving/loading, or does it not matter?
+        self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
+        self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+        self.acquisition_widget.lineEdit_cellLine.setText(config_data.cell_line)
+
+        self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
+        self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))
+        
+        self.acquisition_widget.set_image_file_format(config_data.image_file_format)
+
+        self.acquisition_widget.set_grid_data(config_data.grid_config)
+
+        self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
+
+        self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
+        
+        self.acquisition_widget.set_selected_channels(config_data.channels_ordered)
+        self.imaging_channels_widget.set_channel_configurations(config_data.channels_config)
+
+        self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
+        self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
+
+        if go_to_z_reference:
+            z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
+            print(f"focus - moving objective to {z_mm=}")
+            
+            if False: # TODO
+                self.core.navigation.move_z_to(z_mm=z_mm) # this does not work for some reason?
+            else:
+                z_mm_relative=z_mm-self.core.navigation.z_pos_mm
+                self.core.navigation.move_z(z_mm=z_mm_relative)
+
     def closeEvent(self, event:QEvent):
 
-        self.get_all_config(include_laser_af_reference=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
-
-        self.imageArrayDisplayQueue.close()
-        self.imageDisplayQueue.close()
-        
-        self.imageSaver.close()
-        self.imageDisplay.close()
+        self.get_all_config(dry=False,allow_invalid_values=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
 
         self.core.close()
         
         event.accept()
+

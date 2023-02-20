@@ -9,11 +9,7 @@ from qtpy.QtWidgets import QApplication
 from control._def import SOFTWARE_NAME
 
 # app specific libraries
-use_old_gui=0
-if use_old_gui:
-    import control.gui_hcs as gui
-else:
-    import control.gui_hcs_better as gui
+import control.gui_hcs as gui
 import control.core as core
 
 class HcsApplication(QApplication):
@@ -29,10 +25,7 @@ if __name__ == "__main__":
 
     if True:
         app.setStyle('Fusion')
-        if use_old_gui:
-            win = gui.OctopiGUI()
-        else:
-            win = gui.Gui()
+        win = gui.Gui()
         win.show()
     else:
         c=core.Core()
