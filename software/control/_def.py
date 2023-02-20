@@ -680,7 +680,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
 
 		brand="Thermo Fischer Scientific Nunc MicroWell",
-        product_url="",
+        product_url="https://www.fishersci.se/shop/products/nunc-384-well-optical-bottom-plates-cell-culture-treated-lid/10184221#?keyword=142761",
 		
 		plate_length_mm=127.8,
 		plate_width_mm=85.5,
@@ -707,7 +707,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
 
 		brand="Agilent",
-        product_url="",
+        product_url="https://www.agilent.com/store/productDetail.jsp?catalogId=204628-100",
 		
 		plate_length_mm=127.8,
 		plate_width_mm=85.5,
@@ -733,7 +733,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
 
 		brand="Greiner",
-        product_url="",
+        product_url="https://shop.gbo.com/en/row/products/bioscience/cell-culture-products/cellstar-cell-culture-microplates/384-well-cell-culture-microplates-clear-black-white/781091.html?sword_list%5B0%5D=781091&no_cache=1&_ga=2.165393145.737561910.1661856636-730791705.1661856636",
 		
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
@@ -759,7 +759,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
 
 		brand="Corning Falcon Optilux",
-        product_url="",
+        product_url="https://ecatalog.corning.com/life-sciences/b2c/US/en/Microplates/Assay-Microplates/384-Well-Microplates/Falcon%C2%AE-384-well-Microplates/p/353962",
 		
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
@@ -784,8 +784,8 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         rows = 16,
         columns = 24,
 
-		brand="Perkinelmer PhenoPlate/Cell",
-        product_url="",
+		brand="Perkinelmer PhenoPlate/CellCarrier",
+        product_url="https://www.perkinelmer.com/product/cellcarrier-384-f-ultra-lid-8x20b-6057308",
 		
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
