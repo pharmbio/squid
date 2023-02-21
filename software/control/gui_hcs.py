@@ -167,7 +167,12 @@ class Gui(QMainWindow):
             configuration_manager=self.core.main_camera.configuration_manager,
             camera_wrapper=self.core.main_camera,
 
-            on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[self.imaging_channels_widget.interactive_widgets.live_button]),
+            on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[
+                self.imaging_channels_widget.interactive_widgets.live_button,
+                self.position_widget.btn_moveZ_forward,
+                self.position_widget.btn_moveZ_backward
+            ]),
+            on_snap_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live),
             move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um)
         )
         self.acquisition_widget=widgets.MultiPointWidget(
@@ -528,7 +533,7 @@ class Gui(QMainWindow):
 
         if go_to_z_reference:
             z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
-            print(f"focus - moving objective to {z_mm=}")
+            print(f"focus - moving objective to {z_mm=:.3f}")
             
             if False: # TODO
                 self.core.navigation.move_z_to(z_mm=z_mm) # this does not work for some reason?

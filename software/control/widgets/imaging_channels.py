@@ -56,6 +56,7 @@ class ImagingChannels:
         camera_wrapper:CameraWrapper,
 
         on_live_status_changed:Optional[Callable[[],bool]]=None,
+        on_snap_status_changed:Optional[Callable[[],bool]]=None,
         move_to_offset:Optional[Callable[[float,],None]]=None,
     ):
         self.configuration_manager = configuration_manager
@@ -63,6 +64,7 @@ class ImagingChannels:
         self.camera=camera_wrapper.camera
 
         self.on_live_status_changed=on_live_status_changed
+        self.on_snap_status_changed=on_snap_status_changed
         self.move_to_offset=move_to_offset
 
         self.interactive_widgets=ObjectManager()
@@ -328,6 +330,8 @@ class ImagingChannels:
             self.stop_requested=True
 
     def snap_selected(self,_btn_state,with_offset_verride:Optional[bool]=None):
+        self.on_snap_status_changed(True)
+
         if not with_offset_verride is None:
             with_offset=with_offset_verride
         else:
@@ -336,11 +340,16 @@ class ImagingChannels:
         with self.camera_wrapper.ensure_streaming():
             for config_i,config in enumerate(self.configuration_manager.configurations):
                 if self.channel_included_in_snap_all_flags[config_i]:
-                    image=self.snap_single(_btn_state=None,config=config,display_single=True,with_offset=with_offset)
+                    image=self.snap_single(_btn_state=None,config=config,display_single=True,with_offset=with_offset,control_snap_status=False)
                     self.channel_display.display_image(image,channel_index=config.illumination_source)
 
-    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None,display_single:bool=True,with_offset:bool=False)->numpy.ndarray:
+        self.on_snap_status_changed(False)
+
+    def snap_single(self,_btn_state,config:Configuration,profiler:Optional[Profiler]=None,display_single:bool=True,with_offset:bool=False,control_snap_status:bool=True)->numpy.ndarray:
         with Profiler("do_snap",parent=profiler) as dosnapprof:
+            if control_snap_status:
+                self.on_snap_status_changed(True)
+
             if with_offset and not self.move_to_offset is None:
                 self.move_to_offset(config.channel_z_offset)
             image=self.camera_wrapper.live_controller.snap(config=config,profiler=dosnapprof)
@@ -349,6 +358,9 @@ class ImagingChannels:
 
         if display_single:
             self.display_last_single_image(profiler=profiler)
+
+        if control_snap_status:
+            self.on_snap_status_changed(False)
 
         return image
     
