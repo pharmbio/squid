@@ -205,7 +205,10 @@ class LaserAutofocusControlWidget(QFrame):
         )
     
     @TypecheckFunction
-    def set_reference_data(self,reference:LaserAutofocusData):
+    def set_reference_data(self,reference:Optional[LaserAutofocusData]):
+        if reference is None:
+            return
+
         self.laserAutofocusController.initialize_manual(
             x_offset=reference.x_offset,
             y_offset=reference.y_offset,
@@ -224,6 +227,8 @@ class LaserAutofocusControlWidget(QFrame):
         self.call_after_set_reference()
 
         self.laser_af_validity_changed.emit(True)
+
+        self.laserAutofocusController.reference_z_height_mm=reference.z_um_at_reference/1e3
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
