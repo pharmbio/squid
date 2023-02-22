@@ -321,7 +321,7 @@ class ImagingChannels:
                         time_since_last_image=time.monotonic()-last_image_time
 
                     last_image_time=time.monotonic()
-                    self.snap_single(_btn_state=None,config=live_config)
+                    self.snap_single(_btn_state=None,config=live_config,control_snap_status=False)
                     QApplication.processEvents()
 
             if not self.on_live_status_changed is None:
