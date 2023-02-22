@@ -196,7 +196,7 @@ class Gui(QMainWindow):
             software_af_controller = self.core.autofocusController,
             get_current_z_pos_in_mm = lambda:self.core.navigation.z_pos_mm,
 
-            on_set_all_callbacks_enabled=self.set_all_interactible_enabled,
+            on_set_all_interactible_enabled=self.set_all_interactible_enabled,
 
             configuration_manager=self.core.main_camera.configuration_manager,
             laser_af_validity_changed=self.laser_af_validity_changed,

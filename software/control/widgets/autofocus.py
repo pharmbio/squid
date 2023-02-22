@@ -24,13 +24,13 @@ class SoftwareAutoFocusWidget(QFrame):
     def __init__(self,
         software_af_controller,
         configuration_manager,
-        on_set_all_callbacks_enabled:Callable[[bool,],None]
+        on_set_all_interactible_enabled:Callable[[bool,],None]
     ):
         super().__init__()
 
         self.software_af_controller=software_af_controller
         self.configuration_manager=configuration_manager
-        self.on_set_all_callbacks_enabled=on_set_all_callbacks_enabled
+        self.on_set_all_interactible_enabled=on_set_all_interactible_enabled
 
         self.entry_delta = SpinBoxDouble(minimum=0.1,maximum=20.0,step=0.1,num_decimals=3,default=DEFAULT_DELTAZ,keyboard_tracking=False).widget
         self.entry_N = SpinBoxInteger(minimum=3,maximum=23,step=2,default=DEFAULT_NZ,keyboard_tracking=False).widget
@@ -52,7 +52,7 @@ class SoftwareAutoFocusWidget(QFrame):
         self.setLayout(self.grid)
 
     def autofocus_start(self,_btn_state):
-        self.on_set_all_callbacks_enabled(False)
+        self.on_set_all_interactible_enabled(False)
         self.software_af_controller.autofocusFinished.connect(self.autofocus_is_finished)
 
         self.software_af_controller.autofocus(
@@ -64,7 +64,7 @@ class SoftwareAutoFocusWidget(QFrame):
     def autofocus_is_finished(self):
         self.software_af_controller.autofocusFinished.disconnect(self.autofocus_is_finished)
         self.btn_autofocus.setChecked(False)
-        self.on_set_all_callbacks_enabled(True)
+        self.on_set_all_interactible_enabled(True)
 
 class AutofocusWidget:
     software_af_debug_display:Optional[QWidget]
@@ -79,8 +79,8 @@ class AutofocusWidget:
         laser_af_controller,
         software_af_controller,
         get_current_z_pos_in_mm,
-        on_set_all_callbacks_enabled,
         configuration_manager,
+        on_set_all_interactible_enabled,
 
         laser_af_validity_changed:Signal,
 
@@ -94,7 +94,7 @@ class AutofocusWidget:
 
         self.software_af_control=SoftwareAutoFocusWidget(
             software_af_controller = software_af_controller,
-            on_set_all_callbacks_enabled = on_set_all_callbacks_enabled,
+            on_set_all_interactible_enabled = on_set_all_interactible_enabled,
             configuration_manager = configuration_manager
         )
 
@@ -107,6 +107,7 @@ class AutofocusWidget:
             laser_af_controller,
             get_current_z_pos_in_mm=get_current_z_pos_in_mm,
             laser_af_validity_changed=laser_af_validity_changed,
+            focus_in_progress=lambda is_in_progress:on_set_all_interactible_enabled(not is_in_progress)
         )
 
         self.af_control=VBox(

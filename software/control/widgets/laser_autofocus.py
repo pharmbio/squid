@@ -34,12 +34,14 @@ class LaserAutofocusControlWidget(QFrame):
         laserAutofocusController:LaserAutofocusController,
         get_current_z_pos_in_mm:Callable[[None,],float],
         laser_af_validity_changed:Signal,
+        focus_in_progress:Callable[[bool],None]
     ):
         super().__init__()
 
         self.laserAutofocusController = laserAutofocusController
         self.get_current_z_pos_in_mm = get_current_z_pos_in_mm
         self.laser_af_validity_changed = laser_af_validity_changed
+        self.on_focus_in_progress=focus_in_progress
 
         self.btn_initialize = Button(INITIALIZE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_INITIALIZE_TOOLTIP,on_clicked=self.initialize).widget
         self.btn_set_reference = Button(SET_REFERENCE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_SET_REFERENCE_TOOLTIP,on_clicked=self.set_reference).widget
@@ -104,6 +106,8 @@ class LaserAutofocusControlWidget(QFrame):
     def initialize(self):
         """ automatically initialize laser autofocus """
 
+        self.on_focus_in_progress(True)
+
         self.btn_initialize.setDisabled(True)
         self.btn_initialize.setText(INITIALIZE_BUTTON_TEXT_IN_PROGRESS)
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
@@ -121,6 +125,8 @@ class LaserAutofocusControlWidget(QFrame):
             MessageBox(title="Could not initialize laser AF",mode="information",text="there was a problem initializing the laser autofocus. is the plate in focus?").run()
             return
 
+        self.on_focus_in_progress(False)
+
         self.call_after_initialization()
 
     def call_after_initialization(self):
@@ -133,16 +139,22 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_set_reference.setDisabled(False)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IDLE)
 
+        self.laser_af_validity_changed.emit(False) # when re-initialized, the previous reference is stale (i.e. invalid)
+
         self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE+" (no reference set)")
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE+" (no reference set)")
 
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
     def set_reference(self):
+        self.on_focus_in_progress(True)
+
         self.btn_set_reference.setDisabled(True)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IN_PROGRESS)
 
         self.laserAutofocusController.set_reference(z_pos_mm=self.get_current_z_pos_in_mm())
+
+        self.on_focus_in_progress(False)
 
         # allow actual use of laser AF now
         self.call_after_set_reference()
@@ -174,6 +186,8 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE)
 
     def move_to_target(self,_btn=None,target_um=None):
+        self.on_focus_in_progress(True)
+
         self.btn_move_to_target.setDisabled(True)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IN_PROGRESS)
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
@@ -186,6 +200,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_to_target.setDisabled(False)
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
 
+        self.on_focus_in_progress(False)
     
     @TypecheckFunction
     def get_reference_data(self)->LaserAutofocusData:
