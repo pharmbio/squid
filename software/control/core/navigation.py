@@ -231,24 +231,16 @@ class NavigationController(QObject):
             microcontroller.signal_joystick_button_pressed_event = False
 
         QApplication.processEvents()
+        
 
-    def home_x(self):
-        self.microcontroller.home_x()
-
-    def home_y(self):
-        self.microcontroller.home_y()
-
-    def home_z(self):
-        self.microcontroller.home_z()
-
-    def home_theta(self):
-        self.microcontroller.home_theta()
+    #def home_theta(self):
+    #    self.microcontroller.home_theta()
 
     def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
         assert not self.is_in_loading_position
         if home_z:
 			# retract the objective
-            self.home_z()
+            self.microcontroller.home_z()
 			# wait for the operation to finish
             self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
@@ -261,10 +253,10 @@ class NavigationController(QObject):
                 self.move_x(12.0)
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x moving timeout, the program will exit')
                 
-                self.home_y()
+                self.microcontroller.home_y()
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
                 
-                self.home_x()
+                self.microcontroller.home_x()
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
 
                 print("homing - in loading position")
