@@ -721,15 +721,43 @@ class Microcontroller():
     def mm_per_ustep_z(self)->float:
         return MACHINE_CONFIG.SCREW_PITCH_Z_MM/(MACHINE_CONFIG.MICROSTEPPING_DEFAULT_Z*MACHINE_CONFIG.FULLSTEPS_PER_REV_Z)
 
-    @property
+    @TypecheckFunction
     def mm_to_ustep_x(self,value_mm:float)->int:
-        return int(value_mm/self.mm_per_ustep_x)
-    @property
+        if MACHINE_CONFIG.USE_ENCODER_X:
+            return int(value_mm/(MACHINE_CONFIG.ENCODER_POS_SIGN_X*MACHINE_CONFIG.ENCODER_STEP_SIZE_X_MM))
+        else:
+            return int(value_mm/(MACHINE_CONFIG.STAGE_POS_SIGN_X*self.mm_per_ustep_x))
+    @TypecheckFunction
     def mm_to_ustep_y(self,value_mm:float)->int:
-        return int(value_mm/self.mm_per_ustep_y)
-    @property
+        if MACHINE_CONFIG.USE_ENCODER_Y:
+            return int(value_mm/(MACHINE_CONFIG.ENCODER_POS_SIGN_Y*MACHINE_CONFIG.ENCODER_STEP_SIZE_Y_MM))
+        else:
+            return int(value_mm/(MACHINE_CONFIG.STAGE_POS_SIGN_Y*self.mm_per_ustep_y))
+    @TypecheckFunction
     def mm_to_ustep_z(self,value_mm:float)->int:
-        return int(value_mm/self.mm_per_ustep_z)
+        if MACHINE_CONFIG.USE_ENCODER_Z:
+            return int(value_mm/(MACHINE_CONFIG.ENCODER_POS_SIGN_Z*MACHINE_CONFIG.ENCODER_STEP_SIZE_Z_MM))
+        else:
+            return int(value_mm/(MACHINE_CONFIG.STAGE_POS_SIGN_Z*self.mm_per_ustep_z))
+
+    @TypecheckFunction
+    def ustep_to_mm_x(self,value_usteps:int)->float:
+        if MACHINE_CONFIG.USE_ENCODER_X:
+            return value_usteps*MACHINE_CONFIG.ENCODER_POS_SIGN_X*MACHINE_CONFIG.ENCODER_STEP_SIZE_X_MM
+        else:
+            return value_usteps*MACHINE_CONFIG.STAGE_POS_SIGN_X*self.mm_per_ustep_x
+    @TypecheckFunction
+    def ustep_to_mm_y(self,value_usteps:int)->float:
+        if MACHINE_CONFIG.USE_ENCODER_Y:
+            return value_usteps*MACHINE_CONFIG.ENCODER_POS_SIGN_Y*MACHINE_CONFIG.ENCODER_STEP_SIZE_Y_MM
+        else:
+            return value_usteps*MACHINE_CONFIG.STAGE_POS_SIGN_Y*self.mm_per_ustep_y
+    @TypecheckFunction
+    def ustep_to_mm_z(self,value_usteps:int)->float:
+        if MACHINE_CONFIG.USE_ENCODER_Z:
+            return value_usteps*MACHINE_CONFIG.ENCODER_POS_SIGN_Z*MACHINE_CONFIG.ENCODER_STEP_SIZE_Z_MM
+        else:
+            return value_usteps*MACHINE_CONFIG.STAGE_POS_SIGN_Z*self.mm_per_ustep_z
 
     @property
     def clear_z_backlash_usteps(self)->int:

@@ -535,11 +535,7 @@ class Gui(QMainWindow):
             z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
             print(f"focus - moving objective to {z_mm=:.3f}")
             
-            if False: # TODO
-                self.core.navigation.move_z_to(z_mm=z_mm) # this does not work for some reason?
-            else:
-                z_mm_relative=z_mm-self.core.navigation.z_pos_mm
-                self.core.navigation.move_z(z_mm=z_mm_relative)
+            self.core.navigation.move_z_to(z_mm=z_mm)
 
     def closeEvent(self, event:QEvent):
 

@@ -115,7 +115,7 @@ class AutoFocusController(QObject):
 
     @property
     def deltaZ_usteps(self)->int:
-        return int(self.deltaZ/self.navigation.microcontroller.mm_per_ustep_z)
+        return self.navigation.microcontroller.mm_to_ustep_z(self.deltaZ)
 
     def set_crop(self,crop_width:int,crop_height:int):
         self.crop_width = crop_width

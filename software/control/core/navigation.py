@@ -56,16 +56,16 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_x(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.move_x_usteps(int(x_mm/self.microcontroller.mm_per_ustep_x),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+        self.move_x_usteps(self.microcontroller.mm_to_ustep_x(x_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
     def move_y(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.move_y_usteps(int(y_mm/self.microcontroller.mm_per_ustep_y),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+        self.move_y_usteps(self.microcontroller.mm_to_ustep_y(y_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
     def move_z(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
         """ this takes 210 ms ?! """
-        self.move_z_usteps(int(z_mm/self.microcontroller.mm_per_ustep_z),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
+        self.move_z_usteps(self.microcontroller.mm_to_ustep_z(z_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
     def move_x_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
@@ -87,7 +87,7 @@ class NavigationController(QObject):
     def move_z_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
         """ this takes 210 ms ?! """
 
-        self.microcontroller.move_z_usteps(usteps)
+        self.microcontroller.move_z_usteps(usteps*MACHINE_CONFIG.STAGE_POS_SIGN_Z)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
@@ -95,7 +95,7 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_x_to(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_x_to_usteps(int(x_mm/self.microcontroller.mm_per_ustep_x))
+        self.microcontroller.move_x_to_usteps(self.microcontroller.mm_to_ustep_x(x_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
@@ -103,7 +103,7 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_y_to(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_y_to_usteps(int(y_mm/self.microcontroller.mm_per_ustep_y))
+        self.microcontroller.move_y_to_usteps(self.microcontroller.mm_to_ustep_y(y_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
@@ -111,7 +111,7 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_z_to(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
-        self.microcontroller.move_z_to_usteps(int(z_mm/self.microcontroller.mm_per_ustep_z))
+        self.microcontroller.move_z_to_usteps(self.microcontroller.mm_to_ustep_z(z_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:
@@ -194,20 +194,9 @@ class NavigationController(QObject):
         self.z_pos_usteps = z_pos
         
         # calculate position in mm or rad
-        if MACHINE_CONFIG.USE_ENCODER_X:
-            self.x_pos_mm = x_pos*MACHINE_CONFIG.ENCODER_POS_SIGN_X*MACHINE_CONFIG.ENCODER_STEP_SIZE_X_MM
-        else:
-            self.x_pos_mm = x_pos*MACHINE_CONFIG.STAGE_POS_SIGN_X*self.microcontroller.mm_per_ustep_x
-
-        if MACHINE_CONFIG.USE_ENCODER_Y:
-            self.y_pos_mm = y_pos*MACHINE_CONFIG.ENCODER_POS_SIGN_Y*MACHINE_CONFIG.ENCODER_STEP_SIZE_Y_MM
-        else:
-            self.y_pos_mm = y_pos*MACHINE_CONFIG.STAGE_POS_SIGN_Y*self.microcontroller.mm_per_ustep_y
-
-        if MACHINE_CONFIG.USE_ENCODER_Z:
-            self.z_pos_mm = z_pos*MACHINE_CONFIG.ENCODER_POS_SIGN_Z*MACHINE_CONFIG.ENCODER_STEP_SIZE_Z_MM
-        else:
-            self.z_pos_mm = z_pos*MACHINE_CONFIG.STAGE_POS_SIGN_Z*self.microcontroller.mm_per_ustep_z
+        self.x_pos_mm = self.microcontroller.ustep_to_mm_x(x_pos)
+        self.y_pos_mm = self.microcontroller.ustep_to_mm_y(y_pos)
+        self.z_pos_mm = self.microcontroller.ustep_to_mm_z(z_pos)
 
         if MACHINE_CONFIG.USE_ENCODER_THETA:
             self.theta_pos_rad = theta_pos*MACHINE_CONFIG.ENCODER_POS_SIGN_THETA*MACHINE_CONFIG.ENCODER_STEP_SIZE_THETA

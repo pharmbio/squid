@@ -252,11 +252,11 @@ class MultiPointWorker(QObject):
             with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
                 # move to bottom of the z stack
                 if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
-                    base_z=-self.deltaZ_usteps*round((self.NZ-1)/2)
+                    base_z=int(-self.deltaZ_usteps*round((self.NZ-1)/2))
                     self.navigation.move_z_usteps(base_z,wait_for_completion={})
                 # maneuver for achiving uniform step size and repeatability when using open-loop control
-                self.navigation.move_z_usteps(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-                self.navigation.move_z_usteps(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+                self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
 
         # z-stack
         for k in range(self.NZ):
@@ -446,6 +446,8 @@ class MultiPointWorker(QObject):
                 else:
                     self.num_positions_per_well=self.NX*self.NY*self.NZ
 
+                z_usteps_before_current_position_acquisition=self.navigation.z_pos_usteps
+
                 # each region is a well
                 n_regions = len(self.scan_coordinates_name)
                 for coordinate_id in range(n_regions) if n_regions==1 else tqdm(range(n_regions),desc="well on plate",unit="well"):
@@ -483,7 +485,7 @@ class MultiPointWorker(QObject):
                             self.navigation.move_x_usteps(-self.deltaX_usteps*(self.NX-1),wait_for_completion={},wait_for_stabilization=True)
 
                         # move z back
-                        self.navigation.microcontroller.move_z_to_usteps(self.navigation.z_pos_usteps)
+                        self.navigation.microcontroller.move_z_to_usteps(z_usteps_before_current_position_acquisition)
                         self.navigation.microcontroller.wait_till_operation_is_completed()
 
                 coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
@@ -558,13 +560,13 @@ class MultiPointController(QObject):
 
     @property
     def deltaX_usteps(self)->int:
-        return round(self.deltaX/self.microcontroller.mm_per_ustep_x)
+        return self.microcontroller.mm_to_ustep_x(self.deltaX)
     @property
     def deltaY_usteps(self)->int:
-        return round(self.deltaY/self.microcontroller.mm_per_ustep_y)
+        return self.microcontroller.mm_to_ustep_y(self.deltaY)
     @property
     def deltaZ_usteps(self)->int:
-        return round(self.deltaZ/self.microcontroller.mm_per_ustep_z)
+        return self.microcontroller.mm_to_ustep_z(self.deltaZ)
 
     @TypecheckFunction
     def set_NX(self,N:int):
