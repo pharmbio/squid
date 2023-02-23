@@ -87,7 +87,7 @@ class NavigationController(QObject):
     def move_z_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
         """ this takes 210 ms ?! """
 
-        self.microcontroller.move_z_usteps(usteps*MACHINE_CONFIG.STAGE_POS_SIGN_Z)
+        self.microcontroller.move_z_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
         if wait_for_stabilization:

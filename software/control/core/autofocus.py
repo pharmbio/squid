@@ -19,7 +19,7 @@ class AutofocusWorker(QObject):
     finished = Signal()
     image_to_display = Signal(np.ndarray)
 
-    def __init__(self,autofocusController):
+    def __init__(self,autofocusController:"AutoFocusController"):
         QObject.__init__(self)
         self.autofocusController = autofocusController
 
@@ -45,14 +45,11 @@ class AutofocusWorker(QObject):
         focus_measure_max:float = 0
 
         z_af_offset_usteps = self.deltaZ_usteps*round(self.N/2)
-        # self.navigation.move_z_usteps(-z_af_offset_usteps) # combine with the back and forth maneuver below
-        # self.wait_till_operation_is_completed()
 
         # maneuver for achiving uniform step size and repeatability when using open-loop control
         # can be moved to the firmware
-        self.microcontroller.clear_z_backlash_usteps
-        self.navigation.move_z_usteps(- self.microcontroller.clear_z_backlash_usteps - z_af_offset_usteps ,wait_for_completion={})
-        self.navigation.move_z_usteps(  self.microcontroller.clear_z_backlash_usteps                      ,wait_for_completion={})
+        self.navigation.move_z_usteps(- self.microcontroller.clear_z_backlash_usteps - z_af_offset_usteps, wait_for_completion={})
+        self.navigation.move_z_usteps(  self.microcontroller.clear_z_backlash_usteps                     , wait_for_completion={})
 
         with self.camera.wrapper.ensure_streaming():
             steps_moved = 0
@@ -107,7 +104,7 @@ class AutoFocusController(QObject):
         self.navigation = navigationController
         self.liveController = liveController
         self.N:int = 1 # arbitrary value of type
-        self.deltaZ:float = 0.1 # arbitrary value of type
+        self.deltaZ_mm:float = 0.1 # arbitrary value of type
         self.crop_width:int = MACHINE_CONFIG.AF.CROP_WIDTH
         self.crop_height:int = MACHINE_CONFIG.AF.CROP_HEIGHT
         self.autofocus_in_progress:bool = False
@@ -115,7 +112,7 @@ class AutoFocusController(QObject):
 
     @property
     def deltaZ_usteps(self)->int:
-        return self.navigation.microcontroller.mm_to_ustep_z(self.deltaZ)
+        return self.navigation.microcontroller.mm_to_ustep_z(self.deltaZ_mm)
 
     def set_crop(self,crop_width:int,crop_height:int):
         self.crop_width = crop_width
@@ -124,7 +121,7 @@ class AutoFocusController(QObject):
     def autofocus(self,
         config,
         N:int,
-        dz:float,
+        dz_mm:float,
     ):
         # create a QThread object
         if not self.thread is None and self.thread.isRunning():
@@ -134,7 +131,7 @@ class AutoFocusController(QObject):
             print('*** autofocus thread manually stopped ***')
 
         self.N=N
-        self.deltaZ=dz
+        self.deltaZ_mm=dz_mm
 
         self.focus_config=config
 

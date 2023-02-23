@@ -140,22 +140,8 @@ class Microcontroller():
         cmd[6] = strobe_delay_us & 0xff
         self.send_command(cmd)
 
-    '''
-    def move_x(self,delta):
-        direction = int((np.sign(delta)+1)/2)
-        n_microsteps = abs(delta*Motion.STEPS_PER_MM_XY)
-        if n_microsteps > 65535:
-            n_microsteps = 65535
-        cmd = bytearray(self.tx_buffer_length)
-        cmd[0] = CMD_SET.MOVE_X
-        cmd[1] = direction
-        cmd[2] = int(n_microsteps) >> 8
-        cmd[3] = int(n_microsteps) & 0xff
-        self.serial.write(cmd)
-    '''
-
     def move_x_usteps(self,usteps):
-        direction = MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_X*np.sign(usteps)
+        direction = np.sign(usteps) #MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_X*np.sign(usteps)
         n_microsteps_abs = abs(usteps)
         # if n_microsteps_abs exceed the max value that can be sent in one go
         while n_microsteps_abs >= (2**32)/2:
@@ -195,22 +181,8 @@ class Microcontroller():
         cmd[5] = payload & 0xff
         self.send_command(cmd)
 
-    '''
-    def move_y(self,delta):
-        direction = int((np.sign(delta)+1)/2)
-        n_microsteps = abs(delta*Motion.STEPS_PER_MM_XY)
-        if n_microsteps > 65535:
-            n_microsteps = 65535
-        cmd = bytearray(self.tx_buffer_length)
-        cmd[0] = CMD_SET.MOVE_Y
-        cmd[1] = direction
-        cmd[2] = int(n_microsteps) >> 8
-        cmd[3] = int(n_microsteps) & 0xff
-        self.serial.write(cmd)
-    '''
-
     def move_y_usteps(self,usteps):
-        direction = MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Y*np.sign(usteps)
+        direction = np.sign(usteps) #MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Y*np.sign(usteps)
         n_microsteps_abs = abs(usteps)
         # if n_microsteps_abs exceed the max value that can be sent in one go
         while n_microsteps_abs >= (2**32)/2:
@@ -250,22 +222,8 @@ class Microcontroller():
         cmd[5] = payload & 0xff
         self.send_command(cmd)
 
-    '''
-    def move_z(self,delta):
-        direction = int((np.sign(delta)+1)/2)
-        n_microsteps = abs(delta*Motion.STEPS_PER_MM_Z)
-        if n_microsteps > 65535:
-            n_microsteps = 65535
-        cmd = bytearray(self.tx_buffer_length)
-        cmd[0] = CMD_SET.MOVE_Z
-        cmd[1] = 1-direction
-        cmd[2] = int(n_microsteps) >> 8
-        cmd[3] = int(n_microsteps) & 0xff
-        self.serial.write(cmd)
-    '''
-
     def move_z_usteps(self,usteps):
-        direction = MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Z*np.sign(usteps)
+        direction = np.sign(usteps) #MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Z*np.sign(usteps)
         n_microsteps_abs = abs(usteps)
         # if n_microsteps_abs exceed the max value that can be sent in one go
         while n_microsteps_abs >= (2**32)/2:
@@ -306,7 +264,7 @@ class Microcontroller():
         self.send_command(cmd)
 
     def move_theta_usteps(self,usteps):
-        direction = MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_THETA*np.sign(usteps)
+        direction = np.sign(usteps) #MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_THETA*np.sign(usteps)
         n_microsteps_abs = abs(usteps)
         # if n_microsteps_abs exceed the max value that can be sent in one go
         while n_microsteps_abs >= (2**32)/2:

@@ -55,10 +55,13 @@ class SoftwareAutoFocusWidget(QFrame):
         self.on_set_all_interactible_enabled(False)
         self.software_af_controller.autofocusFinished.connect(self.autofocus_is_finished)
 
+        dz_um:float=self.entry_delta.value()
+        dz_mm:float=dz_um*1e-3
+
         self.software_af_controller.autofocus(
             self.configuration_manager.configurations[self.channel_dropdown.currentIndex()],
             N=self.entry_N.value(),
-            dz=self.entry_delta.value(),
+            dz_mm=dz_mm,
         )
 
     def autofocus_is_finished(self):
