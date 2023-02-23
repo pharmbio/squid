@@ -273,7 +273,7 @@ class MultiPointWidget(QObject):
         # add software AF (currently disabled, because laser AF is just so much better, and we have not found a case where it does not work)
         self.checkbox_withAutofocus = Checkbox(
             label="Software AF",
-            checked=False,#MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT,
+            checked=False,#MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT, # ensure that this is not enabled, no matter the machine default, while this component is not displayed (as is the case currently)
             tooltip=ComponentLabels.SOFTWARE_AUTOFOCUS_TOOLTIP,
             on_stateChanged=lambda new_state:self.af_channel_dropdown.setEnabled(new_state==Qt.Checked)
         ).widget

@@ -396,6 +396,11 @@ class Gui(QMainWindow):
 
     @TypecheckFunction
     def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
+        if allow_invalid_values and not dry:
+            message="non-dry run with invalid values allowed in config can lead to filesystem errors"
+            print(f"! error - {message}")
+            raise RuntimeError(message)
+
         # get output paths
         base_dir_str:str=self.acquisition_widget.lineEdit_baseDir.text()
         project_name_str:str=self.acquisition_widget.lineEdit_projectName.text()
@@ -404,14 +409,15 @@ class Gui(QMainWindow):
 
         objective_str:str="<unspecified>" # TODO
 
-        if len(project_name_str)==0 and not allow_invalid_values:
-            if dry:
-                MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
-            raise RuntimeError("project name empty")
-        if len(plate_name_str)==0 and not allow_invalid_values:
-            if dry:
-                MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
-            raise RuntimeError("wellplate name empty")
+        if not allow_invalid_values:
+            if len(project_name_str)==0:
+                if dry:
+                    MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+                raise RuntimeError("project name empty")
+            if len(plate_name_str)==0:
+                if dry:
+                    MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
+                raise RuntimeError("wellplate name empty")
 
         # check validity of output path names
         FORBIDDEN_CHARS={
@@ -452,7 +458,7 @@ class Gui(QMainWindow):
             time.sleep(1) # wait until next second to get a unique experiment ID
             experiment_path=gen_dir_name(base_output_path=full_output_path)
             
-        if not dry:
+        if not (dry or allow_invalid_values):
             experiment_path.mkdir(parents=True) # create a new folder
 
         return AcquisitionConfig(
@@ -539,7 +545,7 @@ class Gui(QMainWindow):
 
     def closeEvent(self, event:QEvent):
 
-        self.get_all_config(dry=False,allow_invalid_values=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
+        self.get_all_config(dry=True,allow_invalid_values=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
 
         self.core.close()
         
