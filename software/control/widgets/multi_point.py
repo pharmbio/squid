@@ -270,11 +270,12 @@ class MultiPointWidget(QObject):
         item_height=18 # TODO get real value, not just guess a good looking one..
         self.list_configurations.setMinimumHeight(num_items_in_list*item_height)
 
-        # add autofocus related stuff
+        # add software AF (currently disabled, because laser AF is just so much better, and we have not found a case where it does not work)
         self.checkbox_withAutofocus = Checkbox(
             label="Software AF",
-            checked=MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT,
+            checked=False,#MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT,
             tooltip=ComponentLabels.SOFTWARE_AUTOFOCUS_TOOLTIP,
+            on_stateChanged=lambda new_state:self.af_channel_dropdown.setEnabled(new_state==Qt.Checked)
         ).widget
 
         self.af_software_channel_names=[microscope_configuration.name for microscope_configuration in self.core.main_camera.configuration_manager.configurations]
@@ -282,9 +283,11 @@ class MultiPointWidget(QObject):
             items=self.af_software_channel_names,
             current_index=self.af_software_channel_names.index(self.multipointController.autofocus_channel_name),
             tooltip=ComponentLabels.AF_CHANNEL_TOOLTIP,
+            enabled=MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT,
             on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",self.af_software_channel_names[index])
         ).widget
 
+        # add laser AF
         self.interactive_widgets.checkbox_laserAutofocus = Checkbox(
             label="Laser AF",
             checked=False,
@@ -295,8 +298,8 @@ class MultiPointWidget(QObject):
         self.btn_startAcquisition = Button(ComponentLabels.BUTTON_START_ACQUISITION_IDLE_TEXT,on_clicked=self.toggle_acquisition).widget
 
         grid_multipoint_acquisition_config=Grid(
-            [self.checkbox_withAutofocus],
-            [self.af_channel_dropdown],
+            #[self.checkbox_withAutofocus], # see software AF comment above
+            #[self.af_channel_dropdown],
             [self.interactive_widgets.checkbox_laserAutofocus],
             [self.btn_startAcquisition],
 
