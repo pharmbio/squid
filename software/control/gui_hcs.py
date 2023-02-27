@@ -19,6 +19,42 @@ from control.typechecker import TypecheckFunction
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
+def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidget:
+    config=AcquisitionConfig.from_json(file)
+
+    laser_af_reference_is_present:bool=not config.af_laser_reference is None
+
+    workaround={'load_laser_af_data_requested':False}
+
+    return Dock(
+        Grid(
+            [
+                Label(f"Plate type: {config.plate_type}"),
+                Label(f"Cell Line: {config.cell_line}"),
+            ],
+            [
+                Checkbox(
+                    "Load laser AF data",
+                    tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
+                    checked=False,
+                    enabled=laser_af_reference_is_present,
+                    on_stateChanged=lambda _s,w=workaround:w.update({"load_laser_af_data_requested":True})
+                ),
+                Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
+            ],
+            [
+                Label(f"Timestamp: {config.timestamp}"),
+            ],
+            GridItem(
+                Button("Load this reference",on_clicked=lambda _,w=workaround:workaround_default_callback(file,w)),
+                row=3,
+                colSpan=2,
+            )
+        ).widget,
+        title=f"File: {file}",
+        minimize_height=True,
+    ).widget
+
 class ConfigurationDatabase(QMainWindow):
     def __init__(self,
         parent:QWidget,
@@ -29,50 +65,19 @@ class ConfigurationDatabase(QMainWindow):
 
         self.on_load_from_file=on_load_from_file
 
-        def create_referenceFile_widget(file:str)->QWidget:
-            config=AcquisitionConfig.from_json(file)
-
-            laser_af_reference_is_present:bool=not config.af_laser_reference is None
-
-            workaround={'load_laser_af_data_requested':False}
-
-            return Dock(
-                Grid(
-                    [
-                        Label(f"Plate type: {config.plate_type}"),
-                        Label(f"Cell Line: {config.cell_line}"),
-                    ],
-                    [
-                        Checkbox(
-                            "Load laser AF data",
-                            tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
-                            checked=False,
-                            enabled=laser_af_reference_is_present,
-                            on_stateChanged=lambda _s,w=workaround:w.update({"load_laser_af_data_requested":True})
-                        ),
-                        Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
-                    ],
-                    [
-                        Label(f"Timestamp: {config.timestamp}"),
-                    ],
-                    GridItem(
-                        Button("Load this reference",on_clicked=lambda _,w=workaround:self.on_load_from_file(file,w["load_laser_af_data_requested"])),
-                        row=3,
-                        colSpan=2,
-                    )
-                ).widget,
-                title=f"File: {file}",
-                minimize_height=True,
-            )
+        self.custom_file_loader=Label("").widget
+        self.custom_file_load_container=HBox(with_margins=False).layout
 
         self.widget=VBox(
-            Label("Load configuration data from..?"),
-            Label(""), # empty line
-            Button("Browse (anywhere)",on_clicked=lambda _:self.on_load_from_file()),
+            HBox(
+                Label("Load custom file:",tooltip="this will not immediately load the file, it will create a section where you can load this file instead."),
+                Button("Browse",on_clicked=lambda _:self.browse_for_custom_load_file()),
+            ),
+            self.custom_file_load_container,
             Label(""), # empty line
             Label("Load from calibrated reference database :"),
             VBox(*[
-                create_referenceFile_widget(reference_file)
+                create_referenceFile_widget(reference_file,self.load_file_callback)
                 for reference_file
                 in [
                     LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
@@ -85,6 +90,18 @@ class ConfigurationDatabase(QMainWindow):
         self.setCentralWidget(self.widget)
 
         self.setWindowTitle("Configuration Database")
+
+    def load_file_callback(self,file,w):
+        self.on_load_from_file(file,w["load_laser_af_data_requested"])
+    
+    def browse_for_custom_load_file(self):
+        file=FileDialog(mode="open",caption="Load Microscope Acquisition Settings",filter_type=FILTER_JSON).run()
+        if file!="":
+            BlankWidget(children=[self.custom_file_loader])
+            self.custom_file_loader=create_referenceFile_widget(file,self.load_file_callback)
+            self.custom_file_load_container.addWidget(self.custom_file_loader)
+            print(f"loading file {file}")
+            #self.on_load_from_file()
 
 class BasicSettings(QWidget):
     def __init__(self,
