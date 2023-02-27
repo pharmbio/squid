@@ -6,10 +6,10 @@ import numpy as np
 import threading
 from crc import CrcCalculator, Crc8
 
-from control._def import *
+from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS
 
 from control.typechecker import TypecheckFunction, ClosedRange, ClosedSet
-from typing import Union, Any, Tuple, List
+from typing import Union, Any, Tuple, List, Optional
 
 from qtpy.QtWidgets import QApplication
 
@@ -537,8 +537,10 @@ class Microcontroller():
         while self.terminate_reading_received_packet_thread == False:
             # wait to receive data
             if self.serial.in_waiting==0:
+                time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
                 continue
-            if self.serial.in_waiting % self.rx_buffer_length != 0:
+            if self.serial.in_waiting % self.rx_buffer_length != 0: # incomplete data
+                time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
                 continue
             
             # get rid of old data

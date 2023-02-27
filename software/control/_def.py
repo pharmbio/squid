@@ -1041,7 +1041,8 @@ class MachineConfiguration:
     HOMING_ENABLED_Y:bool = False
     HOMING_ENABLED_Z:bool = False
 
-    SLEEP_TIME_S:float = 0.005
+    SLEEP_TIME_S:float = 0.005 # default sleep time between checks for microcontroller busy-ness
+    MICROCONTROLLER_PACKET_RETRY_DELAY:float = 1.0e-4 # in busy loop where microcontroller packet presence is checked, wait this long between checks if a check has been unsuccessfull
 
     LED_MATRIX_R_FACTOR:int = 1
     LED_MATRIX_G_FACTOR:int = 1
