@@ -2,7 +2,7 @@
 sudo usermod -aG dialout $USER # allow communication with arduino boards without superuser access
 sudo apt update
 sudo apt install -y tree curl git htop xclip # basic tools that should be installed
-sudo apt install -y plasma-desktop konsole plasma-nm # install different desktop environment that does not have broken cellprofiler iccon problems
+sudo apt install -y plasma-desktop konsole plasma-nm kde-spectacle # install different desktop environment that does not have broken cellprofiler iccon problems
 sudo apt install -y python3-pip python3-pyqtgraph python3-pyqt5 # squid software dependencies
 sudo apt install -y libreoffice virtualenv make gcc build-essential libgtk-3-dev openjdk-11-jdk-headless default-libmysqlclient-dev libnotify-dev libsdl2-dev # dependencies for cellprofiler
 sudo snap install --classic code # install visual studio code
