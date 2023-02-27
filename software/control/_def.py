@@ -531,6 +531,7 @@ class WellplateFormatPhysical:
 
         return False
     
+    @TypecheckFunction
     def pos_mm_to_well_index(self,x_mm:float,y_mm:float,return_nearest_valid_well_instead_of_none_if_outside:bool=False)->Optional[Tuple[int,int]]:
         origin_x,origin_y=self.imageable_origin()
         if x_mm>=origin_x and y_mm>=origin_y:

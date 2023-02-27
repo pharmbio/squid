@@ -190,7 +190,8 @@ class Gui(QMainWindow):
                 self.position_widget.btn_moveZ_backward
             ]),
             on_snap_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live),
-            move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um)
+            move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um),
+            get_current_position_xy_mm=lambda:(self.core.navigation.x_pos_mm,self.core.navigation.y_pos_mm,self.core.navigation.plate_type)
         )
         self.acquisition_widget=widgets.MultiPointWidget(
             self.core,

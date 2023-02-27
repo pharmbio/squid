@@ -1,4 +1,4 @@
-from typing import Optional, Callable, List, Dict
+from typing import Optional, Callable, List, Dict, Tuple
 from enum import Enum
 import time
 
@@ -58,6 +58,8 @@ class ImagingChannels:
         on_live_status_changed:Optional[Callable[[],bool]]=None,
         on_snap_status_changed:Optional[Callable[[],bool]]=None,
         move_to_offset:Optional[Callable[[float,],None]]=None,
+
+        get_current_position_xy_mm:Optional[Callable[[],Tuple[float,float,WellplateFormatPhysical]]]=None,
     ):
         self.configuration_manager = configuration_manager
         self.camera_wrapper=camera_wrapper
@@ -66,6 +68,7 @@ class ImagingChannels:
         self.on_live_status_changed=on_live_status_changed
         self.on_snap_status_changed=on_snap_status_changed
         self.move_to_offset=move_to_offset
+        self.get_current_position_xy_mm=get_current_position_xy_mm
 
         self.interactive_widgets=ObjectManager()
 
@@ -430,5 +433,12 @@ class ImagingChannels:
                 self.live_display.display_image(processed_image)
                 return
             
-            self.live_display.display_image(processed_image,name=self.last_single_displayed_image_config.name)
+            image_name_str=self.last_single_displayed_image_config.name
+
+            current_x_mm,current_y_mm,current_wellplate_format=self.get_current_position_xy_mm()
+            well_coordinates=current_wellplate_format.pos_mm_to_well_index(current_x_mm,current_y_mm)
+            if not well_coordinates is None:
+                image_name_str+=" inside well "+current_wellplate_format.well_index_to_name(*well_coordinates,check_valid=False)
+                
+            self.live_display.display_image(processed_image,name=image_name_str)
 
