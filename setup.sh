@@ -1,3 +1,12 @@
+# increase swap for cellprofiler stuff which just hangs silently forver when it runs out of memory
+sudo fallocate -l 32G /swapfile32g
+sudo chmod 600 /swapfile32g
+sudo mkswap /swapfile32g
+sudo swapon /swapfile32g
+echo 'echo -e "/swapfile32g swap swap defaults 0 0\n" >> /etc/fstab' > temp_turn_on_large_swap.sh
+sudo bash temp_turn_on_large_swap.sh
+rm temp_turn_on_large_swap.sh
+
 # installing prerequisite software packages
 sudo usermod -aG dialout $USER # allow communication with arduino boards without superuser access
 sudo apt update
