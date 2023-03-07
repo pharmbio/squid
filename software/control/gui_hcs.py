@@ -17,6 +17,10 @@ import control.widgets as widgets
 from control.widgets import ComponentLabel
 from control.typechecker import TypecheckFunction
 
+from control.web_service import web_service
+
+from threading import Thread, Lock
+
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
 def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidget:
@@ -167,6 +171,7 @@ class Gui(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(SOFTWARE_NAME)
+        self.interactive_enabled=True
 
         # skip_homing is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
         do_home=not bool(int(os.environ.get('skip_homing') or 0))
@@ -256,6 +261,33 @@ class Gui(QMainWindow):
         # on change of deltax, deltay, wellselection: self.change_acquisition_preview()
         self.acquisition_widget.position_mask_has_changed.connect(lambda:self.change_acquisition_preview())
         self.well_widget.interactive_widgets.well_selection.itemSelectionChanged.connect(lambda:self.change_acquisition_preview())
+
+        host, colon, port = os.environ.get('squid_service', '').partition(':')
+        if colon:
+            @web_service.expose
+            def goto_loading():
+                self.loading_position_toggle(loading_position_enter=True)
+
+            @web_service.expose
+            def leave_loading():
+                self.loading_position_toggle(loading_position_enter=False)
+
+            @web_service.expose
+            def load_config(file_path: str, project_override: str='', plate_override: str=''):
+                self.load_config_from_file(
+                    file_path,
+                    go_to_z_reference=True,
+                    project_override=project_override,
+                    plate_override=plate_override,
+                )
+
+            @web_service.expose
+            def acquire():
+                if self.interactive_enabled:
+                    Thread(target=lambda: self.start_experiment()).start()
+                return self.interactive_enabled
+
+            web_service.start(host, int(port))
 
     def change_acquisition_preview(self):
         # make sure the current selection is contained in selection buffer, then draw each pov
@@ -360,6 +392,8 @@ class Gui(QMainWindow):
         self.well_widget.set_all_interactible_enabled(set_enabled,exceptions)
         self.position_widget.set_all_interactible_enabled(set_enabled,exceptions)
         self.autofocus_widget.set_all_interactible_enabled(set_enabled,exceptions)
+        self.interactive_enabled=set_enabled
+        web_service.set_status(interactive=set_enabled)
 
     def on_step_completed(self,progress_data:AcqusitionProgress):
         """
@@ -367,6 +401,8 @@ class Gui(QMainWindow):
         the first time this function is called (i.e. very few completed steps noted by the acqusition thread), the progress bar is initialized to the full length
         aside, this function will display the progress of the acqusition thread, including an approximation of the imaging time remaining
         """
+        web_service.set_status(progress_data=progress_data.__dict__)
+
         if progress_data.last_completed_action=="acquisition_cancelled":
             time_elapsed_since_start=progress_data.last_step_completion_time-progress_data.start_time
             approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
@@ -374,6 +410,7 @@ class Gui(QMainWindow):
             elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
             self.acquisition_widget.progress_bar.setFormat(f"cancelled. (acquired {progress_data.completed_steps}/{self.total_num_acquisitions:4} images in {elapsed_time_str})")
             self.set_all_interactible_enabled(set_enabled=True)
+            web_service.set_status(progress=progress_bar_text)
             return
         
         if progress_data.completed_steps<=1:
@@ -397,11 +434,14 @@ class Gui(QMainWindow):
 
             elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
             if self.acquisition_progress==self.total_num_acquisitions:
-                self.acquisition_widget.progress_bar.setFormat(f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})")
+                progress_bar_text=f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})"
+                web_service.set_status(progress=progress_bar_text)
+                self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             else:
                 approx_time_left_str=format_seconds_nicely(approx_time_left)
                 done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
                 progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
+                web_service.set_status(progress=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             
             if not math.isnan(progress_data.last_imaged_coordinates[0]):
@@ -519,7 +559,7 @@ class Gui(QMainWindow):
         cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
         cdb.show()
 
-    def load_config_from_file(self,file_path:Optional[str]=None,go_to_z_reference:bool=False):
+    def load_config_from_file(self,file_path:Optional[str]=None,go_to_z_reference:bool=False, project_override: str='', plate_override: str=''):
         """
         if file_path is None, this function will open a dialog to ask for the file to loiad
         """
@@ -533,8 +573,8 @@ class Gui(QMainWindow):
         config_data=AcquisitionConfig.from_json(file_path=input_file)
         
         #self.acquisition_widget.lineEdit_baseDir.setText() # todo : base_dir itself is not currently saved, only the final output dir, which contains the base plus other stuff, is. is that worth saving/loading, or does it not matter?
-        self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
-        self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+        self.acquisition_widget.lineEdit_projectName.setText(project_override or config_data.project_name)
+        self.acquisition_widget.lineEdit_plateName.setText(plate_override or config_data.plate_name)
         self.acquisition_widget.lineEdit_cellLine.setText(config_data.cell_line)
 
         self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
