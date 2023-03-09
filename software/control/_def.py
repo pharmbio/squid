@@ -1086,8 +1086,8 @@ class MachineConfiguration:
     LASER_AF_AVERAGING_N_PRECISE:int = 5
     LASER_AF_AVERAGING_N_FAST:int = 2
     LASER_AF_DISPLAY_SPOT_IMAGE:bool = False # display laser af image every time when displacement is measured (even in multi point acquisition mode)
-    LASER_AF_CROP_WIDTH:int = 1536
-    LASER_AF_CROP_HEIGHT:int = 256
+    LASER_AF_CROP_WIDTH:int = 3000 # whole sensor width is 3088
+    LASER_AF_CROP_HEIGHT:int = 400 # whole sensor height is 2064
     HAS_TWO_INTERFACES:bool = True
     USE_GLASS_TOP:bool = True # use right dot instead of left
     SHOW_LEGACY_DISPLACEMENT_MEASUREMENT_WINDOWS:bool = False
