@@ -218,6 +218,7 @@ class Gui(QMainWindow):
 
             configuration_manager=self.core.main_camera.configuration_manager,
             laser_af_validity_changed=self.laser_af_validity_changed,
+            debug_laser_af=MACHINE_CONFIG.DISPLAY.DEBUG_LASER_AF
         )
 
         self.setCentralWidget(HBox(

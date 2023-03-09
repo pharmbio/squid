@@ -30,10 +30,6 @@ class LiveControlWidget(QFrame):
     signal_newExposureTime = Signal(float)
     signal_newAnalogGain = Signal(float)
 
-    @property
-    def fps_trigger(self)->float:
-        return self.liveController.fps_trigger
-
     def __init__(self,
         liveController:LiveController,
         configuration_manager:ConfigurationManager,
@@ -56,9 +52,7 @@ class LiveControlWidget(QFrame):
         self.stop_requested=False
 
     def add_components(self):
-        self.entry_triggerFPS = SpinBoxDouble(minimum=0.02,maximum=100.0,step=1.0,default=self.fps_trigger,
-            on_valueChanged=self.liveController.set_trigger_fps
-        ).widget
+        self.entry_triggerFPS = SpinBoxDouble(minimum=0.02,maximum=100.0,step=1.0,default=5.0).widget
 
         self.btn_live=Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,default=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget
 
@@ -91,8 +85,7 @@ class LiveControlWidget(QFrame):
             self.btn_live.setText(LIVE_BUTTON_RUNNING_TEXT)
             QApplication.processEvents()
 
-
-            max_fps=self.liveController.fps_trigger
+            max_fps=float(self.entry_triggerFPS.value())
 
             with self.liveController.camera.wrapper.ensure_streaming():
                 last_image_time=time.monotonic()

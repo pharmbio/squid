@@ -1,9 +1,13 @@
 # qt libraries
 from qtpy.QtWidgets import QFrame, QDoubleSpinBox, QSpinBox, QGridLayout, QLabel
 
+import pyqtgraph as pg
+
 from control._def import *
 from control.gui import *
+from control.core import LaserAutofocusController, ConfigurationManager, LiveController
 
+from .live_control import LiveControlWidget
 from .laser_autofocus import LaserAutofocusControlWidget
 
 from typing import Optional, Union, List, Tuple
@@ -69,6 +73,129 @@ class SoftwareAutoFocusWidget(QFrame):
         self.btn_autofocus.setChecked(False)
         self.on_set_all_interactible_enabled(True)
 
+def create_empty_image_display(
+    invert_y:bool=False
+):
+    graph_display=pg.GraphicsLayoutWidget()
+    graph_display.view = graph_display.addViewBox()
+    graph_display.img = pg.ImageItem(border='w')
+    graph_display.view.addItem(graph_display.img)
+    graph_display.view.setAspectLocked(True)
+
+    if invert_y:
+        graph_display.view.invertY()
+
+    return graph_display
+
+class LaserAfDebugdisplay:
+    def __init__(self,
+        laser_af_controller:LaserAutofocusController,
+    ):
+        self.laser_af_controller=laser_af_controller
+
+        self.image_display=create_empty_image_display()
+
+        max_pix_value=2**16
+        temp_image=numpy.array([[0,max_pix_value//4],[max_pix_value//2,max_pix_value]],numpy.uint16)
+        self.display_image(temp_image)
+
+        self.live_controller=self.laser_af_controller.camera.wrapper.live_controller
+        self.live_control_widget=LiveControlWidget(
+            liveController=self.live_controller,
+            configuration_manager=ConfigurationManager("channel_config_focus_camera.json"),
+            on_new_frame=self.display_image
+        )
+
+        self.laser_af_fitness_display=pg.GraphicsLayoutWidget()
+        self.laser_af_fitness_display.view=self.laser_af_fitness_display.addViewBox()
+        self.laser_af_fitness_test_range=SpinBoxDouble(minimum=50.0,maximum=700.0,default=400.0,step=10.0).widget
+        self.laser_af_fitness_test_steps=SpinBoxInteger(minimum=3,maximum=41,default=11,step=2).widget
+        self.run_laser_af_fitness_test=Button("run laser af test",on_clicked=lambda _btn:self.run_laser_af_test())
+
+        self.widget=HBox(
+            self.image_display,
+            VBox(
+                self.live_control_widget,
+                HBox(
+                    Label("z range"),
+                    self.laser_af_fitness_test_range,
+                    Label("total steps"),
+                    self.laser_af_fitness_test_steps
+                ),
+                self.run_laser_af_fitness_test,
+                self.laser_af_fitness_display
+            )
+        ).widget
+
+    def run_laser_af_test(self):
+        z_range_um=self.laser_af_fitness_test_range.value()
+        z_range_mm=z_range_um/1000
+        num_steps=self.laser_af_fitness_test_steps.value()
+        step_size_mm=z_range_mm/(num_steps-1)
+        half_range_mm=z_range_mm/2
+
+        real_displacements=numpy.zeros(num_steps)
+        measured_displacement=numpy.zeros(num_steps)
+
+        # move to bottom end of z test range, and clear backlash
+        self.live_controller.microcontroller.move_z_usteps(
+            usteps = self.live_controller.microcontroller.mm_to_ustep_z(
+                value_mm = -(
+                    half_range_mm 
+                    + self.live_controller.microcontroller.clear_z_backlash_mm
+                )
+            )
+        )
+        self.live_controller.microcontroller.wait_till_operation_is_completed()
+        self.live_controller.microcontroller.move_z_usteps( self.live_controller.microcontroller.clear_z_backlash_usteps )
+        self.live_controller.microcontroller.wait_till_operation_is_completed()
+        for i in range(num_steps):
+            self.live_controller.microcontroller.move_z_usteps(usteps=self.live_controller.microcontroller.mm_to_ustep_z(value_mm = step_size_mm))
+            self.live_controller.microcontroller.wait_till_operation_is_completed()
+
+            real_displacements[i] = -half_range_mm + i * step_size_mm
+            measured_displacement[i] = self.laser_af_controller.measure_displacement()
+
+        self.live_controller.microcontroller.move_z_usteps(usteps = self.live_controller.microcontroller.mm_to_ustep_z(value_mm = -half_range_mm))
+        self.live_controller.microcontroller.wait_till_operation_is_completed()
+
+        self.plot_displacement_test(
+            real_displacement=real_displacements*1e3, # to rescale from mm to um
+            measured_displacement=measured_displacement # this is in um
+        )
+
+    def plot_displacement_test(self,
+        real_displacement,
+        measured_displacement,
+    ):  
+        bins=real_displacement
+        for data,color in [
+            (real_displacement,"green"),
+            (measured_displacement,"orange"),
+        ]:
+            plot_kwargs={'x':bins,'y':data,'pen':pg.mkPen(color=color)}
+
+            try:
+                self.laser_af_fitness_display.plot_data.plot(**plot_kwargs)
+            except:
+                self.laser_af_fitness_display.plot_data=self.laser_af_fitness_display.addPlot(0,0,title="laser af test",viewBox=self.laser_af_fitness_display.view,**plot_kwargs)
+            #try:    
+            #    self.laser_af_fitness_display.plot_data.clear()
+            #    self.laser_af_fitness_display.plot_data.plot(**plot_kwargs)
+            #except:
+            
+            #self.laser_af_fitness_display.plot_data.hideAxis("left")
+
+    def display_image(self,new_image:numpy.ndarray):
+        kwargs={
+            'autoLevels':False, # disable automatically scaling the image pixel values (scale so that the lowest pixel value is pure black, and the highest value if pure white)
+        }
+        if new_image.dtype==numpy.float32:
+            self.image_display.img.setImage(new_image,levels=(0.0,1.0),**kwargs)
+        else:
+            self.image_display.img.setImage(new_image,**kwargs)
+        
+
 class AutofocusWidget:
     software_af_debug_display:Optional[QWidget]
     software_af_control:QWidget
@@ -102,7 +229,9 @@ class AutofocusWidget:
         )
 
         if debug_laser_af:
-            self.laser_af_debug_display=BlankWidget(background_color="red")
+            self.laser_af_debug_display=LaserAfDebugdisplay(
+                laser_af_controller=laser_af_controller
+            ).widget
         else:
             self.laser_af_debug_display=None
 

@@ -554,9 +554,9 @@ class WellplateFormatPhysical:
 
         return None
 
-    def limit_safe(self,calibrated:bool=False)->"SoftwareStagePositionLimits":
+    def limit_safe(self,calibrated:bool=False)->"StagePositionLimits":
         if calibrated:
-            return SoftwareStagePositionLimits(
+            return StagePositionLimits(
                 X_NEGATIVE = 10.0,
                 X_POSITIVE = 112.5,
                 Y_NEGATIVE = 6.0,
@@ -564,7 +564,7 @@ class WellplateFormatPhysical:
                 Z_POSITIVE = 6.0,
             )
         else:
-            return SoftwareStagePositionLimits(
+            return StagePositionLimits(
                 X_NEGATIVE = 10.0,
                 X_POSITIVE = 112.5,
                 Y_NEGATIVE = 6.0,
@@ -572,7 +572,7 @@ class WellplateFormatPhysical:
                 Z_POSITIVE = 6.0,
             )
     
-    def limit_unsafe(self,calibrated:bool=False)->"SoftwareStagePositionLimits":
+    def limit_unsafe(self,calibrated:bool=False)->"StagePositionLimits":
         physical_wellplate_format=self
 
         if calibrated:
@@ -593,7 +593,7 @@ class WellplateFormatPhysical:
         x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
         y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
 
-        return SoftwareStagePositionLimits(
+        return StagePositionLimits(
             X_NEGATIVE = x_start_mm,
             X_POSITIVE = x_end_mm,
             Y_NEGATIVE = y_start_mm,
@@ -818,7 +818,7 @@ assert WELLPLATE_FORMATS["Generic 384"].well_index_to_name(row=0,column=0,check_
 assert WELLPLATE_FORMATS["Generic 384"].well_index_to_name(row=1,column=1,check_valid=False)=="B02"
 
 @dataclass(frozen=True,repr=True)
-class SoftwareStagePositionLimits:
+class StagePositionLimits:
     """ limits in mm from home/loading position"""
 
     X_POSITIVE:float = 112.5
@@ -891,6 +891,7 @@ class MachineDisplayConfiguration:
     DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
     MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
     SHOW_XY_MOVEMENT:bool = False
+    DEBUG_LASER_AF:bool=False # enable gui component that allows debug access to the laser af system
 
     def from_json(json_data:dict):
         return MachineDisplayConfiguration(**json_data)
@@ -1057,7 +1058,8 @@ class MachineConfiguration:
 
     AF:AutofocusConfig=AutofocusConfig()
 
-    SOFTWARE_POS_LIMIT:SoftwareStagePositionLimits=WELLPLATE_FORMATS[MutableMachineConfiguration.WELLPLATE_FORMAT].limit_safe(calibrated=False)
+    HARDWARE_STAGE_POS_LIMIT_Z_POSITIVE:float=6.0
+    SOFTWARE_POS_LIMIT:StagePositionLimits=WELLPLATE_FORMATS[MutableMachineConfiguration.WELLPLATE_FORMAT].limit_safe(calibrated=False)
 
     ENABLE_STROBE_OUTPUT:bool = False
 

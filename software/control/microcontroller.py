@@ -21,7 +21,7 @@ from qtpy.QtWidgets import QApplication
 
 # to do (7/28/2021) - add functions for configuring the stepper motors
 
-class Microcontroller():
+class Microcontroller:
     @TypecheckFunction
     def __init__(self,version:ControllerType=ControllerType.DUE,sn:Optional[str]=None,parent:Any=None):
         self.platform_name = platform.system()
