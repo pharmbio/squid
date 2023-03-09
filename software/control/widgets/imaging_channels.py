@@ -415,7 +415,14 @@ class ImagingChannels:
             contrast_value=self.interactive_widgets.imageContrastAdjust.value()
 
             if brightness_value!=1.0 or contrast_value!=1.0:
-                pil_image=Image.fromarray(processed_image) # requires image to be uint8
+                if processed_image.dtype==numpy.uint8:
+                    pil_image_in=processed_image.astype(numpy.float32)/2*8
+                elif processed_image.dtype==numpy.uint16:
+                    pil_image_in=processed_image.astype(numpy.float32)/2*16
+                else:
+                    raise RuntimeError(f"unexpected image data type {processed_image.dtype=}")
+                
+                pil_image=Image.fromarray(pil_image_in,mode="L") # requires image to be uint8 or float32
 
                 # change brightness
                 if brightness_value!=1.0:
