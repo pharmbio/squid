@@ -466,7 +466,7 @@ class Gui(QMainWindow):
         plate_name_str:str=self.acquisition_widget.lineEdit_plateName.text()
         cell_line_str:str=self.acquisition_widget.lineEdit_cellLine.text()
 
-        objective_str:str="<unspecified>" # TODO
+        objective_str:str=MACHINE_CONFIG.MUTABLE_STATE.DEFAULT_OBJECTIVE,
 
         if not allow_invalid_values:
             if len(project_name_str)==0:

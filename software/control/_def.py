@@ -361,16 +361,8 @@ class AutofocusConfig:
 class WellplateFormatPhysical:
     """ physical (and logical) well plate layout """
 
-    well_size_mm:float # diameter
-    """ should be equal to well_diameter_mm (pending removal) """ # TODO remove
-
     well_spacing_mm:float
     """ distance from center of one well to center of adjacent well (_assumed_ same in both axis) """ # TODO remove? maybe make this a property and raise exception if row_spacing_mm!=column_spacing_mm
-
-    A1_x_mm:float
-    """ should be equal to column_offset_mm (pending removal) """ # TODO remove
-    A1_y_mm:float
-    """ should be equal to row_offset_mm (pending removal) """ # TODO remove
 
     rows:int
     """ number of rows """
@@ -437,13 +429,13 @@ class WellplateFormatPhysical:
         #       then add offset to center of A1 of current plate type
 
 
-        origin_x_mm = self.A1_x_mm - self.well_size_mm/2 + \
-            MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_size_mm/2 - \
-            (wellplate_format_384.A1_x_mm + wellplate_format_384.well_spacing_mm )
+        origin_x_mm = self.column_offset_mm - self.well_diameter_mm/2 + \
+            MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
+            (wellplate_format_384.column_offset_mm + wellplate_format_384.well_spacing_mm )
         
-        origin_y_mm = self.A1_y_mm - self.well_size_mm/2 + \
-            MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_size_mm/2 - \
-            (wellplate_format_384.A1_y_mm + wellplate_format_384.well_spacing_mm )
+        origin_y_mm = self.row_offset_mm - self.well_diameter_mm/2 + \
+            MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
+            (wellplate_format_384.row_offset_mm + wellplate_format_384.well_spacing_mm )
 
         return (
             origin_x_mm,
@@ -460,8 +452,8 @@ class WellplateFormatPhysical:
 
         # offset from top left of well to position within well where cursor/camera should go
         # should be centered, so offset is same in x and y
-        well_cursor_offset_x=self.well_size_mm/2
-        well_cursor_offset_y=self.well_size_mm/2
+        well_cursor_offset_x=self.well_diameter_mm/2
+        well_cursor_offset_y=self.well_diameter_mm/2
 
         x_mm = origin_x_offset + well_on_plate_offset_x + well_cursor_offset_x
         y_mm = origin_y_offset + well_on_plate_offset_y + well_cursor_offset_y
@@ -547,7 +539,7 @@ class WellplateFormatPhysical:
             if return_nearest_valid_well_instead_of_none_if_outside:
                 raise ValueError("unimplemented")
 
-            if x_well_edge_distance<=self.well_size_mm and y_well_edge_distance<=self.well_size_mm:
+            if x_well_edge_distance<=self.well_diameter_mm and y_well_edge_distance<=self.well_diameter_mm:
                 row,column=y_wells,x_wells
                 pass #print(f"inside well {self.well_index_to_name(row=y_wells,column=x_wells,check_valid=False)} with remaining {x_well_edge_distance=} {y_well_edge_distance=}")
                 return row,column
@@ -582,16 +574,16 @@ class WellplateFormatPhysical:
 
         else:
             weird_factor = 1.0 # a1_y_mm is 9mm from plate CAD info, but y_start_mm defaults to 10mm, which actually works. unsure where this physical offset comes from
-            x_start_mm = physical_wellplate_format.A1_x_mm
-            y_start_mm = physical_wellplate_format.A1_y_mm + weird_factor
+            x_start_mm = physical_wellplate_format.column_offset_mm
+            y_start_mm = physical_wellplate_format.row_offset_mm + weird_factor
 
         # adjust plate origin for number_of_skip (and take into account that references above are for upper left corner of well B2 instead of A1, even though upper left of A1 is origin of image-able area)
         x_start_mm=x_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
         y_start_mm=y_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
 
         # taking number_of_skip into account, calculate distance from top left of image-able area to bottom right
-        x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
-        y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_size_mm
+        x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_diameter_mm
+        y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_diameter_mm
 
         return StagePositionLimits(
             X_NEGATIVE = x_start_mm,
@@ -612,11 +604,11 @@ class WellplateFormatPhysical:
         well_center_x_mm,well_center_y_mm=self.well_index_to_mm(well_row,well_column)
 
         # assuming wells are square (even though they are round-ish)
-        well_left_boundary=well_center_x_mm-self.well_size_mm/2
-        well_right_boundary=well_center_x_mm+self.well_size_mm/2
+        well_left_boundary=well_center_x_mm-self.well_diameter_mm/2
+        well_right_boundary=well_center_x_mm+self.well_diameter_mm/2
         assert well_left_boundary<well_right_boundary
-        well_upper_boundary=well_center_y_mm+self.well_size_mm/2
-        well_lower_boundary=well_center_y_mm-self.well_size_mm/2
+        well_upper_boundary=well_center_y_mm+self.well_diameter_mm/2
+        well_lower_boundary=well_center_y_mm-self.well_diameter_mm/2
         assert well_lower_boundary<well_upper_boundary
 
         is_in_bounds=x_mm>=well_left_boundary and x_mm<=well_right_boundary and y_mm<=well_upper_boundary and y_mm>=well_lower_boundary
@@ -624,57 +616,36 @@ class WellplateFormatPhysical:
         return not is_in_bounds
 
 WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
-    #"Generic 6":WellplateFormatPhysical(
-    #    well_size_mm = 34.94,
-    #    well_spacing_mm = 39.2,
-    #    A1_x_mm = 24.55,
-    #    A1_y_mm = 23.01,
-    #    number_of_skip = 0,
-    #    rows = 2,
-    #    columns = 3,
-    #),
     "Generic 12":WellplateFormatPhysical(
-        well_size_mm = 22.05,
+		well_diameter_mm=22.05,
         well_spacing_mm = 26,
-        A1_x_mm = 24.75,
-        A1_y_mm = 16.86,
+        column_offset_mm = 24.75,
+        row_offset_mm = 16.86,
         number_of_skip = 0,
         rows = 3,
         columns = 4,
     ),
-    #"Generic 24":WellplateFormatPhysical(
-    #    well_size_mm = 15.54,
-    #    well_spacing_mm = 19.3,
-    #    A1_x_mm = 17.05,
-    #    A1_y_mm = 13.67,
-    #    number_of_skip = 0,
-    #    rows = 4,
-    #    columns = 6,
-    #),
     "Generic 96":WellplateFormatPhysical(
-        well_size_mm = 6.21,
+		well_diameter_mm=6.21,
         well_spacing_mm = 9,
-        A1_x_mm = 14.3,
-        A1_y_mm = 11.36,
+        column_offset_mm = 14.3,
+        row_offset_mm = 11.36,
         number_of_skip = 0,
         rows = 8,
         columns = 12,
     ),
     "Generic 384":WellplateFormatPhysical(
-        well_size_mm = 3.3,
+		well_diameter_mm=3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
+        column_offset_mm = 12.05,
+        row_offset_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
         columns = 24,
     ),
 	"384-FS-142761":WellplateFormatPhysical(
-        well_size_mm = 3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -687,8 +658,8 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		plate_width_mm=85.5,
 		plate_height_mm=14.4,
 		
-		well_depth_mm=11.600,
-		well_diameter_mm=3.7,
+		well_depth_mm=11.7,
+		well_diameter_mm=3.3, # they say 3.7, but thats only at the top
 		
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
@@ -698,10 +669,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		well_bottom_offset_mm=1.7
     ),
     "384-AGI-204628":WellplateFormatPhysical(
-        well_size_mm = 3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -711,11 +679,11 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         product_url="https://www.agilent.com/store/productDetail.jsp?catalogId=204628-100",
 		
 		plate_length_mm=127.8,
-		plate_width_mm=85.5,
-		plate_height_mm=14.4,
+		plate_width_mm=85.48,
+		plate_height_mm=14,
 		
 		well_depth_mm=11.500,
-		well_diameter_mm=3.7,
+		well_diameter_mm=3.3,
 		
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
@@ -724,10 +692,7 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		row_offset_mm=8.99
     ),
     "384-GR-781091":WellplateFormatPhysical(
-        well_size_mm = 3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -741,19 +706,16 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		plate_height_mm=14.4,
 		
 		well_depth_mm=11.500,
-		well_diameter_mm=3.7,
+		well_diameter_mm=3.3,
 		
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
-		column_offset_mm=12.1,
+		column_offset_mm=12.13,
 		row_offset_mm=8.99
     ),
     "384-FA-353962":WellplateFormatPhysical(
-        well_size_mm = 3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -767,19 +729,16 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		plate_height_mm=14.4,
 		
 		well_depth_mm=11.500,
-		well_diameter_mm=3.7,
+		well_diameter_mm=3.3,
 		
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
-		column_offset_mm=12.1,
+		column_offset_mm=12.13,
 		row_offset_mm=8.99
     ),
     "384-PE-6057302":WellplateFormatPhysical(
-        well_size_mm = 3.3,
         well_spacing_mm = 4.5,
-        A1_x_mm = 12.05,
-        A1_y_mm = 9.05,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -792,13 +751,13 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		plate_width_mm=85.48,
 		plate_height_mm=14.35,
 		
-		well_depth_mm=13.100,
-		well_diameter_mm=3.7,
+		well_depth_mm=12.7,
+		well_diameter_mm=3.26,
 		
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
-		column_offset_mm=12.1,
+		column_offset_mm=12.13,
 		row_offset_mm=8.99
     ),
 }
@@ -807,9 +766,7 @@ WELLPLATE_NAMES=set(WELLPLATE_FORMATS.keys())
 WELLPLATE_TYPE_IMAGE={
     384 : 'images/384_well_plate_1509x1010.png',
     96  : 'images/96_well_plate_1509x1010.png',
-    #24  : 'images/24_well_plate_1509x1010.png', # these files dont exist
     12  : 'images/12_well_plate_1509x1010.png',
-    #6   : 'images/6_well_plate_1509x1010.png', # these files dont exist
 }
 
 assert WELLPLATE_FORMATS["Generic 384"].well_name_to_index("A01",check_valid=False)==(0,0)
@@ -916,48 +873,35 @@ class ObjectiveData:
     magnification:float
     NA:float # numerical aperture
     tube_lens_f_mm:float # tube lens focal length in mm1
+    id:str # manufacturer-given id
+    name:str # manufacturer name and product line
+    product_link:Optional[str]=None
 
 OBJECTIVES:Dict[str,ObjectiveData]={
-    '2x':ObjectiveData(
-        magnification=2,
-        NA=0.10,
-        tube_lens_f_mm=180
-    ),
-    '4x':ObjectiveData(
+    '4x (Olympus)':ObjectiveData(
         magnification=4,
         NA=0.13,
-        tube_lens_f_mm=180
+        tube_lens_f_mm=180,
+        id="UPLFLN4X",
+        name="Olympus Plan Fluorite Objectives (UPLFLN) 4x",
+        product_link="https://www.olympus-lifescience.com/en/objectives/detail/0-DIRECTORY%3A%3ADirFrontend-itemId.511706528.html",
     ),
-    '10x':ObjectiveData(
+    '10x (Olympus)':ObjectiveData(
         magnification=10,
         NA=0.25,
-        tube_lens_f_mm=180
+        tube_lens_f_mm=180,
+        id="UPLFLN10X2",
+        name="Olympus Plan Fluorite Objectives (UPLFLN) 10x",
+        product_link="https://www.olympus-lifescience.com/en/objectives/detail/0-DIRECTORY::DirFrontend-itemId.511706529.html",
     ),
-    '10x (Mitutoyo)':ObjectiveData(
-        magnification=10,
-        NA=0.25,
-        tube_lens_f_mm=200
-    ),
-    '20x (Boli)':ObjectiveData(
-        magnification=20,
-        NA=0.4,
-        tube_lens_f_mm=180
-    ),
-    '20x (Nikon)':ObjectiveData(
-        magnification=20,
-        NA=0.45,
-        tube_lens_f_mm=200
-    ),
-    '20x (Olympus)':ObjectiveData( # UPLFLN20X
+    '20x (Olympus)':ObjectiveData(
         magnification=20,
         NA=0.50,
-        tube_lens_f_mm=180
+        tube_lens_f_mm=180,
+        id="UPLFLN20X",
+        name="Olympus Plan Fluorite Objectives (UPLFLN) 20x",
+        product_link="https://www.olympus-lifescience.com/en/objectives/detail/0-DIRECTORY%3A%3ADirFrontend-itemId.511706530.html",
     ),
-    '40x':ObjectiveData(
-        magnification=40,
-        NA=0.6,
-        tube_lens_f_mm=180
-    )
 }
 
 @TypecheckClass
@@ -1090,7 +1034,6 @@ class MachineConfiguration:
     LASER_AF_CROP_HEIGHT:int = 400 # whole sensor height is 2064
     HAS_TWO_INTERFACES:bool = True
     USE_GLASS_TOP:bool = True # use right dot instead of left
-    SHOW_LEGACY_DISPLACEMENT_MEASUREMENT_WINDOWS:bool = False
     LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:float = 0.3 # when moving to target, if absolute measured displacement after movement is larger than this value, repeat move to target (repeat max once) - note that the usual um/pixel value is 0.4
     LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER:float = -170.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value
     LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER:float =  170.0 # when moving to target, no matter the measured displacement, move not further away from the current position than this value

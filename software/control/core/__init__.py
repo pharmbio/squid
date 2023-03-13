@@ -582,7 +582,7 @@ class Core(QObject):
         for well_row,well_column in config.well_list:
             for x_grid_item,y_grid_item in config.grid_config.grid_positions_for_well(well_row,well_column,plate_type=wellplate_format):
                 if wellplate_format.fov_exceeds_well_boundary(well_row,well_column,x_grid_item,y_grid_item):
-                    raise ValueError(f"at least one grid item is outside the bounds of the well! well size is {wellplate_format.well_size_mm}mm")
+                    raise ValueError(f"at least one grid item is outside the bounds of the well! well size is {wellplate_format.well_diameter_mm}mm")
 
         # set list of imaging channels
         self.set_selected_configurations(config.channels_ordered)
