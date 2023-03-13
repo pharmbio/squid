@@ -84,7 +84,7 @@ class LaserAutofocusController(QObject):
             # get laser spot location
             x,y = self._get_laser_spot_centroid()
 
-            x_offset = x - MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2
+            x_offset = 0 # x - MACHINE_CONFIG.LASER_AF_CROP_WIDTH/2
             y_offset = y - MACHINE_CONFIG.LASER_AF_CROP_HEIGHT/2
             #print('laser spot location on the full sensor is (' + str(int(x)) + ',' + str(int(y)) + ')')
 
