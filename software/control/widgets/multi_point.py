@@ -191,7 +191,8 @@ class MultiPointWidget(QObject):
             default=self.multipointController.deltaX,
             num_decimals=3,
             keyboard_tracking=False,
-            enabled=self.multipointController.NX > 1
+            enabled=self.multipointController.NX > 1,
+            on_valueChanged=lambda _new_value:self.grid_changed(True)
         ).widget
 
         self.entry_NX = SpinBoxInteger(minimum=NX_min,maximum=NX_max,default=self.multipointController.NX,keyboard_tracking=False,on_valueChanged=[
@@ -206,7 +207,8 @@ class MultiPointWidget(QObject):
             default=self.multipointController.deltaY,
             num_decimals=3,
             keyboard_tracking=False,
-            enabled=self.multipointController.NY > 1
+            enabled=self.multipointController.NY > 1,
+            on_valueChanged=lambda _new_value:self.grid_changed(True)
         ).widget
         
         self.entry_NY = SpinBoxInteger(minimum=NY_min,maximum=NY_max,default=self.multipointController.NY,keyboard_tracking=False,on_valueChanged=[
