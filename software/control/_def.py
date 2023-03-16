@@ -361,9 +361,6 @@ class AutofocusConfig:
 class WellplateFormatPhysical:
     """ physical (and logical) well plate layout """
 
-    well_spacing_mm:float
-    """ distance from center of one well to center of adjacent well (_assumed_ same in both axis) """ # TODO remove? maybe make this a property and raise exception if row_spacing_mm!=column_spacing_mm
-
     rows:int
     """ number of rows """
     columns:int
@@ -431,11 +428,11 @@ class WellplateFormatPhysical:
 
         origin_x_mm = self.column_offset_mm - self.well_diameter_mm/2 + \
             MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
-            (wellplate_format_384.column_offset_mm + wellplate_format_384.well_spacing_mm )
+            (wellplate_format_384.column_offset_mm + wellplate_format_384.row_spacing_mm )
         
         origin_y_mm = self.row_offset_mm - self.well_diameter_mm/2 + \
             MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
-            (wellplate_format_384.row_offset_mm + wellplate_format_384.well_spacing_mm )
+            (wellplate_format_384.row_offset_mm + wellplate_format_384.column_spacing_mm )
 
         return (
             origin_x_mm,
@@ -447,8 +444,8 @@ class WellplateFormatPhysical:
         origin_x_offset,origin_y_offset=self.imageable_origin()
 
         # physical position of the well on the wellplate that the cursor should move to
-        well_on_plate_offset_x=column * self.well_spacing_mm
-        well_on_plate_offset_y=row * self.well_spacing_mm
+        well_on_plate_offset_x=column * self.column_spacing_mm
+        well_on_plate_offset_y=row * self.row_spacing_mm
 
         # offset from top left of well to position within well where cursor/camera should go
         # should be centered, so offset is same in x and y
@@ -530,11 +527,11 @@ class WellplateFormatPhysical:
             x_mm-=origin_x
             y_mm-=origin_y
 
-            x_wells=int(x_mm//self.well_spacing_mm)
-            y_wells=int(y_mm//self.well_spacing_mm)
+            x_wells=int(x_mm//self.column_spacing_mm)
+            y_wells=int(y_mm//self.row_spacing_mm)
 
-            x_well_edge_distance=x_mm%self.well_spacing_mm
-            y_well_edge_distance=y_mm%self.well_spacing_mm
+            x_well_edge_distance=x_mm%self.column_spacing_mm
+            y_well_edge_distance=y_mm%self.row_spacing_mm
 
             if return_nearest_valid_well_instead_of_none_if_outside:
                 raise ValueError("unimplemented")
@@ -578,12 +575,12 @@ class WellplateFormatPhysical:
             y_start_mm = physical_wellplate_format.row_offset_mm + weird_factor
 
         # adjust plate origin for number_of_skip (and take into account that references above are for upper left corner of well B2 instead of A1, even though upper left of A1 is origin of image-able area)
-        x_start_mm=x_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
-        y_start_mm=y_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.well_spacing_mm
+        x_start_mm=x_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.column_spacing_mm
+        y_start_mm=y_start_mm+(physical_wellplate_format.number_of_skip-1)*physical_wellplate_format.row_spacing_mm
 
         # taking number_of_skip into account, calculate distance from top left of image-able area to bottom right
-        x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_diameter_mm
-        y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.well_spacing_mm + physical_wellplate_format.well_diameter_mm
+        x_end_mm = x_start_mm + (physical_wellplate_format.columns - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.column_spacing_mm + physical_wellplate_format.well_diameter_mm
+        y_end_mm = y_start_mm + (physical_wellplate_format.rows - 1 - physical_wellplate_format.number_of_skip*2) * physical_wellplate_format.row_spacing_mm + physical_wellplate_format.well_diameter_mm
 
         return StagePositionLimits(
             X_NEGATIVE = x_start_mm,
@@ -618,7 +615,8 @@ class WellplateFormatPhysical:
 WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
     "Generic 12":WellplateFormatPhysical(
 		well_diameter_mm=22.05,
-        well_spacing_mm = 26,
+		column_spacing_mm=26,
+		row_spacing_mm=26,
         column_offset_mm = 24.75,
         row_offset_mm = 16.86,
         number_of_skip = 0,
@@ -627,16 +625,44 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
     ),
     "Generic 96":WellplateFormatPhysical(
 		well_diameter_mm=6.21,
-        well_spacing_mm = 9,
+		column_spacing_mm=9,
+		row_spacing_mm=9,
         column_offset_mm = 14.3,
         row_offset_mm = 11.36,
         number_of_skip = 0,
         rows = 8,
         columns = 12,
     ),
+    "96-CO-3603":WellplateFormatPhysical(
+		well_diameter_mm=6.21,
+		column_spacing_mm=9,
+		row_spacing_mm=9,
+        column_offset_mm = 14.3,
+        row_offset_mm = 11.36,
+        number_of_skip = 0,
+        rows = 8,
+        columns = 12,
+
+		brand="Corning Costar",
+        product_url="https://ecatalog.corning.com/life-sciences/b2c/US/en/Microplates/Assay-Microplates/96-Well-Microplates/Corning%C2%AE-96-well-Black-Clear-and-White-Clear-Bottom-Polystyrene-Microplates/p/3603",
+    ),
+    "96-PE-6055302":WellplateFormatPhysical(
+		well_diameter_mm=6.21,
+		column_spacing_mm=9,
+		row_spacing_mm=9,
+        column_offset_mm = 14.3,
+        row_offset_mm = 11.36,
+        number_of_skip = 0,
+        rows = 8,
+        columns = 12,
+
+		brand="PerkinElmer PhenoPlate",
+        product_url="https://www.perkinelmer.com/product/cellcarrier-96-ultra-lid-2x20b-6055302",
+    ),
     "Generic 384":WellplateFormatPhysical(
 		well_diameter_mm=3.3,
-        well_spacing_mm = 4.5,
+		column_spacing_mm=4.5,
+		row_spacing_mm=4.5,
         column_offset_mm = 12.05,
         row_offset_mm = 9.05,
         number_of_skip = 0,
@@ -645,7 +671,6 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
         columns = 24,
     ),
 	"384-FS-142761":WellplateFormatPhysical(
-        well_spacing_mm = 4.5,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -669,7 +694,6 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		well_bottom_offset_mm=1.7
     ),
     "384-AGI-204628":WellplateFormatPhysical(
-        well_spacing_mm = 4.5,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -692,7 +716,6 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		row_offset_mm=8.99
     ),
     "384-GR-781091":WellplateFormatPhysical(
-        well_spacing_mm = 4.5,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -715,7 +738,6 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		row_offset_mm=8.99
     ),
     "384-FA-353962":WellplateFormatPhysical(
-        well_spacing_mm = 4.5,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
@@ -738,13 +760,12 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		row_offset_mm=8.99
     ),
     "384-PE-6057302":WellplateFormatPhysical(
-        well_spacing_mm = 4.5,
         number_of_skip = 0,
         corners_forbidden=True,
         rows = 16,
         columns = 24,
 
-		brand="Perkinelmer PhenoPlate/CellCarrier",
+		brand="PerkinElmer PhenoPlate",
         product_url="https://www.perkinelmer.com/product/cellcarrier-384-f-ultra-lid-8x20b-6057308",
 		
 		plate_length_mm=127.76,
@@ -754,10 +775,10 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 		well_depth_mm=12.7,
 		well_diameter_mm=3.26,
 		
-		column_spacing_mm=4.5,
-		row_spacing_mm=4.5,
+		column_spacing_mm=4.5-(950-720)*0.6e-3/(23-2), # 4.5 is from spec sheet, offset at A23 relative to A2 is (972-720)px, measured at magnification where pixel size was about 0.6um/px
+		row_spacing_mm=4.5-(234-84)*0.6e-3/(ord('p')-ord('a')),
 
-		column_offset_mm=12.13,
+		column_offset_mm=12.13-0.05,
 		row_offset_mm=8.99
     ),
 }

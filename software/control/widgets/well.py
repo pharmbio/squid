@@ -285,7 +285,6 @@ class WellSelectionWidget(QTableWidget):
         wellplate_type_format=WELLPLATE_FORMATS[wellplate_type]
         self.rows = wellplate_type_format.rows
         self.columns = wellplate_type_format.columns
-        self.spacing_mm = wellplate_type_format.well_spacing_mm
  
         if self.was_initialized:
             old_layout=WELLPLATE_FORMATS[self.format]
@@ -311,7 +310,7 @@ class WellSelectionWidget(QTableWidget):
             self.cellDoubleClicked.connect(self.onDoubleClick)
  
         # size
-        well_side_length=22*16*26/24/self.rows # magic numbers from side_length=5*wellplate_type_format.well_spacing_mm, when using a 384 wellplate -> side length varies between plate types. use this line to set constant height (then scale by a small factor of 26/24 to make better use the horizontal space)
+        well_side_length=22*16*26/24/self.rows # magic numbers from side_length=5*wellplate_type_format.column_spacing_mm, when using a 384 wellplate -> side length varies between plate types. use this line to set constant height (then scale by a small factor of 26/24 to make better use the horizontal space)
         self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.verticalHeader().setMinimumSectionSize(0)
         self.verticalHeader().setDefaultSectionSize(well_side_length)
@@ -391,7 +390,21 @@ class WellWidget(QWidget):
 
         self.interactive_widgets=ObjectManager()
 
-        self.wellplate_types=sorted(list(WELLPLATE_NAMES),key=lambda v:f"{int(v.split(' ')[1]):03}" if v.startswith("Generic") else v)
+        sorted_wellplate_names=[]
+        # sort by number of wells, in ascending order
+        for num_wells in [12,96,384]:
+            # append generic version of a plate first (if none is found, dont care)
+            for wellplate_name in list(WELLPLATE_NAMES):
+                if wellplate_name.startswith("Generic") and wellplate_name.endswith(str(num_wells)):
+                    sorted_wellplate_names.append(wellplate_name)
+                    break
+                
+            # after (potentially) adding generic plate of size to list, add all others with same number of wells
+            for wellplate_name in list(WELLPLATE_NAMES):
+                if wellplate_name.split("-")[0]==str(num_wells):
+                    sorted_wellplate_names.append(wellplate_name)
+                
+        self.wellplate_types=sorted_wellplate_names
         wellplate_dropdown_tooltip_str:str="Wellplate Types:\n\n"
         for wellplate_type in self.wellplate_types:
             wellplate_format=WELLPLATE_FORMATS[wellplate_type]
