@@ -13,7 +13,7 @@
   "MUTABLE_STATE":{
     "MULTIPOINT_AUTOFOCUS_CHANNEL":"Fluorescence 561 nm Ex",
     "WELLPLATE_FORMAT":"Generic 384",
-    "DEFAULT_OBJECTIVE":"10x (Mitutoyo)"
+    "DEFAULT_OBJECTIVE":"20x (Olympus)"
   },
   "DISPLAY":{
     "DEFAULT_SAVING_PATH":"/home/pharmbio/Downloads"

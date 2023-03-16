@@ -832,13 +832,13 @@ class BrightfieldSavingMode(str,Enum):
 @TypecheckClass(check_assignment=True)
 class MutableMachineConfiguration(QObject):
     # things that can change in hardware (manual changes)
-    DEFAULT_OBJECTIVE:str = '20x (Olympus)'
+    DEFAULT_OBJECTIVE:str = "20x (Olympus)"
     WELLPLATE_FORMAT:str = "Generic 384"
 
     # things that can change in software
     DEFAULT_TRIGGER_MODE:TriggerMode = TriggerMode.SOFTWARE
     FOCUS_MEASURE_OPERATOR:FocusMeasureOperators = FocusMeasureOperators.LAPE
-    MULTIPOINT_AUTOFOCUS_CHANNEL:str = 'Fluorescence 561 nm Ex'
+    MULTIPOINT_AUTOFOCUS_CHANNEL:str = "Fluorescence 561 nm Ex"
     MULTIPOINT_BF_SAVING_OPTION:BrightfieldSavingMode = BrightfieldSavingMode.RAW
 
     objective_change:Signal=Signal(str)
