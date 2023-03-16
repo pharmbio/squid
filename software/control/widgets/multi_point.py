@@ -347,12 +347,15 @@ class MultiPointWidget(QObject):
         self.entry_dt.setValue(new_grid_data.t.d)
         self.entry_Nt.setValue(new_grid_data.t.N)
 
+        # manually call callback to refresh acquisition preview in navigation viewer widget
+        self.grid_changed(Nxy_has_changed=True)
+
         for row_i,row in enumerate(new_grid_data.mask):
             for column_i,element in enumerate(row):
                 self.toggle_well_grid_selection(_event_data=None,row=row_i,column=column_i,override_selected_state=bool(element))
 
         # manually call callback to refresh acquisition preview in navigation viewer widget
-        self.grid_changed(True)
+        self.grid_changed(Nxy_has_changed=False)
 
     @TypecheckFunction
     def get_grid_data(self)->WellGridConfig:
