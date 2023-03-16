@@ -38,7 +38,7 @@ def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidg
             ],
             [
                 Checkbox(
-                    "Load laser AF data",
+                    "Move to Z reference",
                     tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
                     checked=False,
                     enabled=laser_af_reference_is_present,
@@ -48,6 +48,7 @@ def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidg
             ],
             [
                 Label(f"Timestamp: {config.timestamp}"),
+                Label(f"Objective: {config.objective}"),
             ],
             GridItem(
                 Button("Load this reference",on_clicked=lambda _,w=workaround:workaround_default_callback(file,w)),
