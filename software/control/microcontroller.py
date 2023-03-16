@@ -633,8 +633,7 @@ class Microcontroller:
             time.sleep(time_step)
             if not timeout_limit_s is None:
                 if time.time() - timestamp_start > timeout_limit_s:
-                    print(timeout_msg)
-                    exit()
+                    raise RuntimeError(timeout_msg)
 
     # signed_int type is actually int64 (?)
     @TypecheckFunction
