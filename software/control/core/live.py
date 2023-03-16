@@ -168,7 +168,7 @@ class LiveController(QObject):
             if not self.for_displacement_measurement:
                 self.turn_on_illumination()
             else:
-                self.microcontroller.turn_on_AF_laser()
+                self.microcontroller.turn_on_AF_laser(completion={})
 
             self.camera.send_trigger()
 
