@@ -3,7 +3,7 @@ from qtpy.QtCore import Qt, Signal, QItemSelectionModel
 from qtpy.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem, QAbstractItemView
 from qtpy.QtGui import QBrush
 
-from control._def import *
+from control._def import MACHINE_CONFIG,OBJECTIVES,OBJECTIVE_NAMES,WELLPLATE_FORMATS,WELLPLATE_TYPE_IMAGE,CAMERA_PIXEL_SIZE_UM,Acquisition,WellplateFormatPhysical,WELLPLATE_NAMES
 from control.gui import *
 
 from typing import Optional, Union, List, Tuple
@@ -75,6 +75,7 @@ class NavigationViewer(QFrame):
         self.history_fovs=[]
 
         self.set_wellplate_type(sample)
+        MACHINE_CONFIG.MUTABLE_STATE.objective_change.connect(lambda new_objective_str:self.set_wellplate_type(wellplate_type=self.sample))
 
         MACHINE_CONFIG.MUTABLE_STATE.wellplate_format_change.connect(self.set_wellplate_type)
 
@@ -398,7 +399,7 @@ class WellWidget(QWidget):
                 if wellplate_name.startswith("Generic") and wellplate_name.endswith(str(num_wells)):
                     sorted_wellplate_names.append(wellplate_name)
                     break
-                
+
             # after (potentially) adding generic plate of size to list, add all others with same number of wells
             for wellplate_name in list(WELLPLATE_NAMES):
                 if wellplate_name.split("-")[0]==str(num_wells):
@@ -416,11 +417,19 @@ class WellWidget(QWidget):
                 wellplate_type_tooltip+="\n\tBrand: <unknown>"
             wellplate_dropdown_tooltip_str+=wellplate_type_tooltip+"\n\n"
 
+        self.objectives=OBJECTIVE_NAMES
+
         self.interactive_widgets.wellplate_dropdown == Dropdown(
             items=self.wellplate_types,
             current_index=self.wellplate_types.index(MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT),
             tooltip=wellplate_dropdown_tooltip_str,
             on_currentIndexChanged=self.change_wellplate_type_by_index
+        ).widget
+        self.interactive_widgets.objective_dropdown == Dropdown(
+            items=self.objectives,
+            current_index=self.objectives.index(MACHINE_CONFIG.MUTABLE_STATE.DEFAULT_OBJECTIVE),
+            tooltip="Change objective to the currently installed one.\n\nActually changing the objective needs to be done manually though.\n\nThis is just for metadata and the size of the FOV in the imaging preview.",
+            on_currentIndexChanged=lambda new_index:print(f"{new_index=}") or setattr(MACHINE_CONFIG.MUTABLE_STATE,"DEFAULT_OBJECTIVE",self.objectives[new_index])
         ).widget
 
         self.setLayout(VBox(
@@ -429,10 +438,11 @@ class WellWidget(QWidget):
                 format = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,
             ),
             HBox(
-                Label("Wellplate Type:").widget,
+                self.interactive_widgets.clear_well_selection == Button("Deselect all",tooltip="Deselects all wells in the well selection widget above.",on_clicked=lambda _btn:self.interactive_widgets.well_selection.set_selected_wells(new_selection=[])).widget,
+                Label("Wellplate:").widget,
                 self.interactive_widgets.wellplate_dropdown,
-                Button("Clear history",tooltip="Clear history of images positions in widget below.\nLightblue squares below show which positions have recently been imaged.\nThis has no impact on the function of the program.",on_clicked=lambda _btn:self.interactive_widgets.navigation_viewer.clear_history()).widget,
-                self.interactive_widgets.clear_well_selection == Button("Clear selection",tooltip="Deselects all wells in the well selection widget above.",on_clicked=lambda _btn:self.interactive_widgets.well_selection.set_selected_wells(new_selection=[])).widget,
+                Label("Objective:").widget,
+                self.interactive_widgets.objective_dropdown,
             ),
             self.interactive_widgets.navigation_viewer == NavigationViewer(
                 sample = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,
