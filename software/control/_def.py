@@ -849,6 +849,7 @@ class MutableMachineConfiguration(QObject):
     brightfield_saving_mode_change:Signal=Signal(BrightfieldSavingMode)
 
     def __setattr__(self,name,value):
+        super().__setattr__(name,value)
         {
             "DEFAULT_OBJECTIVE":self.objective_change,
             "WELLPLATE_FORMAT":self.wellplate_format_change,
@@ -857,7 +858,6 @@ class MutableMachineConfiguration(QObject):
             "MULTIPOINT_AUTOFOCUS_CHANNEL":self.autofocus_channel_change,
             "MULTIPOINT_BF_SAVING_OPTION":self.brightfield_saving_mode_change,
         }[name].emit(value)
-        super().__setattr__(name,value)
 
     def from_json(json_data:dict):
         return MutableMachineConfiguration(**json_data)
@@ -909,7 +909,7 @@ OBJECTIVES:Dict[str,ObjectiveData]={
     ),
     '10x (Olympus)':ObjectiveData(
         magnification=10,
-        NA=0.25,
+        NA=0.3,
         tube_lens_f_mm=180,
         id="UPLFLN10X2",
         name="Olympus Plan Fluorite Objectives (UPLFLN) 10x",
@@ -924,6 +924,7 @@ OBJECTIVES:Dict[str,ObjectiveData]={
         product_link="https://www.olympus-lifescience.com/en/objectives/detail/0-DIRECTORY%3A%3ADirFrontend-itemId.511706530.html",
     ),
 }
+OBJECTIVE_NAMES=list(OBJECTIVES.keys())
 
 @TypecheckClass
 class MachineConfiguration:
