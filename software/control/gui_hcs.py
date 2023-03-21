@@ -3,6 +3,7 @@ import time, math, os
 from datetime import datetime
 from pathlib import Path
 from glob import glob
+import traceback
 
 from qtpy.QtCore import Qt, QEvent, Signal
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
@@ -350,7 +351,8 @@ class Gui(QMainWindow):
             )
         
         except Exception as e:
-            MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {str(e)}").run()
+            msg_text:str=str(e)+"\n"+"\n".join(traceback.format_tb(e.__traceback__))
+            MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {msg_text}").run()
             self.set_all_interactible_enabled(set_enabled=True)
             return AcquisitionStartResult(whole_acquisition_config,exception=e)
         
