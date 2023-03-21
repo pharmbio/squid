@@ -107,30 +107,18 @@ class MultiPointWorker(QObject):
         self.progress.start_time=time.time()
         try:
             while self.time_point < self.Nt:
+                self.run_single_time_point()
+
+                if self.multiPointController.abort_acqusition_requested:
+                    raise AbortAcquisitionException()
+
+                self.time_point = self.time_point + 1
+
                 # continous acquisition
-                if self.dt == 0.0:
-                    self.run_single_time_point()
-
-                    if self.multiPointController.abort_acqusition_requested:
-                        raise AbortAcquisitionException()
-
-                    self.time_point = self.time_point + 1
-
-                # timed acquisition
-                else:
-                    self.run_single_time_point()
-
-                    if self.multiPointController.abort_acqusition_requested:
-                        raise AbortAcquisitionException()
-
+                if self.dt != 0.0:
                     if self.Nt==1:
+                        self.time_point -= 1
                         break
-
-                    self.time_point = self.time_point + 1
-                    # check if the aquisition has taken longer than dt or integer multiples of dt, if so skip the next time point(s)
-                    while time.time() > self.timestamp_acquisition_started + self.time_point*self.dt:
-                        print('skip time point ' + str(self.time_point+1))
-                        self.time_point = self.time_point+1
 
                     if self.time_point == self.Nt:
                         break # no waiting after taking the last time point
@@ -138,6 +126,9 @@ class MultiPointWorker(QObject):
                     # wait until it's time to do the next acquisition
                     while time.time() < self.timestamp_acquisition_started + self.time_point*self.dt:
                         time.sleep(0.05)
+
+            self.progress.last_completed_action="finished acquisition"
+            self.signal_new_acquisition.emit(self.progress)
                         
         except AbortAcquisitionException:
             self.progress.last_completed_action="acquisition_cancelled"
@@ -431,7 +422,7 @@ class MultiPointWorker(QObject):
 
                 if self.Nt > 1:
                     # for each time point, create a new folder
-                    current_path = str(self.output_path/self.time_point)
+                    current_path = str(Path(self.output_path)/f"t{self.time_point}")
                     self.current_path=current_path
                     os.mkdir(current_path)
                 else:
@@ -490,9 +481,6 @@ class MultiPointWorker(QObject):
 
                 coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                 self.navigation.enable_joystick_button_action = True
-
-                self.progress.last_completed_action="finished acquisition"
-                self.signal_new_acquisition.emit(self.progress)
 
 class MultiPointController(QObject):
 
