@@ -543,24 +543,15 @@ class WellplateFormatPhysical:
 
         return None
 
-    def limit_safe(self,calibrated:bool=False)->"StagePositionLimits":
-        if calibrated:
-            return StagePositionLimits(
-                X_NEGATIVE = 10.0,
-                X_POSITIVE = 112.5,
-                Y_NEGATIVE = 6.0,
-                Y_POSITIVE = 76.0,
-                Z_POSITIVE = 6.0,
-            )
-        else:
-            return StagePositionLimits(
-                X_NEGATIVE = 10.0,
-                X_POSITIVE = 112.5,
-                Y_NEGATIVE = 6.0,
-                Y_POSITIVE = 76.0,
-                Z_POSITIVE = 6.0,
-            )
-    
+    def limit_safe(self)->"StagePositionLimits":
+        return StagePositionLimits(
+            X_NEGATIVE = 10.0,
+            X_POSITIVE = 112.5,
+            Y_NEGATIVE = 6.0,
+            Y_POSITIVE = 76.0,
+            Z_POSITIVE = 6.7,
+        )
+        
     def limit_unsafe(self,calibrated:bool=False)->"StagePositionLimits":
         physical_wellplate_format=self
 
@@ -588,7 +579,7 @@ class WellplateFormatPhysical:
             Y_NEGATIVE = y_start_mm,
             Y_POSITIVE = y_end_mm,
 
-            Z_POSITIVE = 6.0,
+            Z_POSITIVE = 6.7,
         )
 
     @TypecheckFunction
@@ -803,7 +794,7 @@ class StagePositionLimits:
     X_NEGATIVE:float = 10.0
     Y_POSITIVE:float = 76.0
     Y_NEGATIVE:float = 6.0
-    Z_POSITIVE:float = 6.0
+    Z_POSITIVE:float = 6.7
 
     # the following limits that have popped up in other places: (likely used for another stage type)
     #   X_POSITIVE:float = 56
@@ -1024,8 +1015,7 @@ class MachineConfiguration:
 
     AF:AutofocusConfig=AutofocusConfig()
 
-    HARDWARE_STAGE_POS_LIMIT_Z_POSITIVE:float=6.0
-    SOFTWARE_POS_LIMIT:StagePositionLimits=WELLPLATE_FORMATS[MutableMachineConfiguration.WELLPLATE_FORMAT].limit_safe(calibrated=False)
+    SOFTWARE_POS_LIMIT:StagePositionLimits=WELLPLATE_FORMATS[MutableMachineConfiguration.WELLPLATE_FORMAT].limit_safe()
 
     ENABLE_STROBE_OUTPUT:bool = False
 
@@ -1091,8 +1081,7 @@ SOFTWARE_NAME="SQUID - HCS Microscope Control Software"
 
 MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
 
-#print(f"  safe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=False)}")
-#print(f"  safe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe(calibrated=True)}")
+#print(f"  safe             : {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe()}")
 #print(f"unsafe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=False)}")
 #print(f"unsafe   calibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=True)}")
 
