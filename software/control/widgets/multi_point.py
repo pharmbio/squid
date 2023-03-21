@@ -76,26 +76,53 @@ class ComponentLabels(str,Enum):
 UNSELECTED_GRID_POSITION_COLOR="lightgrey"
 SELECTED_GRID_POSITION_COLOR="lightblue"
 
-delta_x_min=0.1
-delta_x_max=5.0
-delta_x_step=0.1
-delta_y_min=0.1
-delta_y_max=5.0
-delta_y_step=0.1
-delta_z_min=0.1
-delta_z_max=None
-delta_z_step=0.2
-delta_t_min=1.0
-delta_t_max=None
-delta_t_step=0.1
-NX_min=1
-NX_max=10
-NY_min=1
-NY_max=10
-NZ_min=1
-NZ_max=10
-Nt_min=1
-Nt_max=10
+@TypecheckClass
+class IntRange:
+    min:Optional[int]=None
+    max:Optional[int]=None
+    step:int=1
+@TypecheckClass
+class FloatRange:
+    min:Optional[float]=None
+    max:Optional[float]=None
+    step:float
+
+DELTA_X=FloatRange(
+    min=0.1,
+    max=5.0,
+    step=0.1
+)
+DELTA_Y=FloatRange(
+    min=0.1,
+    max=5.0,
+    step=0.1
+)
+DELTA_Z=FloatRange(
+    min=0.1,
+    max=None,
+    step=0.1
+)
+DELTA_T=FloatRange(
+    min=1.0,
+    max=3600.0,
+    step=1.0
+)
+NX=IntRange(
+    min=1,
+    max=10
+)
+NY=IntRange(
+    min=1,
+    max=10
+)
+NZ=IntRange(
+    min=1,
+    max=10
+)
+NT=IntRange(
+    min=1,
+    max=50
+)
 
 class MultiPointWidget(QObject):
     @property
@@ -185,9 +212,9 @@ class MultiPointWidget(QObject):
 
         # add imaging grid configuration options
         self.entry_deltaX = SpinBoxDouble(
-            minimum=delta_x_min,
-            maximum=delta_x_max,
-            step=delta_x_step,
+            minimum=DELTA_X.min,
+            maximum=DELTA_X.max,
+            step=DELTA_X.step,
             default=self.multipointController.deltaX,
             num_decimals=3,
             keyboard_tracking=False,
@@ -195,15 +222,15 @@ class MultiPointWidget(QObject):
             on_valueChanged=lambda _new_value:self.grid_changed(True)
         ).widget
 
-        self.entry_NX = SpinBoxInteger(minimum=NX_min,maximum=NX_max,default=self.multipointController.NX,keyboard_tracking=False,on_valueChanged=[
+        self.entry_NX = SpinBoxInteger(minimum=NX.min,maximum=NX.max,default=self.multipointController.NX,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaX.setDisabled(new_value==1),
             lambda _btn:self.grid_changed(True)
         ]).widget
 
         self.entry_deltaY = SpinBoxDouble(
-            minimum=delta_y_min,
-            maximum=delta_y_max,
-            step=delta_y_step,
+            minimum=DELTA_Y.min,
+            maximum=DELTA_Y.max,
+            step=DELTA_Y.step,
             default=self.multipointController.deltaY,
             num_decimals=3,
             keyboard_tracking=False,
@@ -211,36 +238,36 @@ class MultiPointWidget(QObject):
             on_valueChanged=lambda _new_value:self.grid_changed(True)
         ).widget
         
-        self.entry_NY = SpinBoxInteger(minimum=NY_min,maximum=NY_max,default=self.multipointController.NY,keyboard_tracking=False,on_valueChanged=[
+        self.entry_NY = SpinBoxInteger(minimum=NY.min,maximum=NY.max,default=self.multipointController.NY,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaY.setDisabled(new_value==1),
             lambda _btn:self.grid_changed(True)
         ]).widget
 
         self.entry_deltaZ = SpinBoxDouble(
-            minimum=delta_z_min,
-            maximum=delta_z_max,
-            step=delta_y_step,
+            minimum=DELTA_Z.min,
+            maximum=DELTA_Z.max,
+            step=DELTA_Z.step,
             default=self.multipointController.deltaZ,
             num_decimals=3,
             keyboard_tracking=False,
             enabled=self.multipointController.NZ > 1
         ).widget
         
-        self.entry_NZ = SpinBoxInteger(minimum=NZ_min,maximum=NZ_max,default=self.multipointController.NZ,keyboard_tracking=False,on_valueChanged=[
+        self.entry_NZ = SpinBoxInteger(minimum=NZ.min,maximum=NZ.max,default=self.multipointController.NZ,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaZ.setDisabled(new_value==1),
         ]).widget
         
         self.entry_dt = SpinBoxDouble(
-            minimum=delta_t_min,
-            maximum=delta_t_max,
-            step=delta_t_step,
+            minimum=DELTA_T.min,
+            maximum=DELTA_T.max,
+            step=DELTA_T.step,
             default=self.multipointController.deltat,
-            num_decimals=3,
+            num_decimals=1,
             keyboard_tracking=False,
             enabled=self.multipointController.Nt > 1
         ).widget
 
-        self.entry_Nt = SpinBoxInteger(minimum=Nt_min,maximum=Nt_max,default=self.multipointController.Nt,keyboard_tracking=False,on_valueChanged=[
+        self.entry_Nt = SpinBoxInteger(minimum=NT.min,maximum=NT.max,default=self.multipointController.Nt,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_dt.setDisabled(new_value==1),
         ]).widget
 
