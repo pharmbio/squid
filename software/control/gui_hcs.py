@@ -413,7 +413,8 @@ class Gui(QMainWindow):
             approx_time_left=time_elapsed_since_start/self.acquisition_progress*(self.total_num_acquisitions-self.acquisition_progress)
 
             elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
-            self.acquisition_widget.progress_bar.setFormat(f"cancelled. (acquired {progress_data.completed_steps}/{self.total_num_acquisitions:4} images in {elapsed_time_str})")
+            progress_bar_text:str=f"cancelled. (acquired {progress_data.completed_steps}/{self.total_num_acquisitions:4} images in {elapsed_time_str})"
+            self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             self.set_all_interactible_enabled(set_enabled=True)
             web_service.set_status(progress=progress_bar_text)
             return
