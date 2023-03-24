@@ -12,6 +12,26 @@ from qtpy.QtCore import Signal, QObject
 import control.gxipy as gx
 import numpy
 
+@TypecheckClass
+class Version:
+    major:int
+    minor:int
+    patch:int
+
+    def to_json(self)->dict:
+        return dict(
+            major=self.major,
+            minor=self.minor,
+            patch=self.patch,
+        )
+
+    def from_json(d:dict)->"Version":
+        return Version(
+            major=d["major"],
+            minor=d["minor"],
+            patch=d["patch"],
+        )
+
 class AcquisitionImageData:
     image:numpy.ndarray
     path:str
