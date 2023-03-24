@@ -3,7 +3,7 @@ from qtpy.QtWidgets import QFrame, QPushButton, QLineEdit, QDoubleSpinBox, \
     QSpinBox, QListWidget, QGridLayout, QCheckBox, QLabel, QAbstractItemView, \
     QComboBox, QHBoxLayout, QVBoxLayout, QMessageBox, QFileDialog, QProgressBar, \
     QDesktopWidget, QWidget, QTableWidget, QSizePolicy, QTableWidgetItem, \
-    QApplication, QTabWidget, QStyleOption, QStyle
+    QApplication, QTabWidget, QStyleOption, QStyle, QMainWindow
 from qtpy.QtGui import QIcon, QPainter
 
 from typing import Optional, Union, List, Tuple, Callable, Any
@@ -501,6 +501,31 @@ class MessageBox:
             return question_answer
         else:
             assert False, "unreachable (invalid messsagebox mode)"
+
+class Window(QMainWindow):
+    """
+    create new window
+
+    parent needs to be set for the window to show up.
+    window can escape display area of parent though.
+    """
+    @TypecheckFunction
+    def __init__(self,
+        widget:QWidget,
+        parent:QWidget,
+
+        show_now:bool=True,
+
+        title:str="",
+    ):
+        super().__init__(parent=parent)
+
+        self.setCentralWidget(widget)
+
+        self.setWindowTitle(title)
+
+        if show_now:
+            self.show()
 
 class BlankWidget(QWidget):
     def __init__(self,
