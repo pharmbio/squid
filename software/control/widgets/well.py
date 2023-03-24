@@ -460,6 +460,13 @@ class WellWidget(QWidget):
         self.change_wellplate_type_by_type(new_wellplate_type)
 
     @TypecheckFunction
+    def set_objective(self,new_objective:str):
+        new_objective_index=self.objectives.index(new_objective)
+        if new_objective_index==-1:
+            raise ValueError(f"attempted to load objective '{new_objective}' from config file. this objective is invalid.")
+        self.interactive_widgets.objective_dropdown.setCurrentIndex(new_objective_index)
+
+    @TypecheckFunction
     def change_wellplate_type_by_type(self,new_wellplate_type:str):
         self.interactive_widgets.well_selection.set_wellplate_type(new_wellplate_type)
         self.interactive_widgets.navigation_viewer.set_wellplate_type(new_wellplate_type)
@@ -481,6 +488,7 @@ class WellWidget(QWidget):
     def get_all_interactive_widgets(self)->List[QWidget]:
         return [
             self.interactive_widgets.wellplate_dropdown,
+            self.interactive_widgets.objective_dropdown,
             self.interactive_widgets.well_selection,
             
             self.interactive_widgets.clear_well_selection,

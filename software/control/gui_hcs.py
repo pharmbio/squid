@@ -591,6 +591,7 @@ class Gui(QMainWindow):
         self.acquisition_widget.set_grid_data(config_data.grid_config)
 
         self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
+        self.well_widget.set_objective(config_data.objective)
 
         self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
         
