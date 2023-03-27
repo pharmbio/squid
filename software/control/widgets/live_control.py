@@ -84,6 +84,8 @@ class LiveControlWidget(QFrame):
             QApplication.processEvents()
 
             if keep_light_on:
+                restore_control_illumination=self.liveController.control_illumination
+
                 self.liveController.control_illumination=True
                 self.liveController.turn_on_illumination()
                 self.liveController.control_illumination=False
@@ -106,7 +108,8 @@ class LiveControlWidget(QFrame):
             if keep_light_on:
                 self.liveController.control_illumination=True
                 self.liveController.turn_off_illumination()
-                self.liveController.control_illumination=False
+                
+                self.liveController.control_illumination=restore_control_illumination
 
             self.btn_live.setText(LIVE_BUTTON_IDLE_TEXT)
             QApplication.processEvents()

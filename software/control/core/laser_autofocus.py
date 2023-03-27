@@ -174,7 +174,7 @@ class LaserAutofocusController(QObject):
 
         self.microcontroller.turn_off_AF_laser()
         self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
-        
+
         self.x_reference = x
         self.signal_displacement_um.emit(0)
 
@@ -263,31 +263,16 @@ class LaserAutofocusController(QObject):
             # find peaks
             peak_locations,_ = scipy.signal.find_peaks(tmp,distance=100)
             idx = np.argsort(tmp[peak_locations])
-            try:
+            if len(idx)>0:
                 peak_0_location = peak_locations[idx[-1]]
-            except IndexError:
-                raise Exception("did not find first peak in laser AF image. this is a problem.")
-            try:
+            if len(idx)>1:
                 peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
-            except IndexError:
-                raise Exception("did not find second peak in laser AF image. this is a problem.")
+            if len(idx)==0:
+                raise Exception("did not find any peaks in laser AF signal. this is a major problem.")
             
-            '''
-            self.spot_spacing_pixels = peak_1_location-peak_0_location
-
-            # find peaks - alternative
-            if self.spot_spacing_pixels is not None:
-                peak_locations,_ = scipy.signal.find_peaks(tmp,distance=100)
-                idx = np.argsort(tmp[peak_locations])
-                peak_0_location = peak_locations[idx[-1]]
-                peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
-                self.spot_spacing_pixels = peak_1_location-peak_0_location
-            else:
-                peak_0_location = np.argmax(tmp)
-                peak_1_location = peak_0_location + self.spot_spacing_pixels
-            '''
             # choose which surface to use
             if self.use_glass_top:
+                assert len(idx)>1, "only found a single peak in the laser af signal, but trying to use the second one."
                 x1 = peak_1_location
             else:
                 x1 = peak_0_location

@@ -114,15 +114,15 @@ class LaserAutofocusControlWidget(QFrame):
 
         try:
             self.laserAutofocusController.initialize_auto()
-            initialization_failed=False
-        except:
-            initialization_failed=True
+            initialization_error=None
+        except Exception as e:
+            initialization_error=e
 
         self.btn_initialize.setDisabled(False)
         self.btn_initialize.setText(INITIALIZE_BUTTON_TEXT_IDLE)
 
-        if initialization_failed:
-            MessageBox(title="Could not initialize laser AF",mode="information",text="there was a problem initializing the laser autofocus. is the plate in focus?").run()
+        if not initialization_error is None:
+            MessageBox(title="Could not initialize laser AF",mode="information",text=f"there was a problem initializing the laser autofocus. is the plate in focus? {initialization_error=}").run()
             return
 
         self.on_focus_in_progress(False)

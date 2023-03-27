@@ -500,7 +500,7 @@ class Core(QObject):
             microcontroller=self.microcontroller,
             use_streamhandler=True,
 
-            control_illumination=False,
+            control_illumination=True,
             for_displacement_measurement=True,
         )
 
