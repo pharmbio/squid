@@ -660,15 +660,11 @@ class Microcontroller:
         cmd[3] = level
         self.send_command(cmd)
 
-    def turn_on_AF_laser(self,completion:Optional[Any]=None):
+    def turn_on_AF_laser(self):
         self.set_pin_level(MCU_PINS.AF_LASER,1)
-        if not completion is None:
-            self.wait_till_operation_is_completed(**completion)
 
-    def turn_off_AF_laser(self,completion:Optional[Any]=None):
+    def turn_off_AF_laser(self):
         self.set_pin_level(MCU_PINS.AF_LASER,0)
-        if not completion is None:
-            self.wait_till_operation_is_completed(**completion)
 
     @ property
     def mm_per_ustep_x(self)->float:

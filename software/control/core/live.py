@@ -137,13 +137,23 @@ class LiveController(QObject):
     # illumination control
     def turn_on_illumination(self):
         if self.control_illumination and not self.illumination_on:
-            self.microcontroller.turn_on_illumination()
+            if self.for_displacement_measurement:
+                self.microcontroller.turn_on_AF_laser()
+
+            else:
+                self.microcontroller.turn_on_illumination()
+
             self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
             self.illumination_on = True
 
     def turn_off_illumination(self):
         if self.control_illumination and self.illumination_on:
-            self.microcontroller.turn_off_illumination()
+            if self.for_displacement_measurement:
+                self.microcontroller.turn_off_AF_laser()
+
+            else:
+                self.microcontroller.turn_off_illumination()
+
             self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
             self.illumination_on = False
 
@@ -165,10 +175,7 @@ class LiveController(QObject):
         self.time_image_requested=time.time()
         #print(f"taking an image (img id: {self.trigger_ID:9} )")
         if self.trigger_mode == TriggerMode.SOFTWARE:
-            if not self.for_displacement_measurement:
-                self.turn_on_illumination()
-            else:
-                self.microcontroller.turn_on_AF_laser(completion={})
+            self.turn_on_illumination()
 
             self.camera.send_trigger()
 
@@ -188,10 +195,7 @@ class LiveController(QObject):
         #print(f"real imaging time: {imaging_time*1000:6.3f} ms") # this shows a 40ms delay vs exposure time. why?
 
         if self.trigger_mode == TriggerMode.SOFTWARE:
-            if not self.for_displacement_measurement:
-                self.turn_off_illumination()
-            else:
-                self.microcontroller.turn_off_AF_laser()
+            self.turn_off_illumination()
 
         self.image_acquisition_in_progress=False
         self.image_acquisition_queued=False

@@ -167,9 +167,14 @@ class LaserAutofocusController(QObject):
         self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
         self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
 
-        self.microcontroller.turn_on_AF_laser(completion={})
+        self.microcontroller.turn_on_AF_laser()
+        self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
+
         x,y = self._get_laser_spot_centroid()
-        self.microcontroller.turn_off_AF_laser(completion={})
+
+        self.microcontroller.turn_off_AF_laser()
+        self.microcontroller.wait_till_operation_is_completed(timeout_limit_s=None,time_step=0.001)
+        
         self.x_reference = x
         self.signal_displacement_um.emit(0)
 
@@ -261,11 +266,11 @@ class LaserAutofocusController(QObject):
             try:
                 peak_0_location = peak_locations[idx[-1]]
             except IndexError:
-                raise Exception("did not find first peak in laser AF image. this is a bug.")
+                raise Exception("did not find first peak in laser AF image. this is a problem.")
             try:
                 peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
             except IndexError:
-                raise Exception("did not find second peak in laser AF image. this is a bug.")
+                raise Exception("did not find second peak in laser AF image. this is a problem.")
             
             '''
             self.spot_spacing_pixels = peak_1_location-peak_0_location

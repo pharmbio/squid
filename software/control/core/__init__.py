@@ -128,6 +128,54 @@ class LaserAutofocusData:
 DEFAULT_CELL_LINE_STR:str="<unknown>"
 DEFAULT_PLATE_TYPE_STR:str="Generic 384"
 
+class ConfigLoadCondition(str,Enum):
+    """
+    condition under which a section of the a config file is loaded in the given context
+
+    ALWAYS:
+        always load the section
+
+    WHEN_EMPTY:
+        only load the section when the target section is empty
+    
+        e.g. to avoid overwriting already exsiting sections
+
+        may not technically make sense for all sections (i.e. unless the section is raw text, you should only select 'always' or 'never')
+    
+    NEVER:
+        never load the section
+    """
+    ALWAYS="always"
+    """ always load the section """
+    WHEN_EMPTY="when empty"
+    """
+    only load the section when the target section is empty
+    
+    e.g. to avoid overwriting already exsiting sections
+
+    may not technically make sense for all sections (i.e. unless the section is raw text, you should only select 'always' or 'never')
+    """
+    NEVER="never"
+    """ never load the section """
+
+@TypecheckClass
+class ConfigLoadConditionSet:
+    LOAD_PROJECT_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_PLATE_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_CELL_LINE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_WELL_LIST:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_GRID_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_AF_SOFTWARE_CHANNEL:ConfigLoadCondition=ConfigLoadCondition.NEVER
+    LOAD_AF_LASER_ON:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_AF_LASER_REFERENCE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_TRIGGER_MODE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_PIXEL_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_PLATE_TYPE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_CHANNEL_ORDER:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_CHANNEL_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_IMAGE_FILE_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_OBJECTIVE:ConfigLoadCondition=ConfigLoadCondition.NEVER
+
 @TypecheckClass
 class AcquisitionConfig:
     output_path:str
@@ -462,7 +510,14 @@ class Core(QObject):
         LASER_AF_ENABLED=True
         if LASER_AF_ENABLED:
             self.displacementMeasurementController = DisplacementMeasurementController()
-            self.laserAutofocusController          = core.LaserAutofocusController(self.microcontroller,self.focus_camera.camera,self.liveController_focus_camera,self.navigation,has_two_interfaces=MACHINE_CONFIG.HAS_TWO_INTERFACES,use_glass_top=MACHINE_CONFIG.USE_GLASS_TOP)
+            self.laserAutofocusController          = core.LaserAutofocusController(
+                                                        self.microcontroller,
+                                                        self.focus_camera.camera,
+                                                        self.liveController_focus_camera,
+                                                        self.navigation,
+                                                        has_two_interfaces=MACHINE_CONFIG.HAS_TWO_INTERFACES,
+                                                        use_glass_top=MACHINE_CONFIG.USE_GLASS_TOP
+                                                    )
         else:
             self.displacementMeasurementController=None
             self.laserAutofocusController=None

@@ -44,17 +44,9 @@ class LiveControlWidget(QFrame):
         # note that this references the object in self.configuration_manager.configurations
         self.currentConfiguration:Configuration = self.configuration_manager.configurations[0]
 
-        self.add_components()
-        self.liveController.set_microscope_mode(self.currentConfiguration)
-
-        self.is_switching_mode = False # flag used to prevent from settings being set by twice - from both mode change slot and value change slot; another way is to use blockSignals(True)
-
-        self.stop_requested=False
-
-    def add_components(self):
         self.entry_triggerFPS = SpinBoxDouble(minimum=0.02,maximum=100.0,step=1.0,default=5.0).widget
 
-        self.btn_live=Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,default=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=self.toggle_live).widget
+        self.btn_live=Button(LIVE_BUTTON_IDLE_TEXT,checkable=True,checked=False,default=False,tooltip=LIVE_BUTTON_TOOLTIP,on_clicked=lambda btn:self.toggle_live(btn,keep_light_on=True)).widget
 
         self.camera_pixel_format_widget=Dropdown(
             items=self.liveController.camera.wrapper.pixel_formats,
@@ -77,13 +69,24 @@ class LiveControlWidget(QFrame):
         self.grid.addStretch()
         self.setLayout(self.grid)
 
+        self.liveController.set_microscope_mode(self.currentConfiguration)
+
+        self.is_switching_mode = False # flag used to prevent from settings being set by twice - from both mode change slot and value change slot; another way is to use blockSignals(True)
+
+        self.stop_requested=False
+
     @TypecheckFunction
-    def toggle_live(self,pressed:bool):
+    def toggle_live(self,pressed:bool,keep_light_on:bool=False):
         if pressed:
             self.stop_requested=False
 
             self.btn_live.setText(LIVE_BUTTON_RUNNING_TEXT)
             QApplication.processEvents()
+
+            if keep_light_on:
+                self.liveController.control_illumination=True
+                self.liveController.turn_on_illumination()
+                self.liveController.control_illumination=False
 
             max_fps=float(self.entry_triggerFPS.value())
 
@@ -100,6 +103,10 @@ class LiveControlWidget(QFrame):
                     self.on_new_frame(new_image)
                     last_image_time=current_time
 
+            if keep_light_on:
+                self.liveController.control_illumination=True
+                self.liveController.turn_off_illumination()
+                self.liveController.control_illumination=False
 
             self.btn_live.setText(LIVE_BUTTON_IDLE_TEXT)
             QApplication.processEvents()

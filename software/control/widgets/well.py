@@ -115,7 +115,7 @@ class NavigationViewer(QFrame):
         camera_pixel_size_in_focus_plane_mm=camera_pixel_size_um/(tube_lens_length_mm/objective_focal_length_mm)*um_to_mm # with a 20x objective, this is 1/3 um
         #print(f"info - camera pixel size in the focus plane in mm: {camera_pixel_size_in_focus_plane_mm:.6f}")
         self.fov_size_mm = image_width_pixels*camera_pixel_size_in_focus_plane_mm
-        print(f"{self.fov_size_mm=}")
+        #print(f"{self.fov_size_mm=}")
 
         self.origin_bottom_left_x = MACHINE_CONFIG.X_ORIGIN_384_WELLPLATE_PIXEL - (MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT)/self.mm_per_pixel
         self.origin_bottom_left_y = MACHINE_CONFIG.Y_ORIGIN_384_WELLPLATE_PIXEL - (MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT)/self.mm_per_pixel
