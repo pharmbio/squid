@@ -14,7 +14,18 @@ MOVE_TO_TARGET_BUTTON_TEXT_IDLE="Move to target"
 MOVE_TO_TARGET_BUTTON_TEXT_IN_PROGRESS="Move to target (in progress)"
 DEINITIALIZE_BUTTON_TEXT="Deinitialize (!)"
 
-BTN_INITIALIZE_TOOLTIP="after moving into focus, click this. (only needs to be done once after program startup, this does some internal setup)"
+BTN_INITIALIZE_TOOLTIP="""
+Prepare the Laser Autofocus system to work with the current plate type
+
+This only needs to be done once after program start-up \n(or after putting a new plate type into the microscope. It does not need to be re-run after putting a new plate of the same type on the microscope though.)
+
+If the Laser AF system is initialized while cells are not in focus, the system may not function reliably.
+It is therefore recommended to initialize the system immediately before the first reference is set, i.e. \n\tafter program start, bring cells into focus, click this button, then set the reference plane afterwards.
+
+Loading the Laser AF data from a configuration file will also load this data, so\nafter loading a file that includes Laser AF data, there is no need to click this button.
+
+Note: If you press this button after you previously pressed 'set as reference', you will need to set a reference again.
+"""
 BTN_SET_REFERENCE_TOOLTIP="after moving into focus, click this to set the current focus plane. when 'moving to target' after this has been clicked, the target will always be relative to this plane."
 BTN_MEASURE_DISPLACEMENT_TOOLTIP="measure distance between current and reference focus plane."
 BTN_MOVE_TO_TARGET_TOOLTIP="move to a focus plane with a given distance to the reference plane that was set earlier."
@@ -27,6 +38,19 @@ WARNING: This will remove all laser af related configuration that was created si
 You will be asked to confirm this action if you click this button.
 
 Primarily used to clear laser af config data so that other data can be read from a config file (which by design will not overwrite existing data)
+"""
+BTN_MOVE_Z_REF_TEXT="Move to Z reference"
+BTN_MOVE_Z_REF_TOOLTIP="""
+Move to Z reference
+
+When the laser AF reference was set, the Z height of the reference was saved internally.
+Clicking this button allows you to return to this height.
+
+Note: This height should be _close_ to the focus plane, but might not be the focus plane directly.
+      It should allow you to move to this reference height, and then reliably focus on a single 'move to target' button click afterwards.
+
+e.g. To load a new plate, you need to enter and then leave the loading position.
+     By design, leaving the loading position will NOT automatically return to the z reference (in fact, it might be quite far off), hence this button.
 """
 
 class LaserAutofocusControlWidget(QFrame):
@@ -45,7 +69,12 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_initialize = Button(INITIALIZE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_INITIALIZE_TOOLTIP,on_clicked=self.initialize).widget
         self.btn_set_reference = Button(SET_REFERENCE_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_SET_REFERENCE_TOOLTIP,on_clicked=self.set_reference).widget
-        self.btn_deinitialize = Button(DEINITIALIZE_BUTTON_TEXT,checkable=False,tooltip=BTN_DEINITIALIZE_TOOLTIP,on_clicked=self.deinitialize).widget
+        self.btn_move_z_ref = Button(
+            BTN_MOVE_Z_REF_TEXT,
+            checkable=False,
+            tooltip=BTN_MOVE_Z_REF_TOOLTIP,
+            on_clicked=self.move_to_ref_z
+        ).widget
 
         self.label_displacement = QLabel()
         self.laserAutofocusController.signal_displacement_um.connect(lambda displacement_um:self.label_displacement.setText(f"{displacement_um:9.3f}"))
@@ -58,7 +87,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.grid = Grid(
             [
                 self.btn_initialize,
-                self.btn_deinitialize,
+                self.btn_move_z_ref,
                 self.btn_set_reference,
             ],
             [
@@ -82,6 +111,11 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.deinitialize(require_confirmation=False)
 
+    def move_to_ref_z(self,_btn=None):
+        self.on_focus_in_progress(True)
+        self.laserAutofocusController.navigation.move_z_to(z_mm=self.laserAutofocusController.reference_z_height_mm,wait_for_completion={})
+        self.on_focus_in_progress(False)
+
     def deinitialize(self,_btn_state=None,require_confirmation:bool=True):
         if require_confirmation:
             answer=MessageBox(title="Deinitialize laser AF?",mode="question",text="are you sure you want to deinitialize the laser AF?\nthis will require you to perform the initialization procedure again (or to load reference data from a file)\nClick Yes to clear the laser af initialization data.").run()
@@ -94,11 +128,12 @@ class LaserAutofocusControlWidget(QFrame):
 
         # with no initialization and no reference, not allowed to do anything
         self.btn_set_reference.setDisabled(True)
-        self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IDLE+" (not initialized)")
+        self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IDLE)
         self.btn_measure_displacement.setDisabled(True)
-        self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE+" (not initialized)")
+        self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE)
         self.btn_move_to_target.setDisabled(True)
-        self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE+" (not initialized)")
+        self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
+        self.btn_move_z_ref.setDisabled(True)
         self.entry_target.setDisabled(True)
 
         self.laser_af_validity_changed.emit(False) # signal that laser af is now invalid
@@ -141,8 +176,10 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.laser_af_validity_changed.emit(False) # when re-initialized, the previous reference is stale (i.e. invalid)
 
-        self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE+" (no reference set)")
-        self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE+" (no reference set)")
+        self.btn_measure_displacement.setText(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE)
+        self.btn_measure_displacement.setDisabled(True)
+        self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
+        self.btn_move_to_target.setDisabled(True)
 
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
@@ -163,6 +200,8 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.btn_set_reference.setDisabled(False)
         self.btn_set_reference.setText(SET_REFERENCE_BUTTON_TEXT_IDLE)
+
+        self.btn_move_z_ref.setDisabled(False)
 
         self.reference_was_set=True
 
@@ -221,6 +260,8 @@ class LaserAutofocusControlWidget(QFrame):
     
     @TypecheckFunction
     def set_reference_data(self,reference:Optional[LaserAutofocusData]):
+        """ load reference data only if data is present """
+
         if reference is None:
             return
 
@@ -249,7 +290,7 @@ class LaserAutofocusControlWidget(QFrame):
     def get_all_interactive_widgets(self)->List[QWidget]:
         return [
             self.btn_initialize,
-            self.btn_deinitialize,
+            self.btn_move_z_ref,
             self.btn_set_reference,
             self.btn_measure_displacement,
             self.btn_move_to_target,
