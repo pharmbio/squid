@@ -58,7 +58,8 @@ def create_referenceFile_widget(
     )
 
     def selective_load(file):
-        w=Window(
+        windowworkaround=dict(window=1)
+        window=Window(
             VBox(*flatten([
                 Label(f"Define for each section of the config file when it should be loaded.\n{ConfigLoadCondition.__doc__}\n"),
                 [
@@ -71,12 +72,13 @@ def create_referenceFile_widget(
                     for l
                     in condition_set.__dict__.keys()
                 ],
-                Button("Load",on_clicked=lambda _,w=workaround:load_callback(file,w))
+                Button("Load",on_clicked=lambda _,w=workaround,ww=windowworkaround:ww["window"].close() and load_callback(file,w))
             ])).widget,
 
             title="Load config file sections when..?",
             parent=parent,
         )
+        windowworkaround["window"]=window
 
     return Dock(
         Grid(
