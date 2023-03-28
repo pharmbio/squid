@@ -130,7 +130,8 @@ DEFAULT_PLATE_TYPE_STR:str="Generic 384"
 
 class ConfigLoadCondition(str,Enum):
     """
-    condition under which a section of the a config file is loaded in the given context
+    Condition under which a section of the a config file is loaded
+        in the given context
 
     ALWAYS:
         always load the section
@@ -138,9 +139,12 @@ class ConfigLoadCondition(str,Enum):
     WHEN_EMPTY:
         only load the section when the target section is empty
     
-        e.g. only load project name when project name in the software GUI is currently empty.
+        e.g. only load project name when project name in the 
+             software GUI is currently empty.
 
-        this option is treated as 'never' where it does not make sense, like for the channel configurations, which can never be empty
+        This option is treated as 'never' where it does not make sense, 
+            like for the channel configurations, which can  never be 
+            empty.
     
     NEVER:
         never load the section
