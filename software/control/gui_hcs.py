@@ -90,7 +90,9 @@ def create_referenceFile_widget(
                     tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
                     checked=False,
                     enabled=laser_af_reference_is_present,
-                    on_stateChanged=lambda _s,w=workaround:w.update({"load_laser_af_data_requested":True})
+                    on_stateChanged=lambda s,w=workaround:w.update(dict(
+                                                                      load_laser_af_data_requested=s==Qt.CheckState.Checked
+                                                                  ))
                 ),
                 Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
             ],
@@ -179,7 +181,7 @@ Software trigger:
     The computer sends separate signals for light on/off, and camera image recording. May require the light to stay on slightly longer than strictly necessary to record an image.
     e.g. to record an image with 50ms exposure time, the light might only need to stay on for little over 50ms, but with software trigger, due to signal delays etc.
          the light may have to stay on for 70ms in total (exemplary), therefore bleaching the cells more than strictly necessary.
-         
+
 Hardware trigger:
     The computer sends a single signal to the microscope to synchronize the light and image recording using internal hardware logic.
     This may reduce the cell bleaching slightly, compared to software trigger.
