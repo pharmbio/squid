@@ -460,10 +460,15 @@ class WellWidget(QWidget):
         self.change_wellplate_type_by_type(new_wellplate_type)
 
     @TypecheckFunction
-    def set_objective(self,new_objective:str):
-        new_objective_index=self.objectives.index(new_objective)
-        if new_objective_index==-1:
+    def set_objective(self,
+        new_objective:str,
+        ignore_invalid:bool=False,
+    ):
+        if not new_objective in self.objectives:
+            if ignore_invalid:
+                return
             raise ValueError(f"attempted to load objective '{new_objective}' from config file. this objective is invalid.")
+        new_objective_index=self.objectives.index(new_objective)
         self.interactive_widgets.objective_dropdown.setCurrentIndex(new_objective_index)
 
     @TypecheckFunction
