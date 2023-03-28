@@ -161,6 +161,32 @@ class ConfigurationDatabase(QMainWindow):
             self.custom_file_load_container.addWidget(self.custom_file_loader)
             print(f"loading file {file}")
 
+CAMERA_PIXEL_FORMAT_TOOLTIP="""
+Set Camera Pixel Format
+
+Sets the number of bits per pixel, e.g. with Mono8, each pixel is represented by 8 bits and can therefore capture 2^8 possible values (256).
+
+More bits per pixel can capture finer details in the cell morphology, but also take up more storage.
+"""
+CAMERA_TRIGGER_TOOLTIP="""
+Camera trigger type
+
+The trigger type refers to the synchronization between the light source and the camera, i.e. \nhow is 'turn light on' - 'record image' - 'turn light off' coordinated.
+
+Allows setting software / hardware trigger for the main imaging Camera.
+
+Software trigger:
+    The computer sends separate signals for light on/off, and camera image recording. May require the light to stay on slightly longer than strictly necessary to record an image.
+    e.g. to record an image with 50ms exposure time, the light might only need to stay on for little over 50ms, but with software trigger, due to signal delays etc.
+         the light may have to stay on for 70ms in total (exemplary), therefore bleaching the cells more than strictly necessary.
+         
+Hardware trigger:
+    The computer sends a single signal to the microscope to synchronize the light and image recording using internal hardware logic.
+    This may reduce the cell bleaching slightly, compared to software trigger.
+
+    (in practice, we dont see a significant difference in terms of bleaching, but a ~5-10% increase in imaging time, compared to software trigger)
+"""
+
 class BasicSettings(QWidget):
     def __init__(self,
         main_camera:Camera,
@@ -180,15 +206,17 @@ class BasicSettings(QWidget):
 
         self.setLayout(VBox(
             HBox(
-                Label("Camera Trigger",tooltip="Camera trigger type. If you don't know this does, chances are you don't need to change it. (Hardware trigger may reduce bleaching effect slightly)"),
+                Label("Camera Trigger",tooltip=CAMERA_TRIGGER_TOOLTIP),
                 self.interactive_widgets.trigger_mode_dropdown == Dropdown(
                     items=TRIGGER_MODES_LIST,
+                    tooltip=CAMERA_TRIGGER_TOOLTIP,
                     current_index=TRIGGER_MODES_LIST.index(TriggerMode.SOFTWARE),
                 ).widget,
-                Label("Camera Pixel Format",tooltip="Change camera pixel format. Larger number of bits per pixel can provide finer granularity (no impact on value range) of the recorded signal, but also takes up more storage."),
+                Label("Camera Pixel Format",tooltip=CAMERA_PIXEL_FORMAT_TOOLTIP),
                 self.interactive_widgets.pixel_format == Dropdown(
                     items=self.main_camera.pixel_formats,
                     current_index=DEFAULT_CAMERA_PIXEL_INDEX_INT,
+                    tooltip=CAMERA_PIXEL_FORMAT_TOOLTIP,
                     on_currentIndexChanged=self.set_main_camera_pixel_format,
                 ).widget,
             ),

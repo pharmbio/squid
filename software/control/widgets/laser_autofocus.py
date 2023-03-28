@@ -26,9 +26,33 @@ Loading the Laser AF data from a configuration file will also load this data, so
 
 Note: If you press this button after you previously pressed 'set as reference', you will need to set a reference again.
 """
-BTN_SET_REFERENCE_TOOLTIP="after moving into focus, click this to set the current focus plane. when 'moving to target' after this has been clicked, the target will always be relative to this plane."
-BTN_MEASURE_DISPLACEMENT_TOOLTIP="measure distance between current and reference focus plane."
-BTN_MOVE_TO_TARGET_TOOLTIP="move to a focus plane with a given distance to the reference plane that was set earlier."
+BTN_SET_REFERENCE_TOOLTIP="""
+Set z reference plane
+
+The Laser AF system can focus on cells without bleaching them by effectively measuring the distance between the bottom of the well plate and the objective.
+The bottom of a well plate is not strictly flat, and can vary from the lowest to the highest point across the whole plate by about 200um.
+
+To compensate for that, the Laser AF system needs to know what the ideal distance between the objective and the bottom of the well plate should be.
+Clicking this button measures this distance, and saves it for later reference.
+
+When the Laser AF is actually 'used' later, it measures the new distance between the objective and the bottom of the well plate, and then moves the objective so 
+that the distance matches the distance set by this reference.
+
+Note: The Laser AF needs to have been initialized before a reference plane can be set. 
+      Initializing the Laser AF system again after a reference has already been set also invalidates the reference, i.e. a new reference needs to be set.
+"""
+BTN_MEASURE_DISPLACEMENT_TOOLTIP="""
+Measure the distance between the objective and the bottom the wellplate
+
+As explained in the tooltip of the 'set as reference' button, this button calculates the difference between the currently measured and ideal distance between the objective and the bottom of the well plate.
+"""
+BTN_MOVE_TO_TARGET_TOOLTIP="""
+Move the objective so that the distance between the objective and the bottom of the well plate is a certain number higher/lower than the ideal distance measured by the reference.
+
+The difference in distance is determined by the text box on the left.
+
+A difference of zero means that on 'move to target', the objective is moved so that the distance between the objective and the bottom of the wellplate is exactly the same distance as in the reference.
+"""
 BTN_DEINITIALIZE_TOOLTIP="""
 Deinitialize laser af config.
 

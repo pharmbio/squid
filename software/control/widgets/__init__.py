@@ -23,16 +23,37 @@ Note that this can lead to strong photobleaching. Consider using the Snap button
     BTN_SNAP_TOOLTIP="""
 Take a single image in the selected channel.
 
-The image will not be saved, just displayed."""
+The image will not be saved, just displayed.
+"""
     BTN_SNAP_ALL_LABEL="Snap selection"
     BTN_SNAP_ALL_TOOLTIP="""
-Take one image in all channels and display them in the multi-point acqusition panel.
+Take one image in the selected channels and display them in the multi-point acqusition panel.
 
-The images will not be saved."""
+The images will not be saved.
+"""
     BTN_SNAP_ALL_CHANNEL_SELECT_LABEL="Change selection"
-    BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP="Change selection of channels imaged when clicking the button on the left."
+    BTN_SNAP_ALL_CHANNEL_SELECT_TOOLTIP="""
+Change selection of channels imaged on 'snap selection'
+
+By default, 'snap selection' will acquire an image in every channel present on the microscope, including all fluroescence and brightfield channels.
+
+This button opens up a window where you can indicate which channels should (not) be imaged by the 'snap selection' button.
+
+Note: The selection is preserved as long as the program is open, so make sure the selection is set as expected before using 'snap selection'.
+"""
     BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL="Apply z offset"
-    BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP="Move to specified offset for all imaging channels. Requires laser autofocus to be initialized."
+    BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP="""
+Apply z offset to snap selection
+
+This button indicates use of the Laser AF system for 'snap selection'.
+Accordingly, this functionality is only available when the Laser AF system is initialized.
+
+The 'snap selection' button does not move the objective in z when this box is unchecked, which notably excludes any use of the Laser AF system.
+If this box is checked, each image in the 'snap selection' mode is acquired after the objective has moved to <focus plane height> + <channel offset>.
+
+Note: This box only impacts the snap selection functionality. 
+      e.g. to enable the Laser AF system for regular image acqusition, the checkbox is elsewhere.
+    """
 
     EXPOSURE_TIME_LABEL="Exposure time:"
     EXPOSURE_TIME_TOOLTIP="""
