@@ -1,18 +1,19 @@
 from typing import Optional, Callable, List, Union, Any, Tuple
 import time, math, os
+from enum import Enum
 from datetime import datetime
 from pathlib import Path
 from glob import glob
 import traceback
 
 from qtpy.QtCore import Qt, QEvent, Signal
-from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
+from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup
 
 from control.camera import Camera
 from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME
 TRIGGER_MODES_LIST=list(TriggerMode)
-from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely, MessageBox, HasWidget
-from control.core import Core, ReferenceFile, CameraWrapper, AcquisitionConfig
+from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely, MessageBox, HasWidget, Window
+from control.core import Core, ReferenceFile, CameraWrapper, AcquisitionConfig, ConfigLoadCondition, ConfigLoadConditionSet, DEFAULT_CELL_LINE_STR
 from control.core.configuration import Configuration, ConfigurationManager
 import control.widgets as widgets
 from control.widgets import ComponentLabel
@@ -24,12 +25,58 @@ from threading import Thread, Lock
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
-def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidget:
+def create_radio_selection(condition_set:ConfigLoadConditionSet,segment:str):
+    widget=QWidget()
+    button_group=QButtonGroup(parent=widget)
+    layout=HBox(with_margins=False).layout
+    default_condition=getattr(condition_set,segment)
+    for i,arg in enumerate(ConfigLoadCondition):
+        new_button=QRadioButton(arg.value,parent=widget)
+        new_button.clicked.connect(lambda _,a=arg:setattr(condition_set,segment,a))
+        if arg==default_condition:
+            new_button.setChecked(True)
+        button_group.addButton(new_button,i+1)
+        layout.addWidget(new_button)
+
+    widget.setLayout(layout)
+
+    return widget
+
+def create_referenceFile_widget(
+    file:str,
+    load_callback:Any,
+    parent:QWidget,
+)->QWidget:
     config=AcquisitionConfig.from_json(file)
 
     laser_af_reference_is_present:bool=not config.af_laser_reference is None
+    condition_set=ConfigLoadConditionSet()
 
-    workaround={'load_laser_af_data_requested':False}
+    workaround=dict(
+        load_laser_af_data_requested=False,
+        condition_set=condition_set, # this is a reference to an object that can be manipulated by the gui below
+    )
+
+    def selective_load(file):
+        w=Window(
+            VBox(*flatten([
+                Label(f"Define for each section of the config file when it should be loaded.\n{ConfigLoadCondition.__doc__}\n"),
+                [
+                    VBox(
+                        Label(" ".join([s[0]+s.lower()[1:] for s in l.split("_")][1:])),
+                        create_radio_selection(condition_set,l),
+
+                        with_margins=False
+                    )
+                    for l
+                    in condition_set.__dict__.keys()
+                ],
+                Button("Load",on_clicked=lambda _,w=workaround:load_callback(file,w))
+            ])).widget,
+
+            title="Load config file sections when..?",
+            parent=parent,
+        )
 
     return Dock(
         Grid(
@@ -48,14 +95,13 @@ def create_referenceFile_widget(file:str,workaround_default_callback:Any)->QWidg
                 Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
             ],
             [
-                Label(f"Timestamp: {config.timestamp}"),
                 Label(f"Objective: {config.objective}"),
+                Label(f"Timestamp: {config.timestamp}"),
             ],
-            GridItem(
-                Button("Load this reference",on_clicked=lambda _,w=workaround:workaround_default_callback(file,w)),
-                row=3,
-                colSpan=2,
-            )
+            [
+                Button("Load (default)",on_clicked=lambda _,w=workaround:load_callback(file,w)),
+                Button("Load (advanced)",on_clicked=lambda _,file=file:selective_load(file)),
+            ]
         ).widget,
         title=f"File: {file}",
         minimize_height=True,
@@ -80,16 +126,19 @@ class ConfigurationDatabase(QMainWindow):
                 Button("Browse",on_clicked=lambda _:self.browse_for_custom_load_file()),
             ),
             self.custom_file_load_container,
+
             Label(""), # empty line
             Label("Load from calibrated reference database :"),
             VBox(*[
-                create_referenceFile_widget(reference_file,self.load_file_callback)
+                create_referenceFile_widget(reference_file,self.load_file_callback,parent=parent)
                 for reference_file
-                in [
-                    LAST_PROGRAM_STATE_BACKUP_FILE_PATH,
-                    *(glob("reference_config_files/*"))
-                ]
+                in glob("reference_config_files/*")
             ]),
+
+            Label(""), # empty line
+            Label("Load last config :"),
+            create_referenceFile_widget(LAST_PROGRAM_STATE_BACKUP_FILE_PATH,self.load_file_callback,parent=parent),
+
             #with_margin=False
         ).widget
 
@@ -98,7 +147,11 @@ class ConfigurationDatabase(QMainWindow):
         self.setWindowTitle("Configuration Database")
 
     def load_file_callback(self,file,w):
-        self.on_load_from_file(file,w["load_laser_af_data_requested"])
+        self.on_load_from_file(file,
+                               go_to_z_reference=w["load_laser_af_data_requested"],
+                               condition_set=w["condition_set"],
+                            )
+        self.close()
     
     def browse_for_custom_load_file(self):
         file=FileDialog(mode="open",caption="Load Microscope Acquisition Settings",filter_type=FILTER_JSON).run()
@@ -107,7 +160,6 @@ class ConfigurationDatabase(QMainWindow):
             self.custom_file_loader=create_referenceFile_widget(file,self.load_file_callback)
             self.custom_file_load_container.addWidget(self.custom_file_loader)
             print(f"loading file {file}")
-            #self.on_load_from_file()
 
 class BasicSettings(QWidget):
     def __init__(self,
@@ -277,12 +329,10 @@ class Gui(QMainWindow):
                 self.loading_position_toggle(loading_position_enter=False)
 
             @web_service.expose
-            def load_config(file_path: str, project_override: str='', plate_override: str=''):
+            def load_config(file_path: str):
                 self.load_config_from_file(
                     file_path,
                     go_to_z_reference=True,
-                    project_override=project_override,
-                    plate_override=plate_override,
                 )
 
             @web_service.expose
@@ -565,10 +615,19 @@ class Gui(QMainWindow):
         cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
         cdb.show()
 
-    def load_config_from_file(self,file_path:Optional[str]=None,go_to_z_reference:bool=False, project_override: str='', plate_override: str=''):
+    def load_config_from_file(self,
+        file_path:Optional[str]=None,
+        go_to_z_reference:bool=False,
+        condition_set:Optional[ConfigLoadConditionSet]=None,
+    ):
         """
         if file_path is None, this function will open a dialog to ask for the file to loiad
         """
+
+        # use default set of conditions when none are provided
+        if condition_set is None:
+            condition_set=ConfigLoadConditionSet()
+        
         if file_path is None:
             input_file=FileDialog(mode="open",directory=".",caption="Load all configuration data",filter_type=FILTER_JSON).run()
             if len(input_file)==0:
@@ -577,35 +636,108 @@ class Gui(QMainWindow):
             input_file=file_path
         
         config_data=AcquisitionConfig.from_json(file_path=input_file)
+
+        # load the config file segment when the circumstances allow it
+
+        load_project_name=False
+        if condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.ALWAYS:
+            load_project_name=True
+        elif condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.WHEN_EMPTY:
+            if self.acquisition_widget.lineEdit_projectName.text()=="":
+                load_project_name=True
+        if load_project_name:
+            self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
+
+        load_plate_name=False
+        if condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.ALWAYS:
+            load_plate_name=True
+        elif condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.WHEN_EMPTY:
+            if self.acquisition_widget.lineEdit_plateName.text()=="":
+                load_plate_name=True
+        if load_plate_name:
+            self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+
+        load_cell_line=False
+        if condition_set.LOAD_CELL_LINE==ConfigLoadCondition.ALWAYS:
+            load_cell_line=True
+        elif condition_set.LOAD_CELL_LINE==ConfigLoadCondition.WHEN_EMPTY:
+            current_cell_line=self.acquisition_widget.lineEdit_cellLine.text()
+            if current_cell_line in ("",DEFAULT_CELL_LINE_STR):
+                load_cell_line=True
+        if load_cell_line:
+            self.acquisition_widget.lineEdit_cellLine.setText(config_data.cell_line)
+
+        # there is always a trigger mode set, so only load when overwriting is allowed
+        if condition_set.LOAD_TRIGGER_MODE==ConfigLoadCondition.ALWAYS:
+            self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
+
+        # there is always a pixel format set, so only load when overwriting is allowed
+        if condition_set.LOAD_PIXEL_FORMAT==ConfigLoadCondition.ALWAYS:
+            self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))
         
-        #self.acquisition_widget.lineEdit_baseDir.setText() # todo : base_dir itself is not currently saved, only the final output dir, which contains the base plus other stuff, is. is that worth saving/loading, or does it not matter?
-        self.acquisition_widget.lineEdit_projectName.setText(project_override or config_data.project_name)
-        self.acquisition_widget.lineEdit_plateName.setText(plate_override or config_data.plate_name)
-        self.acquisition_widget.lineEdit_cellLine.setText(config_data.cell_line)
+        # there is always an image file format set, so only load when overwriting is allowed
+        if condition_set.LOAD_IMAGE_FILE_FORMAT==ConfigLoadCondition.ALWAYS:
+            self.acquisition_widget.set_image_file_format(config_data.image_file_format)
 
-        self.basic_settings.interactive_widgets.trigger_mode_dropdown.setCurrentIndex(TRIGGER_MODES_LIST.index(config_data.trigger_mode))
-        self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))
+        # there are always grid settings present, so only load when overwriting is allowed
+        if condition_set.LOAD_GRID_CONFIG==ConfigLoadCondition.ALWAYS:
+            self.acquisition_widget.set_grid_data(config_data.grid_config)
+
+        # there is always a plate type set, so only load when overwriting is allowed
+        if condition_set.LOAD_PLATE_TYPE==ConfigLoadCondition.ALWAYS:
+            self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
+
+        # there is always an objective set, so only load when overwriting is allowed
+        if condition_set.LOAD_OBJECTIVE==ConfigLoadCondition.ALWAYS:
+            self.well_widget.set_objective(config_data.objective,ignore_invalid=True)
+
+        load_well_selection=False
+        if condition_set.LOAD_WELL_SELECTION==ConfigLoadCondition.ALWAYS:
+            load_well_selection=True
+        elif condition_set.LOAD_WELL_SELECTION==ConfigLoadCondition.WHEN_EMPTY:
+            if len(self.well_widget.get_selected_wells())==0:
+                load_well_selection=True
+        if load_well_selection:
+            self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
         
-        self.acquisition_widget.set_image_file_format(config_data.image_file_format)
+        load_channel_selection=False
+        if condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.ALWAYS:
+            load_channel_selection=True
+        elif condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.WHEN_EMPTY:
+            if len(self.acquisition_widget.get_selected_channels())==0:
+                load_channel_selection=True
+        if load_channel_selection:
+            self.acquisition_widget.set_selected_channels(config_data.channels_ordered)
 
-        self.acquisition_widget.set_grid_data(config_data.grid_config)
+        # there is always channel configuration data present, so only load when overwriting is allowed
+        if condition_set.LOAD_CHANNEL_CONFIG==ConfigLoadCondition.ALWAYS:
+            self.imaging_channels_widget.set_channel_configurations(config_data.channels_config)
 
-        self.well_widget.change_wellplate_type_by_type(config_data.plate_type)
-        self.well_widget.set_objective(config_data.objective)
+        load_laser_af_reference=False
+        if condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.ALWAYS:
+            load_laser_af_reference=True
+        elif condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.WHEN_EMPTY:
+            if not self.autofocus_widget.laser_af_control.laserAutofocusController.is_initialized:
+                load_laser_af_reference=True
+        if load_laser_af_reference:
+            self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
 
-        self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
-        
-        self.acquisition_widget.set_selected_channels(config_data.channels_ordered)
-        self.imaging_channels_widget.set_channel_configurations(config_data.channels_config)
-
-        self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
-        self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
+        load_laser_af_enabled=False
+        if condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.ALWAYS:
+            load_laser_af_enabled=True
+        elif condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.WHEN_EMPTY:
+            if not self.acquisition_widget.get_af_laser_is_enabled():
+                load_laser_af_enabled=True
+        if load_laser_af_enabled:
+            self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
 
         if go_to_z_reference:
+            if not load_laser_af_reference:
+                print("warning - you specified to move to reference z without loading the laser af data")
             z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
             print(f"focus - moving objective to {z_mm=:.3f}")
             
-            self.core.navigation.move_z_to(z_mm=z_mm)
+            self.core.navigation.move_z_to(z_mm=z_mm,wait_for_completion={})
 
     def closeEvent(self, event:QEvent):
 

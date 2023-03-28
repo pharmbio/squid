@@ -138,43 +138,39 @@ class ConfigLoadCondition(str,Enum):
     WHEN_EMPTY:
         only load the section when the target section is empty
     
-        e.g. to avoid overwriting already exsiting sections
+        e.g. only load project name when project name in the software GUI is currently empty.
 
-        may not technically make sense for all sections (i.e. unless the section is raw text, you should only select 'always' or 'never')
+        this option is treated as 'never' where it does not make sense, like for the channel configurations, which can never be empty
     
     NEVER:
         never load the section
     """
     ALWAYS="always"
-    """ always load the section """
     WHEN_EMPTY="when empty"
-    """
-    only load the section when the target section is empty
-    
-    e.g. to avoid overwriting already exsiting sections
-
-    may not technically make sense for all sections (i.e. unless the section is raw text, you should only select 'always' or 'never')
-    """
     NEVER="never"
-    """ never load the section """
 
 @TypecheckClass
 class ConfigLoadConditionSet:
     LOAD_PROJECT_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
     LOAD_PLATE_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
     LOAD_CELL_LINE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
-    LOAD_WELL_LIST:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+
+    LOAD_WELL_SELECTION:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+
     LOAD_GRID_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_AF_SOFTWARE_CHANNEL:ConfigLoadCondition=ConfigLoadCondition.NEVER
-    LOAD_AF_LASER_ON:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+
+    #LOAD_CHANNEL_ORDER:ConfigLoadCondition=ConfigLoadCondition.NEVER
+    LOAD_CHANNEL_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_CHANNEL_SELECTION:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+
+    LOAD_AF_LASER_ON:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
     LOAD_AF_LASER_REFERENCE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+
     LOAD_TRIGGER_MODE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
     LOAD_PIXEL_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_PLATE_TYPE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_CHANNEL_ORDER:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
-    LOAD_CHANNEL_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
     LOAD_IMAGE_FILE_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_OBJECTIVE:ConfigLoadCondition=ConfigLoadCondition.NEVER
+    LOAD_PLATE_TYPE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_OBJECTIVE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
 
 @TypecheckClass
 class AcquisitionConfig:
