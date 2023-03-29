@@ -155,26 +155,43 @@ class ConfigLoadCondition(str,Enum):
 
 @TypecheckClass
 class ConfigLoadConditionSet:
-    LOAD_PROJECT_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
-    LOAD_PLATE_NAME:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
-    LOAD_CELL_LINE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_PROJECT_NAME: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
+    LOAD_PLATE_NAME: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
+    LOAD_CELL_LINE: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
-    LOAD_WELL_SELECTION:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_WELL_SELECTION: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
-    LOAD_GRID_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_GRID_CONFIG: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
 
-    #LOAD_CHANNEL_ORDER:ConfigLoadCondition=ConfigLoadCondition.NEVER
-    LOAD_CHANNEL_CONFIG:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_CHANNEL_SELECTION:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    #LOAD_CHANNEL_ORDER: ConfigLoadCondition = ConfigLoadCondition.NEVER
+    LOAD_CHANNEL_CONFIG: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+    LOAD_CHANNEL_SELECTION: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
-    LOAD_AF_LASER_ON:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
-    LOAD_AF_LASER_REFERENCE:ConfigLoadCondition=ConfigLoadCondition.WHEN_EMPTY
+    LOAD_AF_LASER_ON: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
+    LOAD_AF_LASER_REFERENCE: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
-    LOAD_TRIGGER_MODE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_PIXEL_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_IMAGE_FILE_FORMAT:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_PLATE_TYPE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
-    LOAD_OBJECTIVE:ConfigLoadCondition=ConfigLoadCondition.ALWAYS
+    LOAD_TRIGGER_MODE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+    LOAD_PIXEL_FORMAT: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+    LOAD_IMAGE_FILE_FORMAT: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+    LOAD_PLATE_TYPE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+    LOAD_OBJECTIVE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+
+    def always()->"Self":
+        return ConfigLoadConditionSet(
+            LOAD_PLATE_NAME = ConfigLoadCondition.ALWAYS,
+            LOAD_CELL_LINE = ConfigLoadCondition.ALWAYS,
+            LOAD_WELL_SELECTION = ConfigLoadCondition.ALWAYS,
+            LOAD_GRID_CONFIG = ConfigLoadCondition.ALWAYS,
+            LOAD_CHANNEL_CONFIG = ConfigLoadCondition.ALWAYS,
+            LOAD_CHANNEL_SELECTION = ConfigLoadCondition.ALWAYS,
+            LOAD_AF_LASER_ON = ConfigLoadCondition.ALWAYS,
+            LOAD_AF_LASER_REFERENCE = ConfigLoadCondition.ALWAYS,
+            LOAD_TRIGGER_MODE = ConfigLoadCondition.ALWAYS,
+            LOAD_PIXEL_FORMAT = ConfigLoadCondition.ALWAYS,
+            LOAD_IMAGE_FILE_FORMAT = ConfigLoadCondition.ALWAYS,
+            LOAD_PLATE_TYPE = ConfigLoadCondition.ALWAYS,
+            LOAD_OBJECTIVE = ConfigLoadCondition.ALWAYS,
+        )
 
 @TypecheckClass
 class AcquisitionConfig:

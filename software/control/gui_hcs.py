@@ -361,10 +361,18 @@ class Gui(QMainWindow):
                 self.loading_position_toggle(loading_position_enter=False)
 
             @web_service.expose
-            def load_config(file_path: str):
+            def load_config(
+                file_path: str,
+
+                project_override: Optional[str]=None, 
+                plate_override: Optional[str]=None
+            ):
                 self.load_config_from_file(
                     file_path,
                     go_to_z_reference=True,
+                    project_override=project_override,
+                    plate_override=plate_override,
+                    condition_set=ConfigLoadConditionSet.always()
                 )
 
             @web_service.expose
@@ -649,8 +657,12 @@ class Gui(QMainWindow):
 
     def load_config_from_file(self,
         file_path:Optional[str]=None,
+
         go_to_z_reference:bool=False,
         condition_set:Optional[ConfigLoadConditionSet]=None,
+
+        project_override: Optional[str]=None, 
+        plate_override: Optional[str]=None,
     ):
         """
         if file_path is None, this function will open a dialog to ask for the file to loiad
@@ -672,22 +684,26 @@ class Gui(QMainWindow):
         # load the config file segment when the circumstances allow it
 
         load_project_name=False
+        if not project_override is None:
+            load_project_name=True
         if condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.ALWAYS:
             load_project_name=True
         elif condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.WHEN_EMPTY:
             if self.acquisition_widget.lineEdit_projectName.text()=="":
                 load_project_name=True
         if load_project_name:
-            self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
+            self.acquisition_widget.lineEdit_projectName.setText(project_override or config_data.project_name)
 
         load_plate_name=False
+        if not plate_override is None:
+            load_plate_name=True
         if condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.ALWAYS:
             load_plate_name=True
         elif condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.WHEN_EMPTY:
             if self.acquisition_widget.lineEdit_plateName.text()=="":
                 load_plate_name=True
         if load_plate_name:
-            self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+            self.acquisition_widget.lineEdit_plateName.setText(plate_override or config_data.plate_name)
 
         load_cell_line=False
         if condition_set.LOAD_CELL_LINE==ConfigLoadCondition.ALWAYS:
