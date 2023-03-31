@@ -377,9 +377,11 @@ class Gui(QMainWindow):
 
             @web_service.expose
             def acquire():
-                if self.interactive_enabled:
+                if (ok := self.interactive_enabled):
+                    web_service.set_status(progress_data={})
+                    web_service.set_status(progress_bar_text='')
                     Thread(target=lambda: self.start_experiment()).start()
-                return self.interactive_enabled
+                return ok
 
             web_service.start(host, int(port))
 
@@ -506,7 +508,7 @@ class Gui(QMainWindow):
             progress_bar_text:str=f"cancelled. (acquired {progress_data.completed_steps}/{self.total_num_acquisitions:4} images in {elapsed_time_str})"
             self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             self.set_all_interactible_enabled(set_enabled=True)
-            web_service.set_status(progress=progress_bar_text)
+            web_service.set_status(progress_bar_text=progress_bar_text)
             return
         
         if progress_data.completed_steps<=1:
@@ -531,13 +533,13 @@ class Gui(QMainWindow):
             elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
             if self.acquisition_progress==self.total_num_acquisitions:
                 progress_bar_text=f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})"
-                web_service.set_status(progress=progress_bar_text)
+                web_service.set_status(progress_bar_text=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             else:
                 approx_time_left_str=format_seconds_nicely(approx_time_left)
                 done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
                 progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
-                web_service.set_status(progress=progress_bar_text)
+                web_service.set_status(progress_bar_text=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             
             if not math.isnan(progress_data.last_imaged_coordinates[0]):

@@ -47,7 +47,14 @@ class WebService:
         def call_with_args(method: str, *args: t.Any, **kwargs: t.Any):
             with self.lock:
                 print(method, kwargs)
-                return jsonify(json_or_repr(self.exposed[method](kwargs)))
+                if args:
+                    res = {'error':'Must pass arguments as kwargs to squid service'}
+                else:
+                    res = self.exposed[method](kwargs)
+                if isinstance(res, dict) and 'error' in res:
+                    return jsonify(json_or_repr(res))
+                else:
+                    return jsonify(json_or_repr({'value': res}))
 
         @app.get(f'/{namespace}/<method>')
         def call(method: str):
@@ -62,11 +69,7 @@ class WebService:
             cmd = req['cmd']
             args = req['args']
             kwargs = req['kwargs']
-            res = call_with_args(cmd, *args, **kwargs)
-            if isinstance(res, dict) and '_error' in res:
-                return res
-            else:
-                return {'value': res}
+            return call_with_args(cmd, *args, **kwargs)
 
         @app.get('/')
         def help():
@@ -93,7 +96,7 @@ class WebService:
                 res = fn(**kwargs)
             except BaseException as e:
                 import traceback as tb
-                res = {'_error': str(e), '_traceback': tb.format_exc().splitlines()}
+                res = {'error': str(e), 'traceback': tb.format_exc().splitlines()}
                 tb.print_exc()
             reply_q.put_nowait(res)
 
