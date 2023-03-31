@@ -118,6 +118,7 @@ class ConfigurationDatabase(QMainWindow):
         on_load_from_file:Callable[[Optional[str],bool],None],
     ):
         super().__init__(parent=parent)
+        self.parent=parent
 
         self.on_load_from_file=on_load_from_file
 
@@ -134,14 +135,14 @@ class ConfigurationDatabase(QMainWindow):
             Label(""), # empty line
             Label("Load from calibrated reference database :"),
             VBox(*[
-                create_referenceFile_widget(reference_file,self.load_file_callback,parent=parent)
+                create_referenceFile_widget(reference_file,self.load_file_callback,parent=self.parent)
                 for reference_file
                 in glob("reference_config_files/*")
             ]),
 
             Label(""), # empty line
             Label("Load last config :"),
-            create_referenceFile_widget(LAST_PROGRAM_STATE_BACKUP_FILE_PATH,self.load_file_callback,parent=parent),
+            create_referenceFile_widget(LAST_PROGRAM_STATE_BACKUP_FILE_PATH,self.load_file_callback,parent=self.parent),
 
             #with_margin=False
         ).widget
@@ -161,7 +162,7 @@ class ConfigurationDatabase(QMainWindow):
         file=FileDialog(mode="open",caption="Load Microscope Acquisition Settings",filter_type=FILTER_JSON).run()
         if file!="":
             BlankWidget(children=[self.custom_file_loader])
-            self.custom_file_loader=create_referenceFile_widget(file,self.load_file_callback)
+            self.custom_file_loader=create_referenceFile_widget(file,self.load_file_callback,parent=self.parent)
             self.custom_file_load_container.addWidget(self.custom_file_loader)
             print(f"loading file {file}")
 
@@ -350,7 +351,7 @@ class Gui(QMainWindow):
         self.acquisition_widget.position_mask_has_changed.connect(lambda:self.change_acquisition_preview())
         self.well_widget.interactive_widgets.well_selection.itemSelectionChanged.connect(lambda:self.change_acquisition_preview())
 
-        host, colon, port = os.environ.get('squid_service', '').partition(':')
+        host, colon, port = os.environ.get('squid_web_service', '').partition(':')
         if colon:
             @web_service.expose
             def goto_loading():
