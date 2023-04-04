@@ -31,6 +31,28 @@ class Version:
             minor=d["minor"],
             patch=d["patch"],
         )
+    
+@TypecheckClass
+class LogEntry:
+    time:float
+    text:str
+
+class Logger:
+    lines:List[LogEntry]
+
+    def __init__(self):
+        self.lines=[]
+    
+    def log(self,text:str):
+        new_log_entry=LogEntry(
+            time=time.time(),
+            text=text
+        )
+        self.lines.append(new_log_entry)
+
+        print(f"LOG {new_log_entry.time:16.3f} : {new_log_entry.text}")
+
+MAIN_LOG=Logger()
 
 class AcquisitionImageData:
     image:numpy.ndarray

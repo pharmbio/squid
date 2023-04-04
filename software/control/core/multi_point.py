@@ -105,9 +105,12 @@ class MultiPointWorker(QObject):
 
     def run(self):
         self.progress.start_time=time.time()
+        MAIN_LOG.log("acquisition started")
         try:
             while self.time_point < self.Nt:
+                MAIN_LOG.log(f"time-point {self.time_point}: starting")
                 self.run_single_time_point()
+                MAIN_LOG.log(f"time-point {self.time_point}: done")
 
                 if self.multiPointController.abort_acqusition_requested:
                     raise AbortAcquisitionException()
@@ -124,18 +127,30 @@ class MultiPointWorker(QObject):
                         break # no waiting after taking the last time point
 
                     # wait until it's time to do the next acquisition
-                    while time.time() < self.timestamp_acquisition_started + self.time_point*self.dt:
-                        time.sleep(0.05)
+                    next_timepoint_start_time=self.timestamp_acquisition_started + self.time_point*self.dt
+                    remaining_time_s=next_timepoint_start_time-time.time()
+                    MAIN_LOG.log(f"waiting for next time point in {remaining_time_s:.3f}s")
+
+                    wait_time_step_length=1/30
+                    while (remaining_time_s := next_timepoint_start_time-time.time())>0:
+                        if self.multiPointController.abort_acqusition_requested:
+                            MAIN_LOG.log("cancelled acquisition during waiting for next time point")
+                            raise AbortAcquisitionException()
+                        time.sleep(wait_time_step_length)
+                        QApplication.processEvents()
 
             self.progress.last_completed_action="finished acquisition"
             self.signal_new_acquisition.emit(self.progress)
                         
         except AbortAcquisitionException:
+            MAIN_LOG.log("acquisition successfully cancelled")
+
             self.progress.last_completed_action="acquisition_cancelled"
             self.signal_new_acquisition.emit(self.progress)
             
         self.finished.emit()
 
+        MAIN_LOG.log("acquisition finished")
         print("\nfinished multipoint acquisition\n")
 
     def perform_software_autofocus(self):
@@ -155,6 +170,8 @@ class MultiPointWorker(QObject):
         x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None,
     ):
         """ take image for specified configuration and save to specified path """
+        
+        MAIN_LOG.log(f"imaging channel {config.name}: started")
 
         if 'USB Spectrometer' in config.name:
             raise Exception("usb spectrometer not supported")
@@ -214,8 +231,12 @@ class MultiPointWorker(QObject):
         self.progress.last_completed_action=f"imaged config {config.name}"
         self.signal_new_acquisition.emit(self.progress)
 
+        MAIN_LOG.log(f"imaging channel {config.name}: done")
+
     def image_zstack_here(self,x:int,y:int,coordinate_name:str,profiler:Optional[Profiler]=None,well_name:Optional[str]=None):
         """ x and y are for internal naming stuff only, not for anything position dependent """
+
+        MAIN_LOG.log(f"acquiring position {coordinate_name}: started")
 
         ret_coords=[]
 
@@ -228,6 +249,7 @@ class MultiPointWorker(QObject):
             else:
                 # first FOV
                 if self.reflection_af_initialized==False:
+                    MAIN_LOG.log("setting up laser AF")
                     # initialize the reflection AF
                     self.laserAutofocusController.initialize_auto()
                     # do contrast AF for the first FOV
@@ -237,7 +259,9 @@ class MultiPointWorker(QObject):
                     self.laserAutofocusController.set_reference(z_pos_mm=0.0) # z pos does not matter here
                     self.reflection_af_initialized = True
                 else:
+                    MAIN_LOG.log("laser AF: started")
                     self.laserAutofocusController.move_to_target(0.0)
+                    MAIN_LOG.log("laser AF: done")
 
         if (self.NZ > 1):
             with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
@@ -314,6 +338,8 @@ class MultiPointWorker(QObject):
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
+
+        MAIN_LOG.log(f"acquiring position {coordinate_name}: done")
 
         return ret_coords
 
@@ -411,14 +437,17 @@ class MultiPointWorker(QObject):
 
     def run_single_time_point(self):
         with Profiler("run_single_time_point",parent=None,discard_if_parent_none=False) as profiler:
-            with self.camera.wrapper.ensure_streaming(), self.autofocusController.camera.wrapper.ensure_streaming():
+            if self.reflection_af_initialized:
+                MAIN_LOG.log(f"moving to z reference at {self.laserAutofocusController.reference_z_height_mm:.3f}mm")
+                self.laserAutofocusController.navigation.move_z_to(z_mm=self.laserAutofocusController.reference_z_height_mm,wait_for_completion={})
 
+            with self.camera.wrapper.ensure_streaming(), self.autofocusController.camera.wrapper.ensure_streaming():
                 # disable joystick button action
                 self.navigation.enable_joystick_button_action = False
 
                 self.FOV_counter = 0
 
-                print('multipoint acquisition - time point ' + str(self.time_point+1))
+                print(f"multipoint acquisition - time point {self.time_point}")
 
                 if self.Nt > 1:
                     # for each time point, create a new folder

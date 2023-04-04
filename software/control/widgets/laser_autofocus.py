@@ -205,6 +205,8 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
         self.btn_move_to_target.setDisabled(True)
 
+        self.btn_move_z_ref.setDisabled(True)
+
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
     def set_reference(self):

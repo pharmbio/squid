@@ -5,7 +5,7 @@ os.environ["QT_API"] = "pyqt5"
 from qtpy.QtCore import QObject, Signal, QMutex, QEventLoop
 from qtpy.QtWidgets import QApplication
 
-from control._def import MACHINE_CONFIG
+from control._def import MACHINE_CONFIG, MAIN_LOG
 from control.typechecker import TypecheckFunction
 from typing import Optional
 
@@ -132,21 +132,25 @@ class LaserAutofocusController(QObject):
 
         self.signal_displacement_um.emit(displacement_um)
 
+        if math.isnan(displacement_um):
+            print("! error - displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrong. Make sure that the laser AF laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
+
         return displacement_um
 
     def move_to_target(self,target_um:float,max_repeats:int=MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_MAX_REPEATS,counter_backlash:bool=True):
         with self.camera.wrapper.ensure_streaming():
-            for num_repeat in range(max_repeats+1):
-                current_displacement_um = self.measure_displacement()
+            current_displacement_um = self.measure_displacement()
+            if math.isnan(current_displacement_um):
+                MAIN_LOG.log("laser AF: failed with NaN")
+                return
+            
+            total_movement_um=0.0
 
+            num_repeat=0
+            while np.abs(um_to_move := target_um - current_displacement_um) >= MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
                 if math.isnan(current_displacement_um):
-                    print("! error - displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrong. Make sure that the laser AF laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
-
-                    current_displacement_um=0.0
-
-                um_to_move = target_um - current_displacement_um
-                if np.abs(um_to_move)<MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-                    return
+                    MAIN_LOG.log("laser AF: failed with NaN after {num_repeat} iterations moving {total_movement_um:.3f}um")
+                    break
 
                 # limit the range of movement
                 um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
@@ -158,6 +162,16 @@ class LaserAutofocusController(QObject):
                     self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
                 else:
                     self.navigation.move_z(um_to_move/1000,wait_for_completion={})
+
+                current_displacement_um = self.measure_displacement()
+                num_repeat+=1
+                total_movement_um+=um_to_move
+
+                if num_repeat==max_repeats:
+                    MAIN_LOG.log(f"laser AF: failed with measured offset {current_displacement_um:.3f}um and target {target_um}um")
+                    break
+
+            MAIN_LOG.log(f"laser AF: done after {num_repeat} iterations and moving {total_movement_um:.3f}um")
 
     @TypecheckFunction()
     def set_reference(self,z_pos_mm:float):
