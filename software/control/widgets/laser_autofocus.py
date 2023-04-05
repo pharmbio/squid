@@ -100,8 +100,9 @@ class LaserAutofocusControlWidget(QFrame):
             on_clicked=self.move_to_ref_z
         ).widget
 
-        self.label_displacement = QLabel()
-        self.laserAutofocusController.signal_displacement_um.connect(lambda displacement_um:self.label_displacement.setText(f"{displacement_um:9.3f}"))
+        self.label_displacement = Label("",text_selectable=True).widget
+        self.label_displacement.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        self.laserAutofocusController.signal_displacement_um.connect(lambda displacement_um:self.label_displacement.setText(f"{displacement_um:.2f}".replace(".",",")))
 
         self.btn_measure_displacement = Button(MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE,checkable=False,checked=False,default=False,tooltip=BTN_MEASURE_DISPLACEMENT_TOOLTIP,on_clicked=self.measure_displacement).widget
 
