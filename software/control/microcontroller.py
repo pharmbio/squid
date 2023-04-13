@@ -6,7 +6,7 @@ import numpy as np
 import threading
 from crc import CrcCalculator, Crc8
 
-from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS
+from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS, MAIN_LOG
 
 from control.typechecker import TypecheckFunction, ClosedRange, ClosedSet
 from typing import Union, Any, Tuple, List, Optional
@@ -49,7 +49,7 @@ class Microcontroller:
         self.crc_calculator = CrcCalculator(Crc8.CCITT,table_based=True)
         self.retry = 0
 
-        print(f'startup - connecting to controller based on {version.value}')
+        MAIN_LOG.log(f'startup - connecting to controller based on {version.value}')
 
         if version == ControllerType.DUE:
             controller_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino Due' == p.description] # autodetect - based on Deepak's code
@@ -62,11 +62,11 @@ class Microcontroller:
         if not controller_ports:
             raise IOError("no controller found")
         if len(controller_ports) > 1:
-            print('multiple controller found - using the first')
+            MAIN_LOG.log('multiple controller found - using the first')
         
         self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
         time.sleep(0.2)
-        print('startup - controller connected')
+        MAIN_LOG.log('startup - controller connected')
 
         self.new_packet_callback_external = None
         self.terminate_reading_received_packet_thread = False
@@ -83,14 +83,14 @@ class Microcontroller:
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.RESET
         self.send_command(cmd)
-        print('startup - reset the microcontroller') # debug
+        MAIN_LOG.log('startup - reset the microcontroller') # debug
 
     def initialize_drivers(self):
         self._cmd_id = 0
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.INITIALIZE
         self.send_command(cmd)
-        print('startup - initialized the drivers') # debug
+        MAIN_LOG.log('startup - initialized the drivers') # debug
 
     def turn_on_illumination(self):
         cmd = bytearray(self.tx_buffer_length)
@@ -577,11 +577,11 @@ class Microcontroller:
                 self.timeout_counter = self.timeout_counter + 1
                 if self.timeout_counter > 10:
                     self.resend_last_command()
-                    print('      *** resend the last command')
+                    MAIN_LOG.log('      *** resend the last command')
             elif self._cmd_execution_status == CMD_EXECUTION_STATUS.CMD_CHECKSUM_ERROR:
-                print('! cmd checksum error, resending command')
+                MAIN_LOG.log('! cmd checksum error, resending command')
                 if self.retry > 10:
-                    print('!! resending command failed for more than 10 times, the program will exit')
+                    MAIN_LOG.log('!! resending command failed for more than 10 times, the program will exit')
                     exit()
                 else:
                     self.resend_last_command()

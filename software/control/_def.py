@@ -12,6 +12,38 @@ from qtpy.QtCore import Signal, QObject
 import control.gxipy as gx
 import numpy
 
+import os
+from datetime import datetime
+
+@TypecheckFunction
+def create_current_timestamp()->str:
+    t=datetime.now().replace(microsecond=0)
+    return format_timestamp(t=t)
+
+@TypecheckFunction
+def format_timestamp(t:datetime)->str:
+    now_str = t.isoformat(sep=' ') # will look like 'YYYY-MM-DD HH:MM:SS'
+
+    return now_str.replace(":",".").replace(" ","_") # replace problematic/forbidden characters in filename
+
+@TypecheckClass
+class StorageSize:
+    total_space_bytes:int
+    free_space_bytes:int
+
+@TypecheckFunction
+def get_storage_size_in_directory(dir:str)->StorageSize:
+    stat=os.statvfs(dir)
+
+    # use f_bsize which is the size of a full storage block. f_frsize is the size of a fragment that can be smaller than a full block on systems that support such a structure (e.g. used at the end of a file where a full block is bigger than the remaining data)
+    total_size_bytes=stat.f_bsize * stat.f_blocks
+    available_size_bytes=stat.f_bsize * stat.f_bavail
+
+    return StorageSize(
+        total_space_bytes=total_size_bytes,
+        free_space_bytes=available_size_bytes
+    )
+
 @TypecheckClass
 class Version:
     major:int
@@ -34,25 +66,38 @@ class Version:
     
 @TypecheckClass
 class LogEntry:
-    time:float
+    time:datetime
     text:str
 
 class Logger:
     lines:List[LogEntry]
+    file_backing:Optional[Any]
 
-    def __init__(self):
+    def __init__(
+        self,
+        file_name:Optional[str]
+    ):
         self.lines=[]
+        if not file_name is None:
+            self.file_backing=open(file_name,mode="x",buffering=1)
     
     def log(self,text:str):
         new_log_entry=LogEntry(
-            time=time.time(),
+            time=datetime.now(),
             text=text
         )
         self.lines.append(new_log_entry)
 
-        print(f"LOG {new_log_entry.time:16.3f} : {new_log_entry.text}")
+        log_msg=f"{format_timestamp(t=new_log_entry.time)} : {new_log_entry.text}"
+        print(f"LOG {log_msg}")
 
-MAIN_LOG=Logger()
+        if not self.file_backing is None:
+            self.file_backing.write(log_msg)
+            self.file_backing.write("\n")
+            self.file_backing.flush()
+
+current_timestamp=create_current_timestamp()
+MAIN_LOG=Logger(file_name=f"./{current_timestamp}.log")
 
 class AcquisitionImageData:
     image:numpy.ndarray
@@ -250,9 +295,9 @@ class CAMERA_PIXEL_FORMATS(Enum):
 class Acquisition:
     """ config stuff for (multi point) image acquisition """
     
-    CROP_WIDTH:int = 3000
+    CROP_WIDTH:int = 2500
     """ crop width for images after recording from camera sensor """
-    CROP_HEIGHT:int = 3000
+    CROP_HEIGHT:int = 2500
     """ crop height for images after recording from camera sensor """
     NUMBER_OF_FOVS_PER_AF:int = 3
     IMAGE_FORMAT:ImageFormat = ImageFormat.TIFF
@@ -376,8 +421,8 @@ class ILLUMINATION_CODE: # enum
     ILLUMINATION_SOURCE_730NM:int = 15
 
 class CAMERA:
-    ROI_OFFSET_X_DEFAULT:int = 0
-    ROI_OFFSET_Y_DEFAULT:int = 0
+    ROI_OFFSET_X_DEFAULT:int = 250
+    ROI_OFFSET_Y_DEFAULT:int = 250
     ROI_WIDTH_DEFAULT:int = 3000
     ROI_HEIGHT_DEFAULT:int = 3000
 

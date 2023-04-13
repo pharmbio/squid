@@ -235,7 +235,7 @@ class NavigationController(QObject):
 
             self.is_in_loading_position=True
 
-            print('homing - objective retracted')
+            MAIN_LOG.log('homing - objective retracted')
 
             if home_z and home_y and home_x:
                 # for the new design, need to home y before home x; x also needs to be at > + 10 mm when homing y
@@ -248,7 +248,7 @@ class NavigationController(QObject):
                 self.microcontroller.home_x()
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
 
-                print("homing - in loading position")
+                MAIN_LOG.log("homing - in loading position")
 
     def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
         if home_z:
@@ -265,7 +265,7 @@ class NavigationController(QObject):
                 self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
                 self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
 
-                print("homing - left loading position")
+                MAIN_LOG.log("homing - left loading position")
 
 			# move the objective back
             self.move_z(MACHINE_CONFIG.DEFAULT_Z_POS_MM)
@@ -274,7 +274,7 @@ class NavigationController(QObject):
 
             self.is_in_loading_position=False
 
-            print("homing - objective raised")
+            MAIN_LOG.log("homing - objective raised")
 
 
     def home(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):

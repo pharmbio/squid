@@ -115,7 +115,7 @@ class LaserAutofocusController(QObject):
             # set reference
             self.x_reference = x1
 
-        print("laser AF initialization done")
+        MAIN_LOG.log("laser AF initialization done")
 
     def measure_displacement(self,override_num_images:Optional[int]=None)->float:
         assert self.is_initialized and not self.x_reference is None
@@ -133,7 +133,7 @@ class LaserAutofocusController(QObject):
         self.signal_displacement_um.emit(displacement_um)
 
         if math.isnan(displacement_um):
-            print("! error - displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrong. Make sure that the laser AF laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
+            MAIN_LOG.log("! error - displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrong. Make sure that the laser AF laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
 
         return displacement_um
 

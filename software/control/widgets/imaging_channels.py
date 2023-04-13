@@ -9,7 +9,7 @@ import pyqtgraph as pg
 
 from PIL import ImageEnhance, Image
 
-from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler
+from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, MAIN_LOG
 TRIGGER_MODES_LIST=list(TriggerMode)
 from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely
 from control.core import Core, ReferenceFile, CameraWrapper
@@ -295,7 +295,7 @@ class ImagingChannels:
             assert config_exists_in_program==overwrote_present_config
 
             if not overwrote_present_config:
-                print("! warning (?) - could not load imaging channel {config.name} from a config file because it does not exist in the program. (this should not happen.)")
+                MAIN_LOG.log("! warning (?) - could not load imaging channel {config.name} from a config file because it does not exist in the program. (this should not happen.)")
 
 
     def get_channel_configurations(self)->List[Configuration]:

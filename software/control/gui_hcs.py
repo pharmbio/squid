@@ -10,7 +10,7 @@ from qtpy.QtCore import Qt, QEvent, Signal
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup
 
 from control.camera import Camera
-from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME
+from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME, MAIN_LOG, create_current_timestamp
 TRIGGER_MODES_LIST=list(TriggerMode)
 from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown, Label, FileDialog, FILTER_JSON, BlankWidget, Dock, SpinBoxDouble, SpinBoxInteger, Checkbox, Grid, GridItem, flatten, format_seconds_nicely, MessageBox, HasWidget, Window
 from control.core import Core, ReferenceFile, CameraWrapper, AcquisitionConfig, ConfigLoadCondition, ConfigLoadConditionSet, DEFAULT_CELL_LINE_STR
@@ -164,7 +164,7 @@ class ConfigurationDatabase(QMainWindow):
             BlankWidget(children=[self.custom_file_loader])
             self.custom_file_loader=create_referenceFile_widget(file,self.load_file_callback,parent=self.parent)
             self.custom_file_load_container.addWidget(self.custom_file_loader)
-            print(f"loading file {file}")
+            MAIN_LOG.log(f"loading file {file}")
 
 CAMERA_PIXEL_FORMAT_TOOLTIP="""
 Set Camera Pixel Format
@@ -444,7 +444,8 @@ class Gui(QMainWindow):
             )
         
         except Exception as e:
-            msg_text:str=str(e)+"\n"+"\n".join(traceback.format_tb(e.__traceback__))
+            msg_text:str=str(e)+"\n"*2+"-"*64+"\n"*2+"\n".join(traceback.format_tb(e.__traceback__))
+            MAIN_LOG.log(f"an exception occured while starting the experiment: {msg_text}")
             MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {msg_text}").run()
             self.set_all_interactible_enabled(set_enabled=True)
             return AcquisitionStartResult(whole_acquisition_config,exception=e)
@@ -468,7 +469,7 @@ class Gui(QMainWindow):
         #   well_name
     
     def abort_experiment(self):
-        print("aborting acquisition on button press")
+        MAIN_LOG.log("aborting acquisition on button press")
         self.core.multipointController.request_abort_aquisition()
         # todo kill acquisition thread here if it exists
         
@@ -554,7 +555,7 @@ class Gui(QMainWindow):
     def get_all_config(self,dry:bool=False,allow_invalid_values:bool=False)->AcquisitionConfig:
         if allow_invalid_values and not dry:
             message="non-dry run with invalid values allowed in config can lead to filesystem errors"
-            print(f"! error - {message}")
+            MAIN_LOG.log(f"! error - {message}")
             raise RuntimeError(message)
 
         # get output paths
@@ -605,11 +606,9 @@ class Gui(QMainWindow):
 
         # try generating unique experiment ID (that includes current timestamp) until successfull
         def gen_dir_name(base_output_path:str)->Tuple[str,Path]:
-            now = datetime.now()
-            now = now.replace(microsecond=0)  # setting microsecond=0 makes it not show up in isoformat
-            now_str = now.isoformat(sep=' ') # will look like 'YYYY-MM-DD HH:MM:SS'
+            now_str = create_current_timestamp()
 
-            experiment_pathname = base_output_path + '_' + now_str.replace(":",".").replace(" ","_") # replace problematic/forbidden characters in filename
+            experiment_pathname = base_output_path + '_' + now_str
             return now_str,Path(experiment_pathname)
 
         timestamp_str,experiment_path=gen_dir_name(base_output_path=full_output_path)
@@ -787,9 +786,9 @@ class Gui(QMainWindow):
 
         if go_to_z_reference:
             if not load_laser_af_reference:
-                print("warning - you specified to move to reference z without loading the laser af data")
+                MAIN_LOG.log("warning - you specified to move to reference z without loading the laser af data")
             z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
-            print(f"focus - moving objective to {z_mm=:.3f}")
+            MAIN_LOG.log(f"focus - moving objective to {z_mm=:.3f}")
             
             self.core.navigation.move_z_to(z_mm=z_mm,wait_for_completion={})
 

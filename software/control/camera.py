@@ -69,7 +69,7 @@ class Camera(object):
         self.EXPOSURE_TIME_MS_MAX = 1000-62.5-1.5 # technically 1000, but hardware trigger adds 62.5ms overhead (then add 1.5 extra to make sure the limit is not hit!)
 
         self.ROI_offset_x = CAMERA.ROI_OFFSET_X_DEFAULT
-        self.ROI_offset_y = CAMERA.ROI_OFFSET_X_DEFAULT
+        self.ROI_offset_y = CAMERA.ROI_OFFSET_Y_DEFAULT
         self.ROI_width = CAMERA.ROI_WIDTH_DEFAULT
         self.ROI_height = CAMERA.ROI_HEIGHT_DEFAULT
 
@@ -340,7 +340,7 @@ class Camera(object):
         if self.is_streaming:
             self.camera.TriggerSoftware.send_command()
         else:
-            print('trigger not sent - camera is not streaming')
+            MAIN_LOG.log('trigger not sent - camera is not streaming')
 
     @TypecheckFunction
     def rescale_raw_image(self,raw_image:gxiapi.RawImage)->numpy.ndarray:
@@ -380,15 +380,15 @@ class Camera(object):
     @TypecheckFunction
     def _on_frame_callback(self, user_param:Optional[Any], raw_image:Optional[gxiapi.RawImage]):
         if raw_image is None:
-            print("Getting image failed.")
+            MAIN_LOG.log("Getting image failed.")
             return
             
         if raw_image.get_status() != 0:
-            print("Got an incomplete frame")
+            MAIN_LOG.log("Got an incomplete frame")
             return
 
         if self.image_locked:
-            print('last image is still being processed, a frame is dropped')
+            MAIN_LOG.log('last image is still being processed, a frame is dropped')
             return
 
         numpy_image = self.rescale_raw_image(raw_image)
@@ -424,7 +424,7 @@ class Camera(object):
             if self.camera.Width.is_implemented() and self.camera.Width.is_writable():
                 self.camera.Width.set(self.ROI_width)
             else:
-                print("OffsetX is not implemented or not writable")
+                MAIN_LOG.log("OffsetX is not implemented or not writable")
 
         if height is not None:
             self.ROI_height = height
@@ -432,7 +432,7 @@ class Camera(object):
             if self.camera.Height.is_implemented() and self.camera.Height.is_writable():
                 self.camera.Height.set(self.ROI_height)
             else:
-                print("Height is not implemented or not writable")
+                MAIN_LOG.log("Height is not implemented or not writable")
 
         if offset_x is not None:
             self.ROI_offset_x = offset_x
@@ -440,7 +440,7 @@ class Camera(object):
             if self.camera.OffsetX.is_implemented() and self.camera.OffsetX.is_writable():
                 self.camera.OffsetX.set(self.ROI_offset_x)
             else:
-                print("OffsetX is not implemented or not writable")
+                MAIN_LOG.log("OffsetX is not implemented or not writable")
 
         if offset_y is not None:
             self.ROI_offset_y = offset_y
@@ -448,7 +448,7 @@ class Camera(object):
             if self.camera.OffsetY.is_implemented() and self.camera.OffsetY.is_writable():
                 self.camera.OffsetY.set(self.ROI_offset_y)
             else:
-                print("OffsetX is not implemented or not writable")
+                MAIN_LOG.log("OffsetX is not implemented or not writable")
 
         # restart streaming if it was previously on
         if was_streaming == True:
@@ -459,12 +459,12 @@ class Camera(object):
         if self.camera.CounterEventSource.is_implemented() and self.camera.CounterEventSource.is_writable(): # type: ignore
             self.camera.CounterEventSource.set(gx.GxCounterEventSourceEntry.LINE2) # type: ignore
         else:
-            print("CounterEventSource is not implemented or not writable")
+            MAIN_LOG.log("CounterEventSource is not implemented or not writable")
 
         if self.camera.CounterReset.is_implemented(): # type: ignore
             self.camera.CounterReset.send_command() # type: ignore
         else:
-            print("CounterReset is not implemented")
+            MAIN_LOG.log("CounterReset is not implemented")
 
     def set_line3_to_strobe(self):
         assert not self.camera is None

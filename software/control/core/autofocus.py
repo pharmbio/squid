@@ -84,9 +84,9 @@ class AutofocusWorker(QObject):
 
             # display warning in certain cases
             if idx_in_focus == 0:
-                print('moved to the bottom end of the AF range (this is not good)')
+                MAIN_LOG.log('warning - moved to the bottom end of the AF range (this is not good)')
             elif idx_in_focus == self.N-1:
-                print('moved to the top end of the AF range (this is not good)')
+                MAIN_LOG.log('warning - moved to the top end of the AF range (this is not good)')
 
 class AutoFocusController(QObject):
     """
@@ -125,10 +125,10 @@ class AutoFocusController(QObject):
     ):
         # create a QThread object
         if not self.thread is None and self.thread.isRunning():
-            print('*** autofocus thread is still running ***')
+            MAIN_LOG.log('*** autofocus thread is still running ***')
             self.thread.terminate()
             self.thread.wait()
-            print('*** autofocus thread manually stopped ***')
+            MAIN_LOG.log('*** autofocus thread manually stopped ***')
 
         self.N=N
         self.deltaZ_mm=dz_mm
@@ -165,4 +165,4 @@ class AutoFocusController(QObject):
     def wait_till_autofocus_has_completed(self):
         while self.autofocus_in_progress == True:
             time.sleep(0.005)
-        #print('autofocus wait has completed, exit wait')
+

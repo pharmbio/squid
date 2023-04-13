@@ -45,15 +45,17 @@ class ImageSaver(QObject):
 
     @TypecheckFunction
     def save_image(path:str,image:numpy.ndarray,file_format:ImageFormat):
+        # need to use tiff when saving 16 bit images
         if image.dtype == np.uint16 and file_format != ImageFormat.TIFF_COMPRESSED:
             file_format=ImageFormat.TIFF
 
-        # need to use tiff when saving 16 bit images
+        # use tifffile to save tiff images
         if file_format in (ImageFormat.TIFF_COMPRESSED,ImageFormat.TIFF):
             if file_format==ImageFormat.TIFF_COMPRESSED:
                 tifffile.imwrite(path + '.tiff',image,compression=tifffile.COMPRESSION.LZW) # lossless and should be widely supported
             else:
                 tifffile.imwrite(path + '.tiff',image) # takes 7ms
+        # use imageio to save other formats
         else:
             assert file_format==ImageFormat.BMP
             iio.imwrite(path + '.bmp',image)
@@ -80,13 +82,29 @@ class ImageSaver(QObject):
         
     @TypecheckFunction
     def enqueue(self,path:str,image:numpy.ndarray,file_format:ImageFormat):
+        log_msg=f"submitting image {path} to storage queue"
+        MAIN_LOG.log(log_msg)
+
         if self.stop_signal_received:
-            print('! critical - attempted to save image even though stop signal was received!')
+            MAIN_LOG.log('! critical - attempted to save image even though stop signal was received!')
+        
         try:
             self.queue.put_nowait([path,image,file_format])
         except:
-            # if putting in image in there fails, try again but wait for a free slot this time
+            storage_on_device=get_storage_size_in_directory(path)
+            free_space_gb=storage_on_device.free_space_bytes/1024**3
+            total_space_gb=storage_on_device.total_space_bytes/1024**3
+            storage_on_self=get_storage_size_in_directory(".")
+            self_free_space_gb=storage_on_device.free_space_bytes/1024**3
+            self_total_space_gb=storage_on_device.total_space_bytes/1024**3
+            log_msg=f"warning - image saver queue is full, waiting for free slot to submit {path}. (on target storage {free_space_gb:.3f}/{total_space_gb:.3f}GB are currently available. on this computer {self_free_space_gb:.3f}/{self_total_space_gb:.3f}GB are available.)"
+            MAIN_LOG.log(log_msg)
+
+            # if putting in image in there fails initially, try again but wait for a free slot this time
             self.queue.put([path,image,file_format])
+            # log this incident properly, to be able to trace if submitting has worked again later, and when
+            log_msg=f"warning - submitted {path} to previously full storage queue"
+            MAIN_LOG.log(log_msg)
 
     @TypecheckFunction
     def set_base_path(self,path:str):

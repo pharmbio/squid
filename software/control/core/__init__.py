@@ -470,7 +470,7 @@ class Core(QObject):
         super().__init__()
 
         if not home:
-            print("warning: disabled homing on startup can lead to misalignment of the stage. proceed at your own risk. (may damage objective, and/or run into software stage position limits, which can lead to unexpected behaviour)")
+            MAIN_LOG.log("warning: disabled homing on startup can lead to misalignment of the stage. proceed at your own risk. (may damage objective, and/or run into software stage position limits, which can lead to unexpected behaviour)")
 
         # load objects
         try:
@@ -478,7 +478,7 @@ class Core(QObject):
             main_camera = camera.Camera(sn=sn_camera_main,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
             main_camera.open()
         except Exception as e:
-            print('! imaging camera not detected !')
+            MAIN_LOG.log('! imaging camera not detected !')
             raise e
 
         try:
@@ -486,13 +486,13 @@ class Core(QObject):
             focus_camera = camera.Camera(sn=sn_camera_focus,used_for_laser_autofocus=True)
             focus_camera.open()
         except Exception as e:
-            print('! laser AF camera not detected !')
+            MAIN_LOG.log('! laser AF camera not detected !')
             raise e
 
         try:
             self.microcontroller:microcontroller.Microcontroller = microcontroller.Microcontroller(version=MACHINE_CONFIG.CONTROLLER_VERSION)
         except Exception as e:
-            print("! microcontroller not detected !")
+            MAIN_LOG.log("! microcontroller not detected !")
             raise e
 
         # reset the MCU
@@ -628,9 +628,6 @@ class Core(QObject):
 
         well_list_names:List[str]=[wellplate_format.well_index_to_name(*c) for c in config.well_list]
         well_list_physical_pos:List[Tuple[float,float]]=[wellplate_format.well_index_to_mm(*c) for c in config.well_list]
-
-        # print well names as debug info
-        #print("imaging wells: ",", ".join(well_list_names))
 
         # set autofocus parameters
         self.multipointController.set_software_af_flag(not config.af_software_channel is None)

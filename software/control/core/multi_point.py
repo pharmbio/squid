@@ -150,8 +150,7 @@ class MultiPointWorker(QObject):
             
         self.finished.emit()
 
-        MAIN_LOG.log("acquisition finished")
-        print("\nfinished multipoint acquisition\n")
+        MAIN_LOG.log("\nfinished multipoint acquisition\n")
 
     def perform_software_autofocus(self):
         """ run software autofocus to focus on current fov """
@@ -447,7 +446,7 @@ class MultiPointWorker(QObject):
 
                 self.FOV_counter = 0
 
-                print(f"multipoint acquisition - time point {self.time_point}")
+                MAIN_LOG.log(f"multipoint acquisition - time point {self.time_point} at {create_current_timestamp()}")
 
                 if self.Nt > 1:
                     # for each time point, create a new folder
@@ -675,7 +674,19 @@ class MultiPointController(QObject):
             raise ValueError(warning_text)
         else:
             total_num_acquisitions=int(num_wells*num_images_per_well*num_channels)
-            print(f"start multipoint with {num_wells} wells, {num_images_per_well} images per well, {num_channels} channels, total={total_num_acquisitions} images (AF is {'on' if self.do_autofocus else 'off'})")
+            msg=f"starting multipoint with {num_wells} wells, {num_images_per_well} images per well, {num_channels} channels, total={total_num_acquisitions} images (AF is {'on' if self.do_autofocus or self.do_reflection_af else 'off'})"
+            MAIN_LOG.log(msg)
+
+            storage_on_device=get_storage_size_in_directory(self.output_path)
+            free_space_gb=storage_on_device.free_space_bytes/1024**3
+            total_space_gb=storage_on_device.total_space_bytes/1024**3
+
+            total_imaging_size_gb=total_num_acquisitions*self.camera.ROI_width*self.camera.ROI_height*self.camera.pixel_size_byte/1024**3
+            msg=f"acquisition will use {total_imaging_size_gb:.3f}GB storage (on device, {free_space_gb:.3f}/{total_space_gb:.3f}GB are availble)"
+            MAIN_LOG.log(msg)
+            # check if enough free space is available, and add 1GB extra on top to ensure the system can still operate smoothly once imaging is done. (assuming 1GB is enough to run the OS. might not be enough to run any program, but should be enough to not crash the computer)
+            if total_imaging_size_gb>(free_space_gb+1.0):
+                raise RuntimeError(f"error - imaging will use up more storage than is available on the output device! {msg}")
 
             self.acquisitionStarted.emit()
 

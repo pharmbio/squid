@@ -164,7 +164,7 @@ class LiveController(QObject):
 
         if self.image_acquisition_in_progress:
             if self.image_acquisition_queued:
-                print("! warning: image acquisition requested while already in progress. !")
+                MAIN_LOG.log("! warning: image acquisition requested while already in progress. !")
                 return
 
             self.image_acquisition_queued=True
@@ -173,7 +173,6 @@ class LiveController(QObject):
         self.trigger_ID = self.trigger_ID + 1
         self.image_acquisition_in_progress=True
         self.time_image_requested=time.time()
-        #print(f"taking an image (img id: {self.trigger_ID:9} )")
         if self.trigger_mode == TriggerMode.SOFTWARE:
             self.turn_on_illumination()
 
@@ -192,7 +191,7 @@ class LiveController(QObject):
             self.stream_handler.signal_new_frame_received.disconnect(self.end_acquisition)
 
         #imaging_time=time.time()-self.time_image_requested
-        #print(f"real imaging time: {imaging_time*1000:6.3f} ms") # this shows a 40ms delay vs exposure time. why?
+        #print(f"real imaging time: {imaging_time*1000:6.3f} ms") # TODO this shows a 40ms delay vs exposure time. why?
 
         if self.trigger_mode == TriggerMode.SOFTWARE:
             self.turn_off_illumination()
