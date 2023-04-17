@@ -290,7 +290,8 @@ class MultiPointWidget(QObject):
             default=default_delta_s,
             num_decimals=1,
             keyboard_tracking=False,
-            enabled=self.multipointController.Nt > 1
+            enabled=self.multipointController.Nt > 1,
+            tooltip=f"""s component of delta time\n\nmin = {DELTA_T_S.min:.1f}\nmax = {DELTA_T_S.max:.1f}\n\ni.e. total time in seconds = h * 3600 + m * 60 + s"""
         ).widget
         self.entry_dt_m = SpinBoxDouble(
             minimum=DELTA_T_M.min,
@@ -299,7 +300,8 @@ class MultiPointWidget(QObject):
             default=default_delta_m,
             num_decimals=1,
             keyboard_tracking=False,
-            enabled=self.multipointController.Nt > 1
+            enabled=self.multipointController.Nt > 1,
+            tooltip=f"""m component of delta time\n\nmin = {DELTA_T_M.min:.1f}\nmax = {DELTA_T_M.max:.1f}\n\ni.e. total time in seconds = h * 3600 + m * 60 + s"""
         ).widget
         self.entry_dt_h = SpinBoxDouble(
             minimum=DELTA_T_H.min,
@@ -308,7 +310,8 @@ class MultiPointWidget(QObject):
             default=default_delta_h,
             num_decimals=1,
             keyboard_tracking=False,
-            enabled=self.multipointController.Nt > 1
+            enabled=self.multipointController.Nt > 1,
+            tooltip=f"""h component of delta time\n\nmin = {DELTA_T_H.min:.1f}\nmax = {DELTA_T_H.max:.1f}\n\ni.e. total time in seconds = h * 3600 + m * 60 + s"""
         ).widget
 
         self.entry_Nt = SpinBoxInteger(minimum=NT.min,maximum=NT.max,default=self.multipointController.Nt,keyboard_tracking=False,on_valueChanged=[
