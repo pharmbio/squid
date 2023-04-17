@@ -102,9 +102,19 @@ DELTA_Z=FloatRange(
     max=None,
     step=0.1
 )
-DELTA_T=FloatRange(
-    min=1.0,
-    max=3600.0,
+DELTA_T_S=FloatRange(
+    min=0.0,
+    max=59.9,
+    step=0.1
+)
+DELTA_T_M=FloatRange(
+    min=0.0,
+    max=59.9,
+    step=1.0
+)
+DELTA_T_H=FloatRange(
+    min=0.0,
+    max=168.0,
     step=1.0
 )
 NX=IntRange(
@@ -123,6 +133,16 @@ NT=IntRange(
     min=1,
     max=50
 )
+
+def time_in_s_to_components(t_s:float)->Tuple[float,float,float]:
+    """
+    returns (second,minutes,hours) of t_s
+    """
+    return (
+        t_s%60.0, 
+        (t_s%3600.0)//60, # module to remove the hours, then floor divide to remove fractions of a minute
+        t_s//3600.0 # floor divide to remove fractions of an hour
+    )
 
 class MultiPointWidget(QObject):
     @property
@@ -211,6 +231,8 @@ class MultiPointWidget(QObject):
         ).widget
 
         # add imaging grid configuration options
+
+        # x component of grid
         self.entry_deltaX = SpinBoxDouble(
             minimum=DELTA_X.min,
             maximum=DELTA_X.max,
@@ -227,6 +249,7 @@ class MultiPointWidget(QObject):
             lambda _btn:self.grid_changed(True)
         ]).widget
 
+        # y component of grid
         self.entry_deltaY = SpinBoxDouble(
             minimum=DELTA_Y.min,
             maximum=DELTA_Y.max,
@@ -243,6 +266,7 @@ class MultiPointWidget(QObject):
             lambda _btn:self.grid_changed(True)
         ]).widget
 
+        # z-stack setup
         self.entry_deltaZ = SpinBoxDouble(
             minimum=DELTA_Z.min,
             maximum=DELTA_Z.max,
@@ -257,18 +281,38 @@ class MultiPointWidget(QObject):
             lambda new_value:self.entry_deltaZ.setDisabled(new_value==1),
         ]).widget
         
-        self.entry_dt = SpinBoxDouble(
-            minimum=DELTA_T.min,
-            maximum=DELTA_T.max,
-            step=DELTA_T.step,
-            default=self.multipointController.deltat,
+        # time-lapse config
+        default_delta_s,default_delta_m,default_delta_h=time_in_s_to_components(self.multipointController.deltat)
+        self.entry_dt_s = SpinBoxDouble(
+            minimum=DELTA_T_S.min,
+            maximum=DELTA_T_S.max,
+            step=DELTA_T_S.step,
+            default=default_delta_s,
+            num_decimals=1,
+            keyboard_tracking=False,
+            enabled=self.multipointController.Nt > 1
+        ).widget
+        self.entry_dt_m = SpinBoxDouble(
+            minimum=DELTA_T_M.min,
+            maximum=DELTA_T_M.max,
+            step=DELTA_T_M.step,
+            default=default_delta_m,
+            num_decimals=1,
+            keyboard_tracking=False,
+            enabled=self.multipointController.Nt > 1
+        ).widget
+        self.entry_dt_h = SpinBoxDouble(
+            minimum=DELTA_T_H.min,
+            maximum=DELTA_T_H.max,
+            step=DELTA_T_H.step,
+            default=default_delta_h,
             num_decimals=1,
             keyboard_tracking=False,
             enabled=self.multipointController.Nt > 1
         ).widget
 
         self.entry_Nt = SpinBoxInteger(minimum=NT.min,maximum=NT.max,default=self.multipointController.Nt,keyboard_tracking=False,on_valueChanged=[
-            lambda new_value:self.entry_dt.setDisabled(new_value==1),
+            lambda new_value:self.entry_dt_s.setDisabled(new_value==1) or self.entry_dt_m.setDisabled(new_value==1) or self.entry_dt_h.setDisabled(new_value==1),
         ]).widget
 
         self.well_grid_selector=None
@@ -277,10 +321,27 @@ class MultiPointWidget(QObject):
 
         self.grid_widget=Dock(
             Grid(
-                [ Label('num acq. in x',tooltip=ComponentLabels.dx_tooltip), self.entry_NX, Label('delta x (mm)',tooltip=ComponentLabels.dx_tooltip), self.entry_deltaX,],
-                [ Label('num acq. in y',tooltip=ComponentLabels.dy_tooltip), self.entry_NY, Label('delta y (mm)',tooltip=ComponentLabels.dy_tooltip), self.entry_deltaY,],
-                [ Label('num acq. in z',tooltip=ComponentLabels.dz_tooltip), self.entry_NZ, Label('delta z (um)',tooltip=ComponentLabels.dz_tooltip), self.entry_deltaZ,],
-                [ Label('num acq. in t',tooltip=ComponentLabels.dt_tooltip), self.entry_Nt, Label('delta t (s)', tooltip=ComponentLabels.dt_tooltip), self.entry_dt, ],
+                [ 
+                    Label('num acq. in x',tooltip=ComponentLabels.dx_tooltip), self.entry_NX, 
+                    Label('delta x (mm)',tooltip=ComponentLabels.dx_tooltip), self.entry_deltaX,
+                ],
+                [ 
+                    Label('num acq. in y',tooltip=ComponentLabels.dy_tooltip), self.entry_NY, 
+                    Label('delta y (mm)',tooltip=ComponentLabels.dy_tooltip), self.entry_deltaY,
+                ],
+                [ 
+                    Label('num acq. in z',tooltip=ComponentLabels.dz_tooltip), self.entry_NZ, 
+                    Label('delta z (um)',tooltip=ComponentLabels.dz_tooltip), self.entry_deltaZ,
+                ],
+                [ 
+                    Label('num acq. in t',tooltip=ComponentLabels.dt_tooltip), self.entry_Nt, 
+                    Label('delta t', tooltip=ComponentLabels.dt_tooltip),
+                        HBox(
+                            Label("h"), self.entry_dt_h,
+                            Label("m"), self.entry_dt_m,
+                            Label("s"), self.entry_dt_s,
+                        )
+                ],
 
                 GridItem(self.well_grid_selector,0,4,4,1)
             ).widget,
@@ -371,7 +432,10 @@ class MultiPointWidget(QObject):
         self.entry_deltaZ.setValue(new_grid_data.z.d*1000)
         self.entry_NZ.setValue(new_grid_data.z.N)
         assert new_grid_data.t.unit=="s"
-        self.entry_dt.setValue(new_grid_data.t.d)
+        dt_s,dt_m,dt_h=time_in_s_to_components(t_s=new_grid_data.t.d)
+        self.entry_dt_s.setValue(dt_s)
+        self.entry_dt_m.setValue(dt_m)
+        self.entry_dt_h.setValue(dt_h)
         self.entry_Nt.setValue(new_grid_data.t.N)
 
         # manually call callback to refresh acquisition preview in navigation viewer widget
@@ -403,7 +467,7 @@ class MultiPointWidget(QObject):
                 unit="mm",
             ),
             t=GridDimensionConfig(
-                d=self.entry_dt.value(),
+                d=self.entry_dt_s.value()+self.entry_dt_m.value()*60+self.entry_dt_h.value()*3600,
                 N=self.entry_Nt.value(),
                 unit="s",
             ),
