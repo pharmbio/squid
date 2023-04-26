@@ -767,30 +767,35 @@ class Gui(QMainWindow):
             self.imaging_channels_widget.set_channel_configurations(config_data.channels_config)
 
         load_laser_af_reference=False
-        if condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.ALWAYS:
-            load_laser_af_reference=True
-        elif condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.WHEN_EMPTY:
-            if not self.autofocus_widget.laser_af_control.laserAutofocusController.is_initialized:
-                load_laser_af_reference=True
-        if load_laser_af_reference:
-            self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
-
         load_laser_af_enabled=False
-        if condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.ALWAYS:
-            load_laser_af_enabled=True
-        elif condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.WHEN_EMPTY:
-            if not self.acquisition_widget.get_af_laser_is_enabled():
+        if not config_data.af_laser_reference is None:
+            if condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.ALWAYS:
+                load_laser_af_reference=True
+            elif condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.WHEN_EMPTY:
+                if not self.autofocus_widget.laser_af_control.laserAutofocusController.is_initialized:
+                    load_laser_af_reference=True
+            if load_laser_af_reference:
+                self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
+
+            if condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.ALWAYS:
                 load_laser_af_enabled=True
-        if load_laser_af_enabled:
-            self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
+            elif condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.WHEN_EMPTY:
+                if not self.acquisition_widget.get_af_laser_is_enabled():
+                    load_laser_af_enabled=True
+            if load_laser_af_enabled:
+                self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
 
         if go_to_z_reference:
-            if not load_laser_af_reference:
-                MAIN_LOG.log("warning - you specified to move to reference z without loading the laser af data")
-            z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
-            MAIN_LOG.log(f"focus - moving objective to {z_mm=:.3f}")
-            
-            self.core.navigation.move_z_to(z_mm=z_mm,wait_for_completion={})
+            if config_data.af_laser_reference is None:
+                MAIN_LOG.log("warning - you specified to move to reference z but there is no laser af data present")
+            else:
+                if not load_laser_af_reference:
+                    MAIN_LOG.log("warning - you specified to move to reference z without loading the laser af data")
+
+                z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
+                MAIN_LOG.log(f"focus - moving objective to {z_mm=:.3f}")
+                
+                self.core.navigation.move_z_to(z_mm=z_mm,wait_for_completion={})
 
     def closeEvent(self, event:QEvent):
 
