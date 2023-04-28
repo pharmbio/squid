@@ -631,7 +631,7 @@ class Gui(QMainWindow):
 
             af_software_channel=self.acquisition_widget.get_af_software_channel(only_when_enabled=True),
             af_laser_on=self.acquisition_widget.get_af_laser_is_enabled(),
-            af_laser_reference=None if not self.acquisition_widget.get_af_laser_is_enabled() else self.autofocus_widget.laser_af_control.get_reference_data(),
+            af_laser_reference=self.autofocus_widget.laser_af_control.get_reference_data(),
 
             trigger_mode=TRIGGER_MODES_LIST[self.basic_settings.interactive_widgets.trigger_mode_dropdown.currentIndex()],
             pixel_format=self.core.main_camera.pixel_formats[self.basic_settings.interactive_widgets.pixel_format.currentIndex()],

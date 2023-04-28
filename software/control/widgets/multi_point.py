@@ -420,8 +420,9 @@ class MultiPointWidget(QObject):
         callback for a signal that says whether the laser af is now valid or not
         """
         self.is_laser_af_initialized=new_validity
+
         self.interactive_widgets.checkbox_laserAutofocus.setEnabled(new_validity)
-        self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Unchecked) # uncheck it when validity change to invalid, but also uncheck otherwise because why not
+        self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Checked if self.is_laser_af_initialized else Qt.Unchecked)
 
     @TypecheckFunction
     def set_grid_data(self,new_grid_data:WellGridConfig):

@@ -136,6 +136,10 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.deinitialize(require_confirmation=False)
 
+    @property
+    def is_usable(self)->bool:
+        return self.has_been_initialized and self.reference_was_set
+
     def move_to_ref_z(self,_btn=None):
         self.on_focus_in_progress(True)
         self.laserAutofocusController.navigation.move_z_to(z_mm=self.laserAutofocusController.reference_z_height_mm,wait_for_completion={})
@@ -147,7 +151,9 @@ class LaserAutofocusControlWidget(QFrame):
             if answer!=QMessageBox.Yes:
                 return
 
-        self.laserAutofocusController.is_initialized=False
+        self.laserAutofocusController.has_been_initialized=False
+        self.reference_was_set=False
+
         self.laserAutofocusController.x_reference = None
         self.laserAutofocusController.reset_camera_sensor_crop()
 
@@ -269,7 +275,10 @@ class LaserAutofocusControlWidget(QFrame):
         self.on_focus_in_progress(False)
     
     @TypecheckFunction
-    def get_reference_data(self)->LaserAutofocusData:
+    def get_reference_data(self)->Optional[LaserAutofocusData]:
+        if not self.is_usable:
+            return None
+        
         return LaserAutofocusData(
             x_reference=self.laserAutofocusController.x_reference,
             um_per_px=self.laserAutofocusController.um_per_px,
