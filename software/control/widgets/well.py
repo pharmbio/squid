@@ -433,16 +433,16 @@ class WellWidget(QWidget):
         ).widget
 
         self.setLayout(VBox(
-            self.interactive_widgets.well_selection == WellSelectionWidget(
-                move_to_index = on_move_to_index,
-                format = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,
-            ),
             HBox(
                 self.interactive_widgets.clear_well_selection == Button("Deselect all",tooltip="Deselects all wells in the well selection widget above.",on_clicked=lambda _btn:self.interactive_widgets.well_selection.set_selected_wells(new_selection=[])).widget,
                 Label("Wellplate:").widget,
                 self.interactive_widgets.wellplate_dropdown,
                 Label("Objective:").widget,
                 self.interactive_widgets.objective_dropdown,
+            ),
+            self.interactive_widgets.well_selection == WellSelectionWidget(
+                move_to_index = on_move_to_index,
+                format = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,
             ),
             self.interactive_widgets.navigation_viewer == NavigationViewer(
                 sample = MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT,

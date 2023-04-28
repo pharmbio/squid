@@ -167,7 +167,6 @@ class ConfigLoadConditionSet:
     LOAD_CHANNEL_CONFIG: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
     LOAD_CHANNEL_SELECTION: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
-    LOAD_AF_LASER_ON: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
     LOAD_AF_LASER_REFERENCE: ConfigLoadCondition = ConfigLoadCondition.WHEN_EMPTY
 
     LOAD_TRIGGER_MODE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
@@ -175,6 +174,30 @@ class ConfigLoadConditionSet:
     LOAD_IMAGE_FILE_FORMAT: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
     LOAD_PLATE_TYPE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
     LOAD_OBJECTIVE: ConfigLoadCondition = ConfigLoadCondition.ALWAYS
+
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        if ConfigLoadConditionSet.can_be_empty(__name)==False and __value==ConfigLoadCondition.WHEN_EMPTY:
+            raise ValueError(f"ConfigLoadConditionSet.{__name} cannot be {__value}")
+        
+        return super().__setattr__(__name,__value)
+
+    def can_be_empty(field:str)->bool:
+        return {
+            "LOAD_PROJECT_NAME":True,
+            "LOAD_PLATE_NAME":True,
+            "LOAD_CELL_LINE":True,
+            "LOAD_WELL_SELECTION":True,
+            "LOAD_CHANNEL_SELECTION":True,
+            "LOAD_AF_LASER_REFERENCE":True,
+
+            "LOAD_GRID_CONFIG":False,
+            "LOAD_CHANNEL_CONFIG":False,
+            "LOAD_TRIGGER_MODE":False,
+            "LOAD_PIXEL_FORMAT":False,
+            "LOAD_IMAGE_FILE_FORMAT":False,
+            "LOAD_PLATE_TYPE":False,
+            "LOAD_OBJECTIVE":False,
+        }.get(field)
 
     def always()->"Self":
         return ConfigLoadConditionSet(
@@ -184,7 +207,6 @@ class ConfigLoadConditionSet:
             LOAD_GRID_CONFIG = ConfigLoadCondition.ALWAYS,
             LOAD_CHANNEL_CONFIG = ConfigLoadCondition.ALWAYS,
             LOAD_CHANNEL_SELECTION = ConfigLoadCondition.ALWAYS,
-            LOAD_AF_LASER_ON = ConfigLoadCondition.ALWAYS,
             LOAD_AF_LASER_REFERENCE = ConfigLoadCondition.ALWAYS,
             LOAD_TRIGGER_MODE = ConfigLoadCondition.ALWAYS,
             LOAD_PIXEL_FORMAT = ConfigLoadCondition.ALWAYS,

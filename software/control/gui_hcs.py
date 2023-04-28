@@ -25,22 +25,66 @@ from threading import Thread, Lock
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
-def create_radio_selection(condition_set:ConfigLoadConditionSet,segment:str):
-    widget=QWidget()
-    button_group=QButtonGroup(parent=widget)
-    layout=HBox(with_margins=False).layout
+def create_radio_selection(
+    label:str,
+    condition_set:ConfigLoadConditionSet,
+    segment:str,
+    parent:QWidget
+):
+    button_group=QButtonGroup(parent=parent)
+    widget_list=[
+        Label(label)
+    ]
     default_condition=getattr(condition_set,segment)
-    for i,arg in enumerate(ConfigLoadCondition):
-        new_button=QRadioButton(arg.value,parent=widget)
-        new_button.clicked.connect(lambda _,a=arg:setattr(condition_set,segment,a))
-        if arg==default_condition:
-            new_button.setChecked(True)
-        button_group.addButton(new_button,i+1)
-        layout.addWidget(new_button)
 
-    widget.setLayout(layout)
+    # create radio button for each possible ConfigLoadCondition
+    # also, make custom order of these items for better readability
+    for i,arg in enumerate([
+        ConfigLoadCondition.ALWAYS,
+        ConfigLoadCondition.NEVER,
+        ConfigLoadCondition.WHEN_EMPTY,
+    ]):
+        # only allow field being empty when empty is actually an option
+        if arg!=ConfigLoadCondition.WHEN_EMPTY or ConfigLoadConditionSet.can_be_empty(segment):
+            new_button_label:str={
+                ConfigLoadCondition.ALWAYS:"Yes",
+                ConfigLoadCondition.NEVER:"No",
+                ConfigLoadCondition.WHEN_EMPTY:"When empty",
+            }[arg.value]
 
-    return widget
+            new_button=QRadioButton(new_button_label,parent=parent)
+            new_button.clicked.connect(lambda _,a=arg:setattr(condition_set,segment,a))
+            
+            # check radio button representing default condition
+            if arg==default_condition:
+                new_button.setChecked(True)
+
+            # add this radio button to the group of buttons providing all possible values for the config item
+            button_group.addButton(new_button,i+1)
+            widget_list.append(new_button)
+        else:
+            widget_list.append(Label("").widget)
+
+    return widget_list
+
+CONFIG_LOAD_CUSTOM_TEXT="""
+Define for each section of the config file if it should be loaded.
+
+'Yes':
+    Load this setting from the file, and overwrite the current value
+    in the software.
+
+'No':
+    Do not load this setting from the file.
+
+'When empty':
+    Only load this value from the file when the corresponding value
+    in the software is empty.
+
+    Note that this is not available for every value, because some
+    values cannot be empty, e.g. there is always a camera trigger
+    type set.
+"""
 
 def create_referenceFile_widget(
     file:str,
@@ -59,19 +103,11 @@ def create_referenceFile_widget(
 
     def selective_load(file):
         windowworkaround=dict(window=1)
+        grid_widget=BlankWidget()
         window=Window(
             VBox(*flatten([
-                Label(f"Define for each section of the config file when it should be loaded.\n{ConfigLoadCondition.__doc__}\n"),
-                [
-                    VBox(
-                        Label(" ".join([s[0]+s.lower()[1:] for s in l.split("_")][1:])),
-                        create_radio_selection(condition_set,l),
-
-                        with_margins=False
-                    )
-                    for l
-                    in condition_set.__dict__.keys()
-                ],
+                Label(CONFIG_LOAD_CUSTOM_TEXT),
+                grid_widget,
                 Button("Load",on_clicked=lambda _,w=workaround,ww=windowworkaround:ww["window"].close() and load_callback(file,w))
             ])).widget,
 
@@ -79,6 +115,18 @@ def create_referenceFile_widget(
             parent=parent,
         )
         windowworkaround["window"]=window
+
+        grid_widget.setLayout(Grid(*[
+            create_radio_selection(
+                # create nicely formatted name for each attribute from the SNAKE_CASE (SNAKE_CASE -> "Snake Case")
+                " ".join([s[0]+s.lower()[1:] for s in l.split("_")][1:]),
+                condition_set,
+                l,
+                parent=grid_widget
+            )
+            for l
+            in condition_set.__dict__.keys()
+        ]).layout)
 
     return Dock(
         Grid(
@@ -776,14 +824,6 @@ class Gui(QMainWindow):
                     load_laser_af_reference=True
             if load_laser_af_reference:
                 self.autofocus_widget.laser_af_control.set_reference_data(config_data.af_laser_reference)
-
-            if condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.ALWAYS:
-                load_laser_af_enabled=True
-            elif condition_set.LOAD_AF_LASER_ON==ConfigLoadCondition.WHEN_EMPTY:
-                if not self.acquisition_widget.get_af_laser_is_enabled():
-                    load_laser_af_enabled=True
-            if load_laser_af_enabled:
-                self.acquisition_widget.set_af_laser_is_enabled(config_data.af_laser_on)
 
         if go_to_z_reference:
             if config_data.af_laser_reference is None:
