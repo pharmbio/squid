@@ -300,7 +300,7 @@ class Acquisition:
     CROP_HEIGHT:int = 2500
     """ crop height for images after recording from camera sensor """
     NUMBER_OF_FOVS_PER_AF:int = 3
-    IMAGE_FORMAT:ImageFormat = ImageFormat.TIFF
+    IMAGE_FORMAT:ImageFormat = ImageFormat.TIFF_COMPRESSED
     """ file format used for images saved after multi point image acquisition """
     IMAGE_DISPLAY_SCALING_FACTOR:ClosedRange[float](0.0,1.0) = 1.0
     """ this _crops_ the image display for the multi point acquisition """
