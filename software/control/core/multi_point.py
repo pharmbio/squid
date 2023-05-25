@@ -450,7 +450,8 @@ class MultiPointWorker(QObject):
 
                 if self.Nt > 1:
                     # for each time point, create a new folder
-                    current_path = str(Path(self.output_path)/f"t{self.time_point}")
+                    time_point_str=f"t{self.time_point:02}"
+                    current_path = str(Path(self.output_path)/time_point_str)
                     self.current_path=current_path
                     os.mkdir(current_path)
                 else:
