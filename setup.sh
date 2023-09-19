@@ -36,17 +36,18 @@ pip3 install imagecodecs==2023.1.23 Pillow==9.3.* PyQt5==5.14.* pyqtgraph==0.12.
 virtualenv orange_venv
 source orange_venv/bin/activate
 pip3 install --upgrade setuptools pip
+pip3 install PyQt5 numpy==1.24
 pip3 install orange3
 deactivate
 
 # install cellprofiler
 virtualenv cellprofiler_venv
 source cellprofiler_venv/bin/activate
-pip3 install numpy==1.23 matplotlib qtpy pyserial pandas imageio opencv-python opencv-contrib-python lxml crc # python dependencies for squid software, installed into cellprofiler virtualenv
+pip3 install numpy==1.24 matplotlib qtpy pyserial pandas imageio opencv-python opencv-contrib-python lxml crc # python dependencies for squid software, installed into cellprofiler virtualenv
 # download prebuilt wxpython wheel to avoid local compilation which takes 30 minutes
 wget https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-20.04/wxPython-4.1.0-cp38-cp38-linux_x86_64.whl
 pip3 install wxPython-4.1.0-cp38-cp38-linux_x86_64.whl
-pip3 install cellprofiler==4.2.4 # numpy needs to be done installing before cellprofiler is installed
+pip3 install cellprofiler==4.2.6 # numpy needs to be done installing before cellprofiler is installed
 deactivate
 
 # install cellprofiler analyst
@@ -64,6 +65,9 @@ deactivate
 # install microscope software (and firmware)
 cd ~/Downloads
 git clone https://github.com/pharmbio/squid # download squid software and firmware repo
+cd squid/software
+cp reference_machine_config.json machine_config.json
+cd ~
 # from https://forum.squid-imaging.org/t/setting-up-arduino-teensyduino-ide-for-uploading-firmware/36 :
 # download arduino IDE
 curl https://downloads.arduino.cc/arduino-1.8.19-linux64.tar.xz -o arduino-1.8.19.tar.xz
