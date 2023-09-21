@@ -88,9 +88,6 @@ sudo ./install.sh
 echo "manual instructions: in the now open window, manually comment #include 'def_octopi.h' and uncomment #include 'def_octopi_80120.h', then switch to correct board (teensy 4.1) then install the packages PacketSerial and FastLED (both in Tools), then flash firmware"
 cd ~/Downloads/squid/firmware/octopi_firmware_v2/main_controller_teensy41
 arduino main_controller_teensy41.ino
-# copy default microscope configuration file - requires adjustment of well positions and autofocus channel
-cd ~/Downloads/squid/software
-cp configurations/configuration_HCS_v2.txt configuration.txt
 # install camera driver
 cd ~/Downloads/squid/software/drivers\ and\ libraries/daheng\ camera/Galaxy_Linux-x86_Gige-U3_32bits-64bits_1.2.1911.9122
 echo -e "\ny\nEn\n" | sudo ./Galaxy_camera.run
@@ -187,4 +184,4 @@ chmod 755 ~/Desktop/cellprofileranalyst.desktop ~/Documents/cellprofileranalyst.
 
 # remove install files
 cd
-rm teensyduino-install.linux64 00-teensy.rules arduino-1.8.19.tar.xz micro-2.0.11-amd64.deb
+rm teensyduino-install.linux64 00-teensy.rules arduino-1.8.19.tar.xz micro-2.0.11-amd64.deb cpa304.tar.gz wxPython-4.1.0-cp38-cp38-linux_x86_64.whl
