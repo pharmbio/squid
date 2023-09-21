@@ -494,6 +494,10 @@ class Gui(QMainWindow):
         except Exception as e:
             msg_text:str=str(e)+"\n"*2+"-"*64+"\n"*2+"\n".join(traceback.format_tb(e.__traceback__))
             MAIN_LOG.log(f"an exception occured while starting the experiment: {msg_text}")
+            try:
+                web_service.set_status(error=repr(e))
+            except Exception as web_err:
+                MAIN_LOG.log(f"failed to propagate error to web service: {web_err!r}")
             MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {msg_text}").run()
             self.set_all_interactible_enabled(set_enabled=True)
             return AcquisitionStartResult(whole_acquisition_config,exception=e)
