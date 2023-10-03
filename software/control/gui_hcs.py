@@ -432,6 +432,10 @@ class Gui(QMainWindow):
                     Thread(target=lambda: self.start_experiment()).start()
                 return ok
 
+            @web_service.expose
+            def list_protocols():
+                return sorted(map(str, Path('.').glob('protocols/**/*.json')))
+
             web_service.start(host, int(port))
 
     def change_acquisition_preview(self):
