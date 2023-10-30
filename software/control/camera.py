@@ -180,13 +180,20 @@ class Camera(object):
             self.set_wb_ratios(2,1,2)
 
         # temporary
-        # self.camera.AcquisitionFrameRate.set(1000)
-        # self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
+        self.camera.AcquisitionFrameRate.set(1000)
+        self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
 
         # turn off device link throughput limit
         self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
 
+        # set this to continuous for -> stream on called once -> new image acquired on every trigger
+        supported_acquisition_modes=[v for k,v in self.camera.AcquisitionMode.get_range().items()]
+        assert gx.GxAcquisitionModeEntry.CONTINUOUS in supported_acquisition_modes, f"gx.GxAcquisitionModeEntry.CONTINUOUS not in {self.camera.AcquisitionMode.get_range()}"
+        self.camera.AcquisitionMode.set(gx.GxAcquisitionModeEntry.CONTINUOUS)
+
         self.set_pixel_format(list(self.camera.PixelFormat.get_range().keys())[0])
+
+        self.start_streaming() # debug , maybe temporary? there does not seem to be a reason to not just stream at all times...
         
     @TypecheckFunction
     def open(self,index:int=0):
@@ -477,14 +484,18 @@ class Camera(object):
 
         start_time=time.time()
         raw_image=None
-        while raw_image is None or raw_image.get_status()==gx.GxFrameStatusList.INCOMPLETE:
+        while True:
+            time.sleep(0.005) # arbitrary short sleep
+            QApplication.processEvents()
+            raw_image = self.camera.data_stream[self.device_index].get_image()
+
+            image_recording_incomplete=(raw_image is None) or (raw_image.get_status()==gx.GxFrameStatusList.INCOMPLETE)
+            if not image_recording_incomplete:
+                break
+
             if (time.time()-start_time)>timeout_overhead_s:
                 error_msg=f"camera frame did not arrive within time limit ({timeout_overhead_s:.3f})s"
                 raise RuntimeError(error_msg)
-            
-            time.sleep(0.005)
-            QApplication.processEvents()
-            raw_image = self.camera.data_stream[self.device_index].get_image()
 
         numpy_image = self.rescale_raw_image(raw_image)
 
