@@ -180,13 +180,14 @@ class MultiPointWorker(QObject):
             target_um=config.channel_z_offset or 0.0
             um_to_move=target_um-self.movement_deviation_from_focusplane
             if numpy.abs(um_to_move)>MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
-                #print(f"moving to relative offset {target_um}µm")
                 self.movement_deviation_from_focusplane=target_um
                 if counter_backlash:
                     self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
                     self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})#,wait_for_stabilization=True)
                 else:
                     self.navigation.move_z(um_to_move/1000,wait_for_completion={})#,wait_for_stabilization=True)
+                
+                MAIN_LOG.log(f"moved to channel offset")
 
         with Profiler("snap",parent=profiler) as snap:
             image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width,profiler=snap)
@@ -268,9 +269,11 @@ class MultiPointWorker(QObject):
                 if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
                     base_z=int(-self.deltaZ_usteps*round((self.NZ-1)/2))
                     self.navigation.move_z_usteps(base_z,wait_for_completion={})
-                # maneuver for achiving uniform step size and repeatability when using open-loop control
+                # maneuver for achieving uniform step size and repeatability when using open-loop control
                 self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
                 self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+
+                MAIN_LOG.log("moved to target z in z-stack (part 1)")
 
         # z-stack
         for k in range(self.NZ):
@@ -323,6 +326,8 @@ class MultiPointWorker(QObject):
                     self.navigation.move_z_usteps(self.deltaZ_usteps,wait_for_completion={},wait_for_stabilization=True)
                     self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
 
+                MAIN_LOG.log("moved to target z in z-stack (part 3)")
+
             self.progress.last_completed_action="image z slice"
             self.signal_new_acquisition.emit(self.progress)
         
@@ -334,6 +339,8 @@ class MultiPointWorker(QObject):
 
             self.on_abort_dz_usteps += latest_offset
             self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
+
+            MAIN_LOG.log("moved to target z in z-stack (part 2)")
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
@@ -439,6 +446,7 @@ class MultiPointWorker(QObject):
             if self.reflection_af_initialized:
                 MAIN_LOG.log(f"moving to z reference at {self.laserAutofocusController.reference_z_height_mm:.3f}mm")
                 self.laserAutofocusController.navigation.move_z_to(z_mm=self.laserAutofocusController.reference_z_height_mm,wait_for_completion={})
+                MAIN_LOG.log(f"moving to z reference done")
 
             with self.camera.wrapper.ensure_streaming(), self.autofocusController.camera.wrapper.ensure_streaming():
                 # disable joystick button action
