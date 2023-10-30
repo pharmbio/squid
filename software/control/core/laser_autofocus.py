@@ -220,7 +220,7 @@ class LaserAutofocusController(QObject):
                 take_image_start_time=time.time()
                 while image is None:
                     if DEBUG_THIS_STUFF:
-                        print(f"{current_counter=}")
+                        print(f"laser autofocus centroid spot imaging attempt: {current_counter=}")
                         current_counter+=1
             
                     image = self.liveController.snap(self.liveController.currentConfiguration)
