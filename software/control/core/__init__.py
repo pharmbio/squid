@@ -394,7 +394,7 @@ class StreamingCamera:
         if self.this_put_camera_into_a_state_to_be_used_directly:
             if not self.was_live:
                 self.camera.is_live=False
-            if not self.callback_was_enabled:
+            if not self.was_streaming:
                 self.camera.stop_streaming()
 
             self.camera.in_a_state_to_be_used_directly=False
@@ -484,7 +484,7 @@ class Core(QObject):
     last_known_pos_well_row:Optional[int]
     last_known_pos_well_column:Optional[int]
 
-    def __init__(self,home:bool=True):
+    def __init__(self,home:bool=True,debug_camera_timings:bool=False):
         super().__init__()
 
         if not home:
@@ -494,6 +494,14 @@ class Core(QObject):
         try:
             main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
             main_camera.open()
+
+            if debug_camera_timings:
+                for i in range(0,10):
+                    start_time=time.time()
+                    main_camera.send_trigger()
+                    _image=main_camera.read_frame(10.0)
+                    print(f"recorded image {i} of main camera after {time.time()-start_time:.3f}s")
+
         except Exception as e:
             MAIN_LOG.log('! imaging camera not detected !')
             raise e
@@ -501,6 +509,14 @@ class Core(QObject):
         try:
             focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,used_for_laser_autofocus=True)
             focus_camera.open()
+
+            if debug_camera_timings:
+                for i in range(0,10):
+                    start_time=time.time()
+                    focus_camera.send_trigger()
+                    _image=focus_camera.read_frame(10.0)
+                    print(f"recorded image {i} of focus camera after {time.time()-start_time:.3f}s")
+
         except Exception as e:
             MAIN_LOG.log('! laser AF camera not detected !')
             raise e
