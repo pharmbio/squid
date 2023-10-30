@@ -29,7 +29,8 @@ class ImageSaver(QObject):
         self.experiment_ID:str = ''
         self.image_format:ImageFormat = image_format
         self.max_num_image_per_folder:int = 1000
-        self.queue:Queue = Queue(64) # max this many items in the queue
+        self.queue_size_max=256 # max this many items in the queue
+        self.queue:Queue = Queue(self.queue_size_max)
         self.image_lock:Lock = Lock()
         self.stop_signal_received:bool = False
         self.thread = Thread(target=self.process_queue) # type: ignore
@@ -82,7 +83,7 @@ class ImageSaver(QObject):
         
     @TypecheckFunction
     def enqueue(self,path:str,image:numpy.ndarray,file_format:ImageFormat):
-        log_msg=f"submitting image {path} to storage queue"
+        log_msg=f"submitting image {path} to storage queue ({self.queue.qsize()}/{self.queue_size_max} slots in queue occupied)"
         MAIN_LOG.log(log_msg)
 
         if self.stop_signal_received:
@@ -94,14 +95,17 @@ class ImageSaver(QObject):
             storage_on_device=get_storage_size_in_directory(path)
             free_space_gb=storage_on_device.free_space_bytes/1024**3
             total_space_gb=storage_on_device.total_space_bytes/1024**3
+
             storage_on_self=get_storage_size_in_directory(".")
-            self_free_space_gb=storage_on_device.free_space_bytes/1024**3
-            self_total_space_gb=storage_on_device.total_space_bytes/1024**3
+            self_free_space_gb=storage_on_self.free_space_bytes/1024**3
+            self_total_space_gb=storage_on_self.total_space_bytes/1024**3
+
             log_msg=f"warning - image saver queue is full, waiting for free slot to submit {path}. (on target storage {free_space_gb:.3f}/{total_space_gb:.3f}GB are currently available. on this computer {self_free_space_gb:.3f}/{self_total_space_gb:.3f}GB are available.)"
             MAIN_LOG.log(log_msg)
 
             # if putting in image in there fails initially, try again but wait for a free slot this time
             self.queue.put([path,image,file_format])
+            
             # log this incident properly, to be able to trace if submitting has worked again later, and when
             log_msg=f"warning - submitted {path} to previously full storage queue"
             MAIN_LOG.log(log_msg)
