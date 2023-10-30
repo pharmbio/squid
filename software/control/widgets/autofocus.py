@@ -140,18 +140,22 @@ class LaserAfDebugdisplay:
         # move to bottom end of z test range, and clear backlash
         self.live_controller.microcontroller.move_z_usteps(
             usteps = self.live_controller.microcontroller.mm_to_ustep_z(
-                value_mm = -(
-                    half_range_mm 
-                    + self.live_controller.microcontroller.clear_z_backlash_mm
-                )
+                value_mm = -half_range_mm 
             )
         )
         self.live_controller.microcontroller.wait_till_operation_is_completed()
+
+        # then clear backlash
+        self.live_controller.microcontroller.move_z_usteps( - self.live_controller.microcontroller.clear_z_backlash_usteps )
+        self.live_controller.microcontroller.wait_till_operation_is_completed()
         self.live_controller.microcontroller.move_z_usteps( self.live_controller.microcontroller.clear_z_backlash_usteps )
         self.live_controller.microcontroller.wait_till_operation_is_completed()
+
         for i in range(num_steps):
-            self.live_controller.microcontroller.move_z_usteps(usteps=self.live_controller.microcontroller.mm_to_ustep_z(value_mm = step_size_mm))
-            self.live_controller.microcontroller.wait_till_operation_is_completed()
+            # first step has offset 0 from bottom of range 
+            if i>0:
+                self.live_controller.microcontroller.move_z_usteps(usteps=self.live_controller.microcontroller.mm_to_ustep_z(value_mm = step_size_mm))
+                self.live_controller.microcontroller.wait_till_operation_is_completed()
 
             real_displacements[i] = -half_range_mm + i * step_size_mm
             measured_displacement[i] = self.laser_af_controller.measure_displacement()
@@ -168,6 +172,12 @@ class LaserAfDebugdisplay:
         real_displacement,
         measured_displacement,
     ):  
+        # clear existing plot (if exists)
+        try:
+            self.laser_af_fitness_display.plot_data.clear()
+        except:
+            pass
+
         bins=real_displacement
         for data,color in [
             (real_displacement,"green"),
@@ -179,12 +189,6 @@ class LaserAfDebugdisplay:
                 self.laser_af_fitness_display.plot_data.plot(**plot_kwargs)
             except:
                 self.laser_af_fitness_display.plot_data=self.laser_af_fitness_display.addPlot(0,0,title="laser af test",viewBox=self.laser_af_fitness_display.view,**plot_kwargs)
-            #try:    
-            #    self.laser_af_fitness_display.plot_data.clear()
-            #    self.laser_af_fitness_display.plot_data.plot(**plot_kwargs)
-            #except:
-            
-            #self.laser_af_fitness_display.plot_data.hideAxis("left")
 
     def display_image(self,new_image:numpy.ndarray):
         kwargs={
