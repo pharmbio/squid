@@ -100,6 +100,11 @@ def create_referenceFile_widget(
         load_laser_af_data_requested=False,
         condition_set=condition_set, # this is a reference to an object that can be manipulated by the gui below
     )
+    
+    workaround_load_all=dict(
+        load_laser_af_data_requested=True,
+        condition_set=ConfigLoadConditionSet.always(),
+    )
 
     def selective_load(file):
         windowworkaround=dict(window=1)
@@ -150,10 +155,14 @@ def create_referenceFile_widget(
                 Label(f"Objective: {config.objective}"),
                 Label(f"Timestamp: {config.timestamp}"),
             ],
-            [
-                Button("Load (default)",on_clicked=lambda _,w=workaround:load_callback(file,w)),
-                Button("Load (advanced)",on_clicked=lambda _,file=file:selective_load(file)),
-            ]
+            GridItem(
+                HBox(*[
+                    Button("Load (default)",on_clicked=lambda _,w=workaround:load_callback(file,w)),
+                    Button("Load (advanced)",on_clicked=lambda _,file=file:selective_load(file)),
+                    Button("Load (all)",on_clicked=lambda _,w=workaround_load_all,file=file:load_callback(file,w)),
+                ]),
+                colSpan=3
+            )
         ).widget,
         title=f"File: {file}",
         minimize_height=True,
