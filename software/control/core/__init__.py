@@ -201,6 +201,7 @@ class ConfigLoadConditionSet:
 
     def always()->"Self":
         return ConfigLoadConditionSet(
+            LOAD_PROJECT_NAME = ConfigLoadCondition.ALWAYS,
             LOAD_PLATE_NAME = ConfigLoadCondition.ALWAYS,
             LOAD_CELL_LINE = ConfigLoadCondition.ALWAYS,
             LOAD_WELL_SELECTION = ConfigLoadCondition.ALWAYS,
@@ -305,6 +306,7 @@ class AcquisitionConfig:
             "output_path":self.output_path,
             "project_name":self.project_name,
             "plate_name":self.plate_name,
+            "cell_line":self.cell_line,
 
             "image_file_format":self.image_file_format.name,
             "trigger_mode":self.trigger_mode,
