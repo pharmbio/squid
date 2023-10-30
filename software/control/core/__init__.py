@@ -378,8 +378,6 @@ class StreamingCamera:
             self.was_live=self.camera.is_live
             self.callback_was_enabled=self.camera.callback_is_enabled
 
-            if self.callback_was_enabled:
-                self.camera.disable_callback()
             if not self.was_live:
                 self.camera.is_live=True
             if not self.was_streaming:
@@ -392,8 +390,6 @@ class StreamingCamera:
 
     def __exit__(self,_exception_type,_exception_value,_exception_traceback):
         if self.this_put_camera_into_a_state_to_be_used_directly:
-            #if self.was_streaming:
-            #    self.camera.enable_callback()
             if not self.was_live:
                 self.camera.is_live=False
             if not self.callback_was_enabled:
@@ -429,8 +425,6 @@ class CameraWrapper:
         )
 
         self.camera.set_software_triggered_acquisition() # default trigger type
-        if not self.stream_handler is None:
-            self.camera.set_callback(self.stream_handler.on_new_frame)
 
         try:
             _=self.camera.wrapper
@@ -496,16 +490,14 @@ class Core(QObject):
 
         # load objects
         try:
-            sn_camera_main = camera.get_sn_by_model(MACHINE_CONFIG.MAIN_CAMERA_MODEL)
-            main_camera = camera.Camera(sn=sn_camera_main,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
+            main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
             main_camera.open()
         except Exception as e:
             MAIN_LOG.log('! imaging camera not detected !')
             raise e
 
         try:
-            sn_camera_focus = camera.get_sn_by_model(MACHINE_CONFIG.FOCUS_CAMERA_MODEL)
-            focus_camera = camera.Camera(sn=sn_camera_focus,used_for_laser_autofocus=True)
+            focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,used_for_laser_autofocus=True)
             focus_camera.open()
         except Exception as e:
             MAIN_LOG.log('! laser AF camera not detected !')
@@ -598,9 +590,6 @@ class Core(QObject):
     @property
     def send_hardware_trigger(self):
         return self.microcontroller.send_hardware_trigger
-    @property
-    def wait_till_operation_is_completed(self):
-        return self.microcontroller.wait_till_operation_is_completed
     @property
     def turn_on_AF_laser(self):
         return self.microcontroller.turn_on_AF_laser

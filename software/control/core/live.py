@@ -92,23 +92,38 @@ class LiveController(QObject):
                 self.set_microscope_mode(config)
 
             with Profiler("take image",parent=profiler) as takeimage:
-                """ take image """
                 image=None
-                start_time=time.monotonic()
-                max_wait_time_s=config.exposure_time_ms/1000.0+0.15 # add extra 150ms to wait for imaging
-                while (time.monotonic()-start_time) < max_wait_time_s: # timeout image capture
-                    try:
-                        self.trigger_acquisition()
-                        image = self.camera.read_frame()
-                        self.end_acquisition()
-                        break
-                    except AttributeError as a:
-                        if str(a)!="'NoneType' object has no attribute 'get_numpy_array'":
-                            raise a
-                        continue
+                try:
+                    self.trigger_acquisition()
+                except RuntimeError as e:
+                    MAIN_LOG.log("initial acquisition trigger failed because {e}")
 
-                if image is None:
-                    raise ValueError(f"! error - could not take an image in config {config.name} !")
+                # print("! you now have 1 second to yank the usb cable to test the yank-proof camera code") # for debug!
+                # time.sleep(1) # for debug!
+
+                # try reading a frame until one is acquired
+                while True:
+                    try:
+                        image = self.camera.read_frame()
+                        break
+                    except RuntimeError as e:
+                        MAIN_LOG.log("camera image read timeout. re-recording image.")
+
+                        # timeout likely caused by camera connection issue - try solving by reconnecting
+                        # reconnection should succeed immediately if camera is present and working fine - attempt reconnection until success
+                        while True:
+                            try:
+                                self.image_acquisition_in_progress=False
+                                self.image_acquisition_queued=False
+                                self.camera.attempt_reconnection()
+                                self.set_microscope_mode(config)
+                                break
+                            except:
+                                continue
+
+                        self.trigger_acquisition()
+
+                self.end_acquisition()
 
         """ de-prepare camera and lights """
 

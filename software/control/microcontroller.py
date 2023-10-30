@@ -7,6 +7,7 @@ import threading
 from crc import CrcCalculator, Crc8
 
 from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS, MAIN_LOG
+from control.camera import retry_on_failure
 
 from control.typechecker import TypecheckFunction, ClosedRange, ClosedSet
 from typing import Union, Any, Tuple, List, Optional
@@ -20,6 +21,14 @@ from qtpy.QtWidgets import QApplication
 # check if the microcontroller has finished executing the more recent command
 
 # to do (7/28/2021) - add functions for configuring the stepper motors
+from functools import wraps
+def write_command_name(func):
+    @wraps(func)
+    def wrapper(*args,**kwargs):
+        args[0].last_command_str=func.__name__
+        return func(*args,**kwargs)
+    return wrapper
+
 
 class Microcontroller:
     @TypecheckFunction
@@ -49,35 +58,62 @@ class Microcontroller:
         self.crc_calculator = CrcCalculator(Crc8.CCITT,table_based=True)
         self.retry = 0
 
-        MAIN_LOG.log(f'startup - connecting to controller based on {version.value}')
+        self.version=version
+        self.sn=sn
+        self.serial=None
 
-        if version == ControllerType.DUE:
-            controller_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino Due' == p.description] # autodetect - based on Deepak's code
-        else:
-            if sn is not None:
-                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if sn == p.serial_number]
-            else:
-                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if p.manufacturer == 'Teensyduino']
-        
-        if not controller_ports:
-            raise IOError("no controller found")
-        if len(controller_ports) > 1:
-            MAIN_LOG.log('multiple controller found - using the first')
-        
-        self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
-        time.sleep(0.2)
-        MAIN_LOG.log('startup - controller connected')
+        self.last_command_str=""
+
+        self.attempt_connection()
 
         self.new_packet_callback_external = None
         self.terminate_reading_received_packet_thread = False
         self.thread_read_received_packet = threading.Thread(target=self.read_received_packet, daemon=True)
         self.thread_read_received_packet.start()
+
+    def attempt_connection(self):
+        first_connection=self.serial is None
+
+        if len(self.last_command_str)>0:
+            print(f"attempt reconnection with last sent command: {self.last_command_str}")
+
+        if self.version == ControllerType.DUE:
+            controller_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino Due' == p.description] # autodetect - based on Deepak's code
+        else:
+            if self.sn is not None:
+                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if self.sn == p.serial_number]
+            else:
+                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if p.manufacturer == 'Teensyduino']
+        
+        if not controller_ports:
+            if first_connection:
+                raise IOError("no controller found")
+            else:
+                MAIN_LOG.log("failed to reconnect to the microcontroller")
+                return
+        
+        if len(controller_ports) > 1:
+            MAIN_LOG.log('multiple controller found - using the first')
+        
+        try:
+            self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
+        except serial.serialutil.SerialException as es: # looks like an OSError with errno 13
+            MAIN_LOG.log("failed to reconnect to the microcontroller")
+            return
+
+        time.sleep(0.2)
+        if first_connection:
+            MAIN_LOG.log(f'startup - connecting to controller based on {self.version.value}')
+            MAIN_LOG.log('startup - controller connected')
+        else:
+            MAIN_LOG.log('controller reconnected')
         
     def close(self):
         self.terminate_reading_received_packet_thread = True
         self.thread_read_received_packet.join()
         self.serial.close()
 
+    @write_command_name
     def reset(self):
         self._cmd_id = 0
         cmd = bytearray(self.tx_buffer_length)
@@ -85,6 +121,7 @@ class Microcontroller:
         self.send_command(cmd)
         MAIN_LOG.log('startup - reset the microcontroller') # debug
 
+    @write_command_name
     def initialize_drivers(self):
         self._cmd_id = 0
         cmd = bytearray(self.tx_buffer_length)
@@ -92,16 +129,19 @@ class Microcontroller:
         self.send_command(cmd)
         MAIN_LOG.log('startup - initialized the drivers') # debug
 
+    @write_command_name
     def turn_on_illumination(self):
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.TURN_ON_ILLUMINATION
         self.send_command(cmd)
 
+    @write_command_name
     def turn_off_illumination(self):
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.TURN_OFF_ILLUMINATION
         self.send_command(cmd)
 
+    @write_command_name
     def set_illumination(self,illumination_source:int,intensity:float):
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.SET_ILLUMINATION
@@ -110,6 +150,7 @@ class Microcontroller:
         cmd[4] = int((intensity/100)*65535) & 0xff
         self.send_command(cmd)
 
+    @write_command_name
     def set_illumination_led_matrix(self,illumination_source:int,r:float,g:float,b:float):
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.SET_ILLUMINATION_LED_MATRIX
@@ -119,6 +160,7 @@ class Microcontroller:
         cmd[5] = min(int(b*255),255)
         self.send_command(cmd)
 
+    @write_command_name
     def send_hardware_trigger(self,control_illumination:bool=False,illumination_on_time_us:int=0,trigger_output_ch:int=0):
         illumination_on_time_us = int(illumination_on_time_us)
         cmd = bytearray(self.tx_buffer_length)
@@ -514,11 +556,18 @@ class Microcontroller:
         cmd[4] = value & 0xff
         self.send_command(cmd)
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Microcontroller.attempt_connection
+    )
+    def write_command_to_serial(self,command):
+        self.serial.write(command)
+
     def send_command(self,command):
         self._cmd_id = (self._cmd_id + 1)%256
         command[0] = self._cmd_id
         command[-1] = self.crc_calculator.calculate_checksum(command[:-1])
-        self.serial.write(command)
+        self.write_command_to_serial(command)
         self.mcu_cmd_execution_in_progress = True
         self.last_command = command
         self.timeout_counter = 0
@@ -536,15 +585,33 @@ class Microcontroller:
     def read_received_packet(self):
         while self.terminate_reading_received_packet_thread == False:
             # wait to receive data
-            if self.serial.in_waiting==0:
+            try:
+                serial_in_waiting_status=self.serial.in_waiting
+            except OSError as e:
+                if e.errno == 5:
+                    MAIN_LOG.log("failed to get serial waiting status because of I/O error: microcontroller might be disconnected")
+                    time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY*1000)
+                    try:
+                        self.attempt_connection()
+                    except OSError as e:
+                        if e.args[0]=="no controller found":
+                            pass
+                        else:
+                            raise e
+                        
+                    continue
+
+                raise e
+
+            if serial_in_waiting_status==0:
                 time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
                 continue
-            if self.serial.in_waiting % self.rx_buffer_length != 0: # incomplete data
+            if serial_in_waiting_status % self.rx_buffer_length != 0: # incomplete data
                 time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
                 continue
             
             # get rid of old data
-            num_bytes_in_rx_buffer = self.serial.in_waiting
+            num_bytes_in_rx_buffer = serial_in_waiting_status
             if num_bytes_in_rx_buffer > self.rx_buffer_length:
                 # print('getting rid of old data')
                 for i in range(num_bytes_in_rx_buffer-self.rx_buffer_length):
@@ -623,17 +690,35 @@ class Microcontroller:
         self.new_packet_callback_external = function
 
     @TypecheckFunction
-    def wait_till_operation_is_completed(self, timeout_limit_s:Optional[int]=5, time_step:Optional[float]=None, timeout_msg:str='Error - microcontroller timeout, the program will exit'):
-        if time_step is None:
-            time_step=MACHINE_CONFIG.SLEEP_TIME_S
+    def wait_till_operation_is_completed(
+        self,
+        timeout_limit_s:Optional[int]=5,
+        time_step:Optional[float]=None,
+        timeout_msg:str='Error - microcontroller timeout, the program will exit'
+    ):
+        time_step=time_step or MACHINE_CONFIG.SLEEP_TIME_S
+        timeout_limit_s=timeout_limit_s or 5
 
-        timestamp_start = time.time()
-        while self.is_busy():
-            QApplication.processEvents()
-            time.sleep(time_step)
-            if not timeout_limit_s is None:
-                if time.time() - timestamp_start > timeout_limit_s:
-                    raise RuntimeError(timeout_msg)
+        retry=False
+        try:
+            timestamp_start = time.time()
+            while self.is_busy():
+                QApplication.processEvents()
+                time.sleep(time_step)
+                if not timeout_limit_s is None:
+                    if time.time() - timestamp_start > timeout_limit_s:
+                        raise RuntimeError(timeout_msg)
+                    
+        except RuntimeError as e:
+            if e.args[0]==timeout_msg:
+                MAIN_LOG.log("microcontroller timeout - attempting reconnection to recover")
+                self.attempt_connection()
+                retry=True
+            else:
+                raise e
+            
+        if retry:
+            self.wait_till_operation_is_completed(self,timeout_limit_s,time_step,timeout_msg)
 
     # signed_int type is actually int64 (?)
     @TypecheckFunction

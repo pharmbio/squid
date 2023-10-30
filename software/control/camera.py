@@ -11,23 +11,74 @@ from control.typechecker import TypecheckFunction
 
 from qtpy.QtWidgets import QApplication
 
+from functools import wraps
+
 def get_sn_by_model(model_name:str)->Optional[Any]:
     try:
         device_manager = gx.DeviceManager()
         device_num, device_info_list = device_manager.update_device_list()
     except:
         device_num = 0
+
     if device_num > 0:
         for i in range(device_num):
             if device_info_list[i]['model_name'] == model_name:
                 return device_info_list[i]['sn']
+            
     return None # return None if no device with the specified model_name is connected
+
+def retry_on_failure(
+    timeout_s:float=0.1,
+    allow_retry_check:Optional[callable]=None,
+    try_recover:Optional[callable]=None,
+    function_uses_self:bool=False
+):
+    """
+
+    calls function with arguments. if this throws any exception:
+        if do_allow_retry is provided, this function is called with the exception, and calling the original function is only retried of do_allow_retry(e) return True
+        before the function should be retried after exception, try_recover is called, if present
+
+    if function_uses_self is True:
+        try_recover is called as try_recover()(args[0],/*further args*/)
+        this is because retry_on_failure as decorator on instance methods cannot capture the surrounding class
+        same for allow_retry_check with is then called as allow_retry_check()(args[0],/*further args*/)
+
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args,**kwargs):
+            try:
+                return func(*args,**kwargs)
+            except Exception as e:
+                do_allow_retry=True
+                if allow_retry_check is not None:
+                    if function_uses_self:
+                        do_allow_retry=allow_retry_check()(args[0],e)
+                    else:
+                        do_allow_retry=allow_retry_check(e)
+
+                if not do_allow_retry:
+                    raise e
+
+            if try_recover is not None:
+                if function_uses_self:
+                    try_recover()(args[0])
+                else:
+                    try_recover()
+            
+            time.sleep(timeout_s)
+            return wrapper(*args,**kwargs)
+
+        return wrapper
+    return decorator
 
 class Camera(object):
 
     @TypecheckFunction
     def __init__(self,
         sn:Optional[str]=None,
+        model:Optional[str]=None,
         is_global_shutter:bool=False,
         rotate_image_angle:int=0,
         flip_image:Optional[str]=None,
@@ -36,6 +87,7 @@ class Camera(object):
 
         # many to be purged
         self.sn = sn
+        self.model = model
         self.is_global_shutter = is_global_shutter
         self.device_manager = gx.DeviceManager()
         self.device_info_list = None
@@ -50,7 +102,7 @@ class Camera(object):
         self.flip_image = flip_image
 
         self.exposure_time_ms = 10.0
-        self.analog_gain = -1
+        self.analog_gain = None
         self.frame_ID = -1
         self.frame_ID_software = -1
         self.frame_ID_offset_hardware_trigger = 0
@@ -92,18 +144,31 @@ class Camera(object):
 
         self.in_a_state_to_be_used_directly=False
 
-    @TypecheckFunction
-    def open(self,index:int=0):
-        (device_num, self.device_info_list) = self.device_manager.update_device_list()
-        if device_num == 0:
-            raise RuntimeError('Could not find any USB camera devices!')
-        
-        if self.sn is None:
-            self.device_index = index
-            self.camera = self.device_manager.open_device_by_index(index + 1)
-        else:
+    def open_default(self):
+        camera_identifier=None
+        if self.sn is not None:
+            camera_identifier=f"sn: {self.sn}"
+            MAIN_LOG.log(f"connecting camera by sn {self.sn=}")
             self.camera = self.device_manager.open_device_by_sn(self.sn)
+        elif self.model is not None:
+            camera_identifier=f"model: {self.model}"
+            MAIN_LOG.log(f"connecting camera by model {self.model=}")
+            camera_sn=get_sn_by_model(self.model)
+            if camera_sn is not None:
+                self.camera=self.device_manager.open_device_by_sn(camera_sn)
+            else:
+                error_msg=f"no camera of model {self.model} found"
+                MAIN_LOG.log(error_msg)
+                raise RuntimeError(error_msg)
+        else:
+            assert not self.device_index is None
+            self.camera = self.device_manager.open_device_by_index(self.device_index + 1)
 
+        if self.camera is None:
+            raise RuntimeError("found camera, but failed to connect")
+        
+        MAIN_LOG.log(f"camera connected: {camera_identifier}")
+        
         assert not self.camera is None
         self.is_color = self.camera.PixelColorFilter.is_implemented()
         # self._update_image_improvement_params()
@@ -115,52 +180,24 @@ class Camera(object):
             self.set_wb_ratios(2,1,2)
 
         # temporary
-        self.camera.AcquisitionFrameRate.set(1000)
-        self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
+        # self.camera.AcquisitionFrameRate.set(1000)
+        # self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
 
         # turn off device link throughput limit
         self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
 
         self.set_pixel_format(list(self.camera.PixelFormat.get_range().keys())[0])
-
-    def set_callback(self,function):
-        self.new_image_callback_external = function
-
-    def enable_callback(self):
-        if self.callback_is_enabled == False:
-            # stop streaming
-            if self.is_streaming:
-                was_streaming = True
-                self.stop_streaming()
-            else:
-                was_streaming = False
-            # enable callback
-            user_param = None
-            self.camera.register_capture_callback(user_param,self._on_frame_callback)
-            self.callback_is_enabled = True
-            # resume streaming if it was on
-            if was_streaming:
-                self.start_streaming()
-            self.callback_is_enabled = True
-        else:
-            pass
-
-    def disable_callback(self):
-        if self.callback_is_enabled == True:
-            # stop streaming
-            if self.is_streaming:
-                was_streaming = True
-                self.stop_streaming()
-            else:
-                was_streaming = False
-            # disable call back
-            self.camera.unregister_capture_callback()
-            self.callback_is_enabled = False
-            # resume streaming if it was on
-            if was_streaming:
-                self.start_streaming()
-        else:
-            pass
+        
+    @TypecheckFunction
+    def open(self,index:int=0):
+        (device_num, self.device_info_list) = self.device_manager.update_device_list()
+        if device_num == 0:
+            raise RuntimeError('Could not find any USB camera devices!')
+        
+        if self.sn is None and self.model is None:
+            self.device_index = index
+            
+        self.open_default()
 
     @TypecheckFunction
     def open_by_sn(self,sn:str):
@@ -171,18 +208,11 @@ class Camera(object):
         self.camera = self.device_manager.open_device_by_sn(sn)
         assert not self.camera is None
         self.is_color = self.camera.PixelColorFilter.is_implemented()
-        self._update_image_improvement_params() # type: ignore
-
-        '''
-        if self.is_color is True:
-            self.camera.register_capture_callback(_on_color_frame_callback)
-        else:
-            self.camera.register_capture_callback(_on_frame_callback)
-        '''
+        self._update_image_improvement_params()
 
     @TypecheckFunction
     def close(self):
-        assert not self.camera is None
+        assert self.camera is not None
         self.camera.close_device()
         self.device_info_list = None
         self.camera = None
@@ -194,13 +224,23 @@ class Camera(object):
         self.last_converted_image = None
         self.last_numpy_image = None
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
-    def set_exposure_time(self,exposure_time:float):
+    def set_exposure_time(self,exposure_time_ms:float):
         assert not self.camera is None
-        if self.exposure_time_ms!=exposure_time: # takes 10ms, so avoid if possible
-            self.exposure_time_ms = exposure_time
+        if self.exposure_time_ms!=exposure_time_ms: # takes 10ms, so avoid if possible
+            self.exposure_time_ms = exposure_time_ms
             self.update_camera_exposure_time()
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
     def update_camera_exposure_time(self):
         assert not self.camera is None
@@ -224,6 +264,11 @@ class Camera(object):
         
         self.camera.ExposureTime.set(camera_exposure_time_us)
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
     def set_analog_gain(self,analog_gain:float):
         assert not self.camera is None
@@ -267,19 +312,76 @@ class Camera(object):
         assert not self.camera is None
         self.camera.ReverseY.set(value)
 
+    def exception_shows_camera_connection_issue(self,e)->bool:
+        if self.camera is None or str(e.__class__.__module__)=="control.gxipy.gxiapi":
+            e_classname=str(e.__class__.__name__)
+            
+            if self.camera is None or e_classname=="OffLine":
+                MAIN_LOG.log("no camera connected")
+
+            elif e_classname=="Timeout":
+                MAIN_LOG.log("camera communication timeout")
+
+            else:
+                MAIN_LOG.log(f"unknown camera error {e_classname}")
+                return False
+            
+            return True
+        else:
+            return False
+        
+    def attempt_reconnection(self):
+        # try to close the device handle, and ignore failures
+        try:
+            self.close()
+        except Exception as e:
+            pass
+
+        # attempt reconnecting, ignore failures and recurse (into sleep + retry)
+        try:
+            self.open_default()
+        except Exception as e:
+            pass
+
+        # if software expects camera to be streaming, actually start streaming after reconnect
+        if self.is_streaming:
+            # reset flag to actually start streaming again
+            self.is_streaming=False
+            self.start_streaming()
+
+        # after reconnection, if these values have been set before (at runtime), apply them to the camera again
+        if self.exposure_time_ms:
+            self.set_exposure_time(self.exposure_time_ms)
+        if self.analog_gain:
+            self.set_analog_gain(self.analog_gain)
+
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
     def start_streaming(self):
         if not self.is_streaming:
             assert not self.camera is None
+            
             self.camera.stream_on()
+
             self.is_streaming = True
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
     def stop_streaming(self):
         """ this takes 350ms!!!! avoid calling this function if at all possible! """
 
-        if self.is_streaming and not self.camera is None: # under some weird circumstances (actually a race condition....) this camera object can have been destroyed before this callback is called, e.g. when the program is closed while a live view is active (this should not happen, but it does)
+        # under some weird circumstances (actually a race condition....) this camera object can have been destroyed before this callback is called, e.g. when the program is closed while a live view is active (this should not happen, but it does)
+        if self.is_streaming and not self.camera is None:
             self.camera.stream_off()
+                    
             self.is_streaming = False
 
     @TypecheckFunction
@@ -334,13 +436,19 @@ class Camera(object):
         self.trigger_mode = TriggerMode.HARDWARE
         self.update_camera_exposure_time()
 
+    @retry_on_failure(
+        function_uses_self=True,
+        try_recover=lambda:Camera.attempt_reconnection,
+        allow_retry_check=lambda:Camera.exception_shows_camera_connection_issue,
+    )
     @TypecheckFunction
     def send_trigger(self):
         assert not self.camera is None
-        if self.is_streaming:
-            self.camera.TriggerSoftware.send_command()
-        else:
-            MAIN_LOG.log('trigger not sent - camera is not streaming')
+        if not self.is_streaming:
+            self.start_streaming()
+            MAIN_LOG.log('trigger sent with delay - camera was not streaming')
+
+        self.camera.TriggerSoftware.send_command()
 
     @TypecheckFunction
     def rescale_raw_image(self,raw_image:gxiapi.RawImage)->numpy.ndarray:
@@ -363,11 +471,17 @@ class Camera(object):
         return numpy_image
 
     @TypecheckFunction
-    def read_frame(self)->numpy.ndarray:
-        assert not self.camera is None
+    def read_frame(self,timeout_overhead_s:float=1.0)->numpy.ndarray:
+        if self.camera is None:
+            raise RuntimeError("camera (connection) is suddenly gone")
 
+        start_time=time.time()
         raw_image=None
         while raw_image is None or raw_image.get_status()==gx.GxFrameStatusList.INCOMPLETE:
+            if (time.time()-start_time)>timeout_overhead_s:
+                error_msg=f"camera frame did not arrive within time limit ({timeout_overhead_s:.3f})s"
+                raise RuntimeError(error_msg)
+            
             time.sleep(0.005)
             QApplication.processEvents()
             raw_image = self.camera.data_stream[self.device_index].get_image()
