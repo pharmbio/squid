@@ -5,9 +5,9 @@ from control.core import LaserAutofocusController, LaserAutofocusData
 from control.gui import *
 
 SET_REFERENCE_BUTTON_TEXT_IDLE="Set as reference plane"
-SET_REFERENCE_BUTTON_TEXT_IN_PROGRESS="setting reference plane (in progress)"
+SET_REFERENCE_BUTTON_TEXT_IN_PROGRESS="Setting reference plane (in progress)"
 INITIALIZE_BUTTON_TEXT_IDLE="Initialize"
-INITIALIZE_BUTTON_TEXT_IN_PROGRESS="initializing (in progress)"
+INITIALIZE_BUTTON_TEXT_IN_PROGRESS="Initializing (in progress)"
 MEASURE_DISPLACEMENT_BUTTON_TEXT_IDLE="Measure displacement"
 MEASURE_DISPLACEMENT_BUTTON_TEXT_IN_PROGRESS="Measure displacement (in progress)"
 MOVE_TO_TARGET_BUTTON_TEXT_IDLE="Move to target"
@@ -178,9 +178,9 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_initialize.setText(INITIALIZE_BUTTON_TEXT_IN_PROGRESS)
         QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
 
+        initialization_error=None
         try:
             self.laserAutofocusController.initialize_auto()
-            initialization_error=None
         except Exception as e:
             initialization_error=e
 
@@ -188,7 +188,13 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_initialize.setText(INITIALIZE_BUTTON_TEXT_IDLE)
 
         if not initialization_error is None:
-            MessageBox(title="Could not initialize laser AF",mode="information",text=f"there was a problem initializing the laser autofocus. is the plate in focus? {initialization_error=}").run()
+            MessageBox(
+                title="Could not initialize laser AF",
+                mode="information",
+                text=f"there was a problem initializing the laser autofocus. is the plate in focus?\nError: {initialization_error}"
+            ).run()
+            self.on_focus_in_progress(False)
+            QApplication.processEvents() # process GUI events, i.e. actually display the changed text etc.
             return
 
         self.on_focus_in_progress(False)
