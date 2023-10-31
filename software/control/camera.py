@@ -535,29 +535,13 @@ class Camera(object):
         # print(self.frameID)
     
     @TypecheckFunction
-    def set_ROI(self,offset_x:Optional[int]=None,offset_y:Optional[int]=None,width:Optional[int]=None,height:Optional[int]=None):
+    def set_ROI(self,offset_x:Optional[int]=None,offset_y:Optional[int]=None,width:Optional[int]=None,height:Optional[int]=None,repeat_crop:bool=True):
         # stop streaming if streaming is on
         if self.is_streaming == True:
             was_streaming = True
             self.stop_streaming()
         else:
             was_streaming = False
-
-        if width is not None:
-            self.ROI_width = width
-            # update the camera setting
-            if self.camera.Width.is_implemented() and self.camera.Width.is_writable():
-                self.camera.Width.set(self.ROI_width)
-            else:
-                MAIN_LOG.log("OffsetX is not implemented or not writable")
-
-        if height is not None:
-            self.ROI_height = height
-            # update the camera setting
-            if self.camera.Height.is_implemented() and self.camera.Height.is_writable():
-                self.camera.Height.set(self.ROI_height)
-            else:
-                MAIN_LOG.log("Height is not implemented or not writable")
 
         if offset_x is not None:
             self.ROI_offset_x = offset_x
@@ -575,9 +559,29 @@ class Camera(object):
             else:
                 MAIN_LOG.log("OffsetX is not implemented or not writable")
 
+        if width is not None:
+            self.ROI_width = width
+            # update the camera setting
+            if self.camera.Width.is_implemented() and self.camera.Width.is_writable():
+                self.camera.Width.set(self.ROI_width)
+            else:
+                MAIN_LOG.log("OffsetX is not implemented or not writable")
+
+        if height is not None:
+            self.ROI_height = height
+            # update the camera setting
+            if self.camera.Height.is_implemented() and self.camera.Height.is_writable():
+                self.camera.Height.set(self.ROI_height)
+            else:
+                MAIN_LOG.log("Height is not implemented or not writable")
+
         # restart streaming if it was previously on
         if was_streaming == True:
             self.start_streaming()
+
+        if repeat_crop:
+            # call again to account for complex situations regarding incresase/decrease of offset/size
+            self.set_ROI(offset_x,offset_y,width,height,repeat_crop=False)
 
     def reset_camera_acquisition_counter(self):
         assert not self.camera is None

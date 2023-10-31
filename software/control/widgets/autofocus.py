@@ -112,10 +112,24 @@ class LaserAfDebugdisplay:
         self.laser_af_fitness_test_steps=SpinBoxInteger(minimum=3,maximum=41,default=11,step=2).widget
         self.run_laser_af_fitness_test=Button("run laser af test",on_clicked=lambda _btn:self.run_laser_af_test())
 
+        self.sensor_crop_full_button=Button("remove sensor crop",on_clicked=lambda _btn:self.uncrop_sensor())
+        self.sensor_crop_partial_button=Button("crop sensor",on_clicked=lambda _btn:self.crop_sensor())
+
+        self.exposure_time_ms_input=SpinBoxDouble(minimum=1.0,maximum=50.0,default=self.laser_af_controller.liveController.currentConfiguration.exposure_time_ms,
+            on_valueChanged=self.set_exposure_time).widget
+
         self.widget=HBox(
             self.image_display,
             VBox(
                 self.live_control_widget,
+                HBox(
+                    Label("exposure time (ms)"),
+                    self.exposure_time_ms_input
+                ),
+                HBox(
+                    self.sensor_crop_full_button,
+                    self.sensor_crop_partial_button
+                ),
                 HBox(
                     Label("z range"),
                     self.laser_af_fitness_test_range,
@@ -126,6 +140,49 @@ class LaserAfDebugdisplay:
                 self.laser_af_fitness_display
             )
         ).widget
+
+    def set_exposure_time(self,new_exposure_time_ms:float):
+        print(f"changed laser autofocus exposure time from {self.laser_af_controller.liveController.currentConfiguration.exposure_time_ms:.2f} to {new_exposure_time_ms:.2f}")
+        self.laser_af_controller.liveController.currentConfiguration.exposure_time_ms=new_exposure_time_ms
+
+    def get_current_sensor_settings(self)->dict:
+        sensor_settings=dict(
+            offset_x=self.laser_af_controller.camera.camera.OffsetX.get(),
+            offset_y=self.laser_af_controller.camera.camera.OffsetY.get(),
+            height=self.laser_af_controller.camera.camera.Height.get(),
+            width=self.laser_af_controller.camera.camera.Width.get(),
+        )
+        return sensor_settings
+
+    def uncrop_sensor(self):
+        sensor_settings=self.get_current_sensor_settings()
+        self.cropped_sensor_settings=sensor_settings
+        print(f"old sensor settings: {sensor_settings}")
+
+        self.laser_af_controller.camera.set_ROI(
+            offset_x=0,
+            offset_y=0,
+            width=self.laser_af_controller.camera.camera.WidthMax.get(),
+            height=self.laser_af_controller.camera.camera.HeightMax.get()
+        )
+
+        sensor_settings=self.get_current_sensor_settings()
+        print(f"new sensor settings: {sensor_settings}")
+
+    def crop_sensor(self):
+        restored_settings=self.cropped_sensor_settings
+        print(f"restoring sensor crop: {restored_settings}")
+
+        self.laser_af_controller.camera.set_ROI(
+            offset_x=restored_settings["offset_x"],
+            offset_y=restored_settings["offset_y"],
+            width=restored_settings["width"],
+            height=restored_settings["height"],
+        )
+        restored_settings=self.get_current_sensor_settings()
+        print(f"restoring sensor crop: {restored_settings}")
+
+        print(f"{self.laser_af_controller.liveController.currentConfiguration.exposure_time_ms=}")
 
     def run_laser_af_test(self):
         z_range_um=self.laser_af_fitness_test_range.value()
