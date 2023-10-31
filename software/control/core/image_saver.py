@@ -92,7 +92,7 @@ class ImageSaver(QObject):
         try:
             self.queue.put_nowait([path,image,file_format])
         except:
-            storage_on_device=get_storage_size_in_directory(path)
+            storage_on_device=get_storage_size_in_directory("/".join(path.split("/")[:-1]))
             free_space_gb=storage_on_device.free_space_bytes/1024**3
             total_space_gb=storage_on_device.total_space_bytes/1024**3
 
