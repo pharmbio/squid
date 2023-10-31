@@ -187,7 +187,7 @@ class MultiPointWorker(QObject):
                 else:
                     self.navigation.move_z(um_to_move/1000,wait_for_completion={})#,wait_for_stabilization=True)
                 
-                MAIN_LOG.log(f"moved to channel offset")
+                MAIN_LOG.log(f"moved to channel offset {um_to_move}um (relative to previous)")
 
         with Profiler("snap",parent=profiler) as snap:
             image = self.liveController.snap(config,crop=True,override_crop_height=self.crop_height,override_crop_width=self.crop_width,profiler=snap)

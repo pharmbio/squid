@@ -13,6 +13,10 @@ import control.camera as camera
 from control.core import ConfigurationManager, Configuration, StreamHandler
 import control.utils as utils
 
+class FatalError(Exception):
+    def __init__(self,msg:str=""):
+        self.msg=msg
+
 class LiveController(QObject):
 
     @property
@@ -35,7 +39,6 @@ class LiveController(QObject):
         use_internal_timer_for_hardware_trigger:bool=True,
         for_displacement_measurement:bool=False,
     ):
-
         QObject.__init__(self)
         self.core=core
         self.camera = camera
@@ -93,6 +96,7 @@ class LiveController(QObject):
 
             with Profiler("take image",parent=profiler) as takeimage:
                 image=None
+                num_imaging_attempts=1
                 try:
                     self.trigger_acquisition()
                 except RuntimeError as e:
@@ -102,28 +106,37 @@ class LiveController(QObject):
                 # time.sleep(1) # for debug!
 
                 # try reading a frame until one is acquired
-                while True:
+                MAX_NUM_IMAGING_ATTEMPTS_ON_TIMEOUT=5
+                while num_imaging_attempts<MAX_NUM_IMAGING_ATTEMPTS_ON_TIMEOUT:
+                    num_imaging_attempts+=1
+
                     try:
                         image = self.camera.read_frame()
                         break
                     except RuntimeError as e:
-                        MAIN_LOG.log("camera image read timeout. re-recording image.")
-
-                        # timeout likely caused by camera connection issue - try solving by reconnecting
-                        # reconnection should succeed immediately if camera is present and working fine - attempt reconnection until success
-                        while True:
-                            try:
-                                self.image_acquisition_in_progress=False
-                                self.image_acquisition_queued=False
-                                self.camera.attempt_reconnection()
-                                self.set_microscope_mode(config)
-                                break
-                            except:
-                                continue
-
+                        MAIN_LOG.log("camera image read timeout. triggering another acquisition.")
                         self.trigger_acquisition()
 
-                self.end_acquisition()
+                if image is not None:
+                    self.end_acquisition()
+                else:
+                    # timeout likely caused by camera connection issue - try solving by reconnecting
+                    while True:
+                        try:
+                            self.image_acquisition_in_progress=False
+                            self.image_acquisition_queued=False
+                            self.camera.attempt_reconnection()
+                            self.set_microscope_mode(config)
+                            break
+                        except:
+                            continue
+
+                    self.trigger_acquisition()
+                    image = self.camera.read_frame()
+                    self.end_acquisition()
+
+                    if image is None:
+                        raise FatalError(f"could not record an image after {MAX_NUM_IMAGING_ATTEMPTS_ON_TIMEOUT} retries and even after re-connection. there is something extremely wrong going on somewhere. contact support.")
 
         """ de-prepare camera and lights """
 

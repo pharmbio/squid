@@ -180,11 +180,11 @@ class Camera(object):
             self.set_wb_ratios(2,1,2)
 
         # temporary
-        self.camera.AcquisitionFrameRate.set(1000)
-        self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
+        # self.camera.AcquisitionFrameRate.set(1000)
+        # self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
 
         # turn off device link throughput limit
-        self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
+        # self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
 
         # set this to continuous for -> stream on called once -> new image acquired on every trigger
         supported_acquisition_modes=[v for k,v in self.camera.AcquisitionMode.get_range().items()]
