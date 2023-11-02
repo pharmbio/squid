@@ -184,7 +184,7 @@ class Camera(object):
         # self.camera.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON)
 
         # turn off device link throughput limit
-        # self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
+        self.camera.DeviceLinkThroughputLimitMode.set(gx.GxSwitchEntry.OFF)
 
         # set this to continuous for -> stream on called once -> new image acquired on every trigger
         supported_acquisition_modes=[v for k,v in self.camera.AcquisitionMode.get_range().items()]
@@ -427,14 +427,27 @@ class Camera(object):
 
     @TypecheckFunction
     def set_software_triggered_acquisition(self):
+        was_streaming=self.is_streaming
+
+        if was_streaming:
+            self.stop_streaming()
+
         assert not self.camera is None
         self.camera.TriggerMode.set(gx.GxSwitchEntry.ON)
         self.camera.TriggerSource.set(gx.GxTriggerSourceEntry.SOFTWARE)
         self.trigger_mode = TriggerMode.SOFTWARE
         self.update_camera_exposure_time()
 
+        if was_streaming:
+            self.start_streaming()
+
     @TypecheckFunction
     def set_hardware_triggered_acquisition(self):
+        was_streaming=self.is_streaming
+
+        if was_streaming:
+            self.stop_streaming()
+
         assert not self.camera is None
         self.camera.TriggerMode.set(gx.GxSwitchEntry.ON)
         self.camera.TriggerSource.set(gx.GxTriggerSourceEntry.LINE2)
@@ -442,6 +455,9 @@ class Camera(object):
         self.frame_ID_offset_hardware_trigger = None
         self.trigger_mode = TriggerMode.HARDWARE
         self.update_camera_exposure_time()
+
+        if was_streaming:
+            self.start_streaming()
 
     @retry_on_failure(
         function_uses_self=True,

@@ -115,6 +115,8 @@ class LiveController(QObject):
                         break
                     except RuntimeError as e:
                         MAIN_LOG.log("camera image read timeout. triggering another acquisition.")
+                        self.image_acquisition_in_progress=False
+                        self.image_acquisition_queued=False
                         self.trigger_acquisition()
 
                 if image is not None:
