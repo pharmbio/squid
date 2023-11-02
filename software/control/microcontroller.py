@@ -718,7 +718,7 @@ class Microcontroller:
                 raise e
             
         if retry:
-            self.wait_till_operation_is_completed(self,timeout_limit_s,time_step,timeout_msg)
+            self.wait_till_operation_is_completed(timeout_limit_s,time_step,timeout_msg)
 
     # signed_int type is actually int64 (?)
     @TypecheckFunction
