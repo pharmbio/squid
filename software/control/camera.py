@@ -1,8 +1,9 @@
 import time
 import numpy
+import importlib
 
-from control.gxipy import gxiapi
 import control.gxipy as gx
+from control.gxipy import gxiapi
 
 from control._def import *
 from typing import Optional, Any
@@ -48,27 +49,29 @@ def retry_on_failure(
     def decorator(func):
         @wraps(func)
         def wrapper(*args,**kwargs):
-            try:
-                return func(*args,**kwargs)
-            except Exception as e:
-                do_allow_retry=True
-                if allow_retry_check is not None:
+            # use loop to avoid potentially very deep recursion
+            while True:
+                try:
+                    # if function succeeds, this return will 'break' the loop
+                    return func(*args,**kwargs)
+                except Exception as e:
+                    do_allow_retry=True
+                    if allow_retry_check is not None:
+                        if function_uses_self:
+                            do_allow_retry=allow_retry_check()(args[0],e)
+                        else:
+                            do_allow_retry=allow_retry_check(e)
+
+                    if not do_allow_retry:
+                        raise e
+
+                if try_recover is not None:
                     if function_uses_self:
-                        do_allow_retry=allow_retry_check()(args[0],e)
+                        try_recover()(args[0])
                     else:
-                        do_allow_retry=allow_retry_check(e)
-
-                if not do_allow_retry:
-                    raise e
-
-            if try_recover is not None:
-                if function_uses_self:
-                    try_recover()(args[0])
-                else:
-                    try_recover()
-            
-            time.sleep(timeout_s)
-            return wrapper(*args,**kwargs)
+                        try_recover()
+                
+                time.sleep(timeout_s)
 
         return wrapper
     return decorator
