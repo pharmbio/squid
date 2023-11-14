@@ -65,6 +65,8 @@ class Microcontroller:
 
         self.last_command_str=""
 
+        self.has_been_initialized_at_least_once=False
+
         self.attempt_connection()
 
         self.new_packet_callback_external = None
@@ -81,7 +83,7 @@ class Microcontroller:
                 False on failure
         """
 
-        first_connection=self.serial is None
+        first_connection=not self.has_been_initialized_at_least_once
 
         call_stack=inspect.stack()
         formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
@@ -104,6 +106,7 @@ class Microcontroller:
                 raise IOError("no controller found")
             else:
                 MAIN_LOG.log("warning - failed to reconnect to the microcontroller")
+                self.serial=None
                 return False
         
         if len(controller_ports) > 1:
@@ -113,6 +116,7 @@ class Microcontroller:
             self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
         except serial.serialutil.SerialException as es: # looks like an OSError with errno 13
             MAIN_LOG.log("warning - failed to reconnect to the microcontroller")
+            self.serial=None
             return False
 
         time.sleep(0.2)
@@ -122,6 +126,8 @@ class Microcontroller:
         else:
             MAIN_LOG.log('controller reconnected')
 
+        self.has_been_initialized_at_least_once=True
+        
         return True
         
     def close(self):
@@ -602,7 +608,10 @@ class Microcontroller:
         while self.terminate_reading_received_packet_thread == False:
             # wait to receive data
             try:
-                serial_in_waiting_status=self.serial.in_waiting
+                if self.serial is None:
+                    serial_in_waiting_status=0
+                else:
+                    serial_in_waiting_status=self.serial.in_waiting
             except OSError as e:
                 if e.errno == 5:
                     MAIN_LOG.log("failed to get serial waiting status because of I/O error: microcontroller might be disconnected")
@@ -728,7 +737,7 @@ class Microcontroller:
         formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
 
         # this is a pseudo-variable to control when the function is supposed to actually time out while retrying failed commands
-        absolute_timeout_s=120
+        absolute_timeout_s=300 # 5 minutes, arbitrary choice
 
         # try resending a command after timeout this many times before reconnecting
         num_cmd_resends=3
@@ -776,13 +785,15 @@ class Microcontroller:
                             try_command_resend_on_timeout=False
                             MAIN_LOG.log(f"warning - microcontroller timeout - attempting reconnection to recover (then resending command) (callstack: {formatted_stack})")
                             total_num_reconnects+=1
-                            # if connection fails here, do not immediately try to resend the command
-                            do_resend_command=self.attempt_connection()
+                            self.attempt_connection()
 
                         # resend command and increment relevant counter, also indicate that this function should 'recurse' (i.e. wait for command completion again)
                         total_num_cmd_resends+=1
-                        if do_resend_command:
+                        # only send command if serial connection is currently established
+                        if self.serial is not None:
                             self.resend_last_command()
+                        else:
+                            MAIN_LOG.log(f"warning - no command resend possible because there is no connection to the microcontroller")
                         retry=True
 
                         # continue inner loop (to retry command)
