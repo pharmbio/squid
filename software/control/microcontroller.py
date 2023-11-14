@@ -4,6 +4,7 @@ import serial.tools.list_ports
 import time
 import numpy as np
 import threading
+import inspect
 from crc import CrcCalculator, Crc8
 
 from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS, MAIN_LOG
@@ -71,7 +72,15 @@ class Microcontroller:
         self.thread_read_received_packet = threading.Thread(target=self.read_received_packet, daemon=True)
         self.thread_read_received_packet.start()
 
-    def attempt_connection(self):
+    def attempt_connection(self)->bool:
+        """
+            attempt connection to microcontroller. returns connection success indicator (may still throw)
+
+            returns:
+                True on success
+                False on failure
+        """
+
         first_connection=self.serial is None
 
         if len(self.last_command_str)>0:
@@ -90,7 +99,7 @@ class Microcontroller:
                 raise IOError("no controller found")
             else:
                 MAIN_LOG.log("failed to reconnect to the microcontroller")
-                return
+                return False
         
         if len(controller_ports) > 1:
             MAIN_LOG.log('multiple controller found - using the first')
@@ -99,7 +108,7 @@ class Microcontroller:
             self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
         except serial.serialutil.SerialException as es: # looks like an OSError with errno 13
             MAIN_LOG.log("failed to reconnect to the microcontroller")
-            return
+            return False
 
         time.sleep(0.2)
         if first_connection:
@@ -107,6 +116,8 @@ class Microcontroller:
             MAIN_LOG.log('startup - controller connected')
         else:
             MAIN_LOG.log('controller reconnected')
+
+        return True
         
     def close(self):
         self.terminate_reading_received_packet_thread = True
@@ -692,33 +703,93 @@ class Microcontroller:
     @TypecheckFunction
     def wait_till_operation_is_completed(
         self,
-        timeout_limit_s:Optional[int]=5,
+        timeout_limit_s:Optional[float]=2.0,
         time_step:Optional[float]=None,
         timeout_msg:str='Error - microcontroller timeout, the program will exit'
     ):
         time_step=time_step or MACHINE_CONFIG.SLEEP_TIME_S
-        timeout_limit_s=timeout_limit_s or 5
+        timeout_limit_s=timeout_limit_s or 2.0 # there should never actually be no limit on command execution
 
+        # count how long this function has been running in total, and how often commands/reconnections have happened
+        wait_start=time.time()
+        total_num_cmd_resends=0
+        total_num_reconnects=0
+
+        call_stack=inspect.stack()
+        formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
+
+        # this is a pseudo-variable to control when the function is supposed to actually time out while retrying failed commands
+        absolute_timeout_s=120
+
+        # try resending a command after timeout this many times before reconnecting
+        num_cmd_resends=3
+
+        # 'retry' indicates retry waiting for completion
         retry=False
-        try:
-            timestamp_start = time.time()
-            while self.is_busy():
-                QApplication.processEvents()
-                time.sleep(time_step)
-                if not timeout_limit_s is None:
-                    if time.time() - timestamp_start > timeout_limit_s:
-                        raise RuntimeError(timeout_msg)
-                    
-        except RuntimeError as e:
-            if e.args[0]==timeout_msg:
-                MAIN_LOG.log("microcontroller timeout - attempting reconnection to recover")
-                self.attempt_connection()
-                retry=True
-            else:
-                raise e
-            
-        if retry:
-            self.wait_till_operation_is_completed(timeout_limit_s,time_step,timeout_msg)
+
+        # this loop replaces recursion of this function (recursion would be easier to maintain, but the python vm recursion limit is hit in under a minute)
+        while True:
+            # count number of command resends
+            num_retry=0
+            try_command_resend_on_timeout=True
+            while try_command_resend_on_timeout:
+                # wait for microcontroller to indicate command termination
+                try:
+                    timestamp_start = time.time()
+                    # while microcontroller has not indicated command termination
+                    while self.is_busy():
+                        # process GUI events
+                        QApplication.processEvents()
+                        # wait for a short while (should be in single digit millisecond range)
+                        time.sleep(time_step)
+                        if not timeout_limit_s is None:
+                            # check if max wait time has been reached and raise exception if so
+                            if time.time() - timestamp_start > timeout_limit_s:
+                                raise RuntimeError(timeout_msg)
+                            
+                # only catch the timeout exception specifically
+                except RuntimeError as e:
+                    if e.args[0]==timeout_msg:
+                        # if this function has failed enough times to exceed the absolute maximum wait time, terminate the program.
+                        # if the program is not able to recover in a somewhat resonable timeframe, a human should intervene, because there is likely some larger issue at play
+                        fail_time=time.time()
+                        if fail_time-wait_start>absolute_timeout_s:
+                            msg=f"error - absolute `microcontroller timeout - waited for {(fail_time-wait_start):.3f}s in total, resent command {total_num_cmd_resends} times, reconnected to microcontroller {total_num_reconnects} times (timeout limit {timeout_limit_s:.3f}s, time step {time_step:.3f}s, callstack: {formatted_stack})"
+                            MAIN_LOG.log(msg)
+                            raise RuntimeError(msg)
+
+                        # if this attempt is within the number of command resend limit (num_cmd_resends), just log command resend
+                        do_resend_command=True
+                        if num_retry<num_cmd_resends:
+                            MAIN_LOG.log(f"warning - microcontroller timeout - resending command (callstack: {formatted_stack})")
+                            num_retry+=1
+                        else:
+                            try_command_resend_on_timeout=False
+                            MAIN_LOG.log(f"warning - microcontroller timeout - attempting reconnection to recover (then resending command) (callstack: {formatted_stack})")
+                            total_num_reconnects+=1
+                            # if connection fails here, do not immediately try to resend the command
+                            do_resend_command=self.attempt_connection()
+
+                        # resend command and increment relevant counter, also indicate that this function should 'recurse' (i.e. wait for command completion again)
+                        total_num_cmd_resends+=1
+                        if do_resend_command:
+                            self.resend_last_command()
+                        retry=True
+
+                        # continue inner loop (to retry command)
+                        continue
+                    else:
+                        raise e
+
+                # if no timeout exception occured (i.e. command finished on time):
+                # do not attempt to reconnect/resend command
+                # and exit inner loop
+                retry=False
+                break
+                
+            # if no 'recursion' (waiting for command completion again) is indicated, break (and implicit return)
+            if not retry:
+                break
 
     # signed_int type is actually int64 (?)
     @TypecheckFunction
