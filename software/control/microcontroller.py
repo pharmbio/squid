@@ -83,8 +83,12 @@ class Microcontroller:
 
         first_connection=self.serial is None
 
+        call_stack=inspect.stack()
+        formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
+        MAIN_LOG.log(f"connecting to microcontroller (callstack: {formatted_stack})")
+
         if len(self.last_command_str)>0:
-            print(f"attempt reconnection with last sent command: {self.last_command_str}")
+            MAIN_LOG.log(f"attempt reconnection with last sent command: {self.last_command_str}")
 
         if self.version == ControllerType.DUE:
             controller_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino Due' == p.description] # autodetect - based on Deepak's code
@@ -96,18 +100,19 @@ class Microcontroller:
         
         if not controller_ports:
             if first_connection:
+                MAIN_LOG.log("error - no controller found")
                 raise IOError("no controller found")
             else:
-                MAIN_LOG.log("failed to reconnect to the microcontroller")
+                MAIN_LOG.log("warning - failed to reconnect to the microcontroller")
                 return False
         
         if len(controller_ports) > 1:
-            MAIN_LOG.log('multiple controller found - using the first')
+            MAIN_LOG.log('multiple controllers found - using the first one')
         
         try:
             self.serial:serial.Serial = serial.Serial(controller_ports[0],2000000)
         except serial.serialutil.SerialException as es: # looks like an OSError with errno 13
-            MAIN_LOG.log("failed to reconnect to the microcontroller")
+            MAIN_LOG.log("warning - failed to reconnect to the microcontroller")
             return False
 
         time.sleep(0.2)
@@ -645,6 +650,10 @@ class Microcontroller:
             - reserved (4 bytes)
             - CRC (1 byte)
             '''
+
+            call_stack=inspect.stack()
+            formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
+
             self._cmd_id_mcu = msg[0]
             self._cmd_execution_status = msg[1]
             if (self._cmd_id_mcu == self._cmd_id) and (self._cmd_execution_status == CMD_EXECUTION_STATUS.COMPLETED_WITHOUT_ERRORS):
@@ -655,11 +664,11 @@ class Microcontroller:
                 self.timeout_counter = self.timeout_counter + 1
                 if self.timeout_counter > 10:
                     self.resend_last_command()
-                    MAIN_LOG.log('      *** resend the last command')
+                    MAIN_LOG.log(f'      *** resend the last command (callstack: {formatted_stack})')
             elif self._cmd_execution_status == CMD_EXECUTION_STATUS.CMD_CHECKSUM_ERROR:
-                MAIN_LOG.log('! cmd checksum error, resending command')
+                MAIN_LOG.log(f'! cmd checksum error, resending command (callstack: {formatted_stack})')
                 if self.retry > 10:
-                    MAIN_LOG.log('!! resending command failed for more than 10 times, the program will exit')
+                    MAIN_LOG.log(f'!! resending command failed for more than 10 times, the program will exit (callstack: {formatted_stack})')
                     exit()
                 else:
                     self.resend_last_command()
@@ -703,7 +712,7 @@ class Microcontroller:
     @TypecheckFunction
     def wait_till_operation_is_completed(
         self,
-        timeout_limit_s:Optional[float]=2.0,
+        timeout_limit_s:Optional[Union[float,int]]=2.0,
         time_step:Optional[float]=None,
         timeout_msg:str='Error - microcontroller timeout, the program will exit'
     ):
