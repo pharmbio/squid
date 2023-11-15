@@ -226,7 +226,12 @@ class NavigationController(QObject):
     #    self.microcontroller.home_theta()
 
     def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        assert not self.is_in_loading_position
+        # if used through GUI, this should never be the case
+        # but the API must account for this function being called twice
+        if self.is_in_loading_position:
+            MAIN_LOG.log("tried to enter loading position when already in loading position")
+            return
+
         if home_z:
 			# retract the objective
             self.microcontroller.home_z()
@@ -251,9 +256,11 @@ class NavigationController(QObject):
                 MAIN_LOG.log("homing - in loading position")
 
     def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        if home_z:
-            assert self.is_in_loading_position
+        if not self.is_in_loading_position:
+            MAIN_LOG.log("tried to leave loading position while not actually in loading position")
+            return
 
+        if home_z:
             if home_z and home_y and home_x:
                 # move by (from home to) (20 mm, 20 mm)
                 self.move_x(x_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
