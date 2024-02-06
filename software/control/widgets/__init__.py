@@ -54,14 +54,14 @@ Note: The selection is preserved as long as the program is open, so make sure th
     BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP="""
 Apply z offset to snap selection
 
-This button indicates use of the Laser AF system for 'snap selection'.
-Accordingly, this functionality is only available when the Laser AF system is initialized.
+This button indicates use of the Laser Reflection Autofocus system for 'snap selection'.
+Accordingly, this functionality is only available when the Laser Autofocus system is initialized.
 
-The 'snap selection' button does not move the objective in z when this box is unchecked, which notably excludes any use of the Laser AF system.
+The 'snap selection' button does not move the objective in z when this box is unchecked, which notably excludes any use of the Laser Reflection Autofocus system.
 If this box is checked, each image in the 'snap selection' mode is acquired after the objective has moved to <focus plane height> + <channel offset>.
 
 Note: This box only impacts the snap selection functionality. 
-      e.g. to enable the Laser AF system for regular image acqusition, the checkbox is elsewhere.
+      e.g. to enable the Laser Reflection Autofocus system for regular image acqusition, the checkbox is elsewhere.
     """
 
     EXPOSURE_TIME_LABEL="Exposure time:"

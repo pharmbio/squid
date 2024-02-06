@@ -25,6 +25,8 @@ class ComponentLabels(str,Enum):
 
     IMAGE_FORMAT_TOOLTIP="change file format for images acquired with the multi point acquisition function"
     COMPRESSION_TOOLTIP="Enable (lossless) image file compression (only supported by TIF)"
+
+    SOFTWARE_AUTOFOCUS_ENABLE_CHECKBOX_LABEL="Software Autofocus"
     SOFTWARE_AUTOFOCUS_TOOLTIP="""
     Enable software autofocus for multipoint acquisition
 
@@ -34,6 +36,7 @@ class ComponentLabels(str,Enum):
     Note: Use laser or software autofocus exclusively! (or neither)
     """
     AF_CHANNEL_TOOLTIP="Set imaging channel that will be used to calculate a focus measure for the z-stack. See software autofocus checkbox tooltip for details."
+    LASER_AUTOFOCUS_ENABLE_CHECKBOX_LABEL="Laser Reflection Autofocus"
     LASER_AUTOFOCUS_TOOLTIP="""
     Enable laser autofocus for multipoint acquisition.
 
@@ -363,9 +366,9 @@ class MultiPointWidget(QObject):
         item_height=18 # TODO get real value, not just guess a good looking one..
         self.list_configurations.setMinimumHeight(num_items_in_list*item_height)
 
-        # add software AF (currently disabled, because laser AF is just so much better, and we have not found a case where it does not work)
+        # add software Autofocus (currently disabled, because Laser Reflection Autofocus is just so much better, and we have not found a case where it does not work)
         self.checkbox_withAutofocus = Checkbox(
-            label="Software AF",
+            label=ComponentLabels.SOFTWARE_AUTOFOCUS_ENABLE_CHECKBOX_LABEL,
             checked=False,#MACHINE_CONFIG.DISPLAY.MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT, # ensure that this is not enabled, no matter the machine default, while this component is not displayed (as is the case currently)
             tooltip=ComponentLabels.SOFTWARE_AUTOFOCUS_TOOLTIP,
             on_stateChanged=lambda new_state:self.af_channel_dropdown.setEnabled(new_state==Qt.Checked)
@@ -380,9 +383,9 @@ class MultiPointWidget(QObject):
             on_currentIndexChanged=lambda index:setattr(MACHINE_CONFIG.MUTABLE_STATE,"MULTIPOINT_AUTOFOCUS_CHANNEL",self.af_software_channel_names[index])
         ).widget
 
-        # add laser AF
+        # add Laser Reflection Autofocus
         self.interactive_widgets.checkbox_laserAutofocus = Checkbox(
-            label="Laser AF",
+            label=ComponentLabels.LASER_AUTOFOCUS_ENABLE_CHECKBOX_LABEL,
             checked=False,
             enabled=False,
             tooltip=ComponentLabels.LASER_AUTOFOCUS_TOOLTIP,
@@ -391,7 +394,7 @@ class MultiPointWidget(QObject):
         self.btn_startAcquisition = Button(ComponentLabels.BUTTON_START_ACQUISITION_IDLE_TEXT,on_clicked=self.toggle_acquisition).widget
 
         grid_multipoint_acquisition_config=Grid(
-            #[self.checkbox_withAutofocus], # see software AF comment above
+            #[self.checkbox_withAutofocus], # see software Autofocus comment above
             #[self.af_channel_dropdown],
             [self.interactive_widgets.checkbox_laserAutofocus],
             [self.btn_startAcquisition],
@@ -417,7 +420,7 @@ class MultiPointWidget(QObject):
     @TypecheckFunction
     def on_laser_af_validity_changed(self,new_validity:bool):
         """
-        callback for a signal that says whether the laser af is now valid or not
+        callback for a signal that says whether the Laser Reflection Autofocus is now valid or not
         """
         self.is_laser_af_initialized=new_validity
 

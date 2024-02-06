@@ -84,9 +84,9 @@ class AutofocusWorker(QObject):
 
             # display warning in certain cases
             if idx_in_focus == 0:
-                MAIN_LOG.log('warning - moved to the bottom end of the AF range (this is not good)')
+                MAIN_LOG.log('warning - moved to the bottom end of the Autofocus range (this is not good)')
             elif idx_in_focus == self.N-1:
-                MAIN_LOG.log('warning - moved to the top end of the AF range (this is not good)')
+                MAIN_LOG.log('warning - moved to the top end of the Autofocus range (this is not good)')
 
 class AutoFocusController(QObject):
     """

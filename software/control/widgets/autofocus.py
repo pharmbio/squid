@@ -21,6 +21,9 @@ the images are taken in the channel that is currently selected for live view (le
 
 this will take a few seconds"""
 
+LASER_AUTOFOCUS_PANEL_TITLE="Laser Reflection Autofocus"
+SOFTWARE_AUTOFOCUS_PANEL_TITLE="Software Autofocus"
+
 DEFAULT_NZ=10
 DEFAULT_DELTAZ=1.5
 
@@ -110,7 +113,7 @@ class LaserAfDebugdisplay:
         self.laser_af_fitness_display.view=self.laser_af_fitness_display.addViewBox()
         self.laser_af_fitness_test_range=SpinBoxDouble(minimum=50.0,maximum=700.0,default=400.0,step=10.0).widget
         self.laser_af_fitness_test_steps=SpinBoxInteger(minimum=3,maximum=41,default=11,step=2).widget
-        self.run_laser_af_fitness_test=Button("run laser af test",on_clicked=lambda _btn:self.run_laser_af_test())
+        self.run_laser_af_fitness_test=Button("run Laser Reflection Autofocus test",on_clicked=lambda _btn:self.run_laser_af_test())
 
         self.sensor_crop_full_button=Button("remove sensor crop",on_clicked=lambda _btn:self.uncrop_sensor())
         self.sensor_crop_partial_button=Button("crop sensor",on_clicked=lambda _btn:self.crop_sensor())
@@ -245,7 +248,7 @@ class LaserAfDebugdisplay:
             try:
                 self.laser_af_fitness_display.plot_data.plot(**plot_kwargs)
             except:
-                self.laser_af_fitness_display.plot_data=self.laser_af_fitness_display.addPlot(0,0,title="laser af test",viewBox=self.laser_af_fitness_display.view,**plot_kwargs)
+                self.laser_af_fitness_display.plot_data=self.laser_af_fitness_display.addPlot(0,0,title="Laser Reflection Autofocus test",viewBox=self.laser_af_fitness_display.view,**plot_kwargs)
 
     def display_image(self,new_image:numpy.ndarray):
         kwargs={
@@ -304,8 +307,8 @@ class AutofocusWidget:
         )
 
         self.af_control=VBox(
-            Dock(self.laser_af_control,"Laser AF"),
-            Dock(self.software_af_control,"Software Af"),
+            Dock(self.laser_af_control,LASER_AUTOFOCUS_PANEL_TITLE),
+            Dock(self.software_af_control,SOFTWARE_AUTOFOCUS_PANEL_TITLE),
             
             with_margins=False,
         ).widget

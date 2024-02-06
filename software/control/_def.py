@@ -947,7 +947,7 @@ class MachineDisplayConfiguration:
     DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
     MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
     SHOW_XY_MOVEMENT:bool = False
-    DEBUG_LASER_AF:bool=False # enable gui component that allows debug access to the laser af system
+    DEBUG_LASER_AF:bool=False # enable gui component that allows debug access to the Laser Reflection Autofocus system
 
     def from_json(json_data:dict):
         return MachineDisplayConfiguration(**json_data)
@@ -1128,7 +1128,7 @@ class MachineConfiguration:
     FOCUS_CAMERA_ANALOG_GAIN:float = 0.0
     LASER_AF_AVERAGING_N_PRECISE:int = 5
     LASER_AF_AVERAGING_N_FAST:int = 2
-    LASER_AF_DISPLAY_SPOT_IMAGE:bool = False # display laser af image every time when displacement is measured (even in multi point acquisition mode)
+    LASER_AF_DISPLAY_SPOT_IMAGE:bool = False # display Laser Reflection Autofocus image every time when displacement is measured (even in multi point acquisition mode)
     LASER_AF_CROP_WIDTH:int = 3000 # whole sensor width is 3088
     LASER_AF_CROP_HEIGHT:int = 400 # whole sensor height is 2064
     HAS_TWO_INTERFACES:bool = True

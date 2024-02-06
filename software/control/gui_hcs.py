@@ -142,14 +142,14 @@ def create_referenceFile_widget(
             [
                 Checkbox(
                     "Move to Z reference",
-                    tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the laser af calibration data contained in the file.",
+                    tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the Laser Reflection Autofocus calibration data contained in the file.",
                     checked=False,
                     enabled=laser_af_reference_is_present,
                     on_stateChanged=lambda s,w=workaround:w.update(dict(
                                                                       load_laser_af_data_requested=s==Qt.CheckState.Checked
                                                                   ))
                 ),
-                Checkbox("Laser AF data present",tooltip="This box is here just to indicate whether the laser af calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
+                Checkbox("Laser Reflection Autofocus data present",tooltip="This box is here just to indicate whether the Laser Reflection Autofocus calibration data is present in the file.",checked=laser_af_reference_is_present,enabled=False),
             ],
             [
                 Label(f"Objective: {config.objective}"),
@@ -375,10 +375,10 @@ class Gui(QMainWindow):
                 Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
                 Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
                 *([] if self.autofocus_widget.laser_af_debug_display is None else
-                    [Tab(title="Laser AF debug",widget=self.autofocus_widget.laser_af_debug_display)]
+                    [Tab(title="Laser Reflection Autofocus debug",widget=self.autofocus_widget.laser_af_debug_display)]
                 ),
                 *([] if self.autofocus_widget.software_af_debug_display is None else
-                    [Tab(title="Software AF debug",widget=self.autofocus_widget.software_af_debug_display)]
+                    [Tab(title="Software Autofocus debug",widget=self.autofocus_widget.software_af_debug_display)]
                 ),
             ]),
             VBox(
@@ -844,10 +844,10 @@ class Gui(QMainWindow):
 
         if go_to_z_reference:
             if config_data.af_laser_reference is None:
-                MAIN_LOG.log("warning - you specified to move to reference z but there is no laser af data present")
+                MAIN_LOG.log("warning - you specified to move to reference z but there is no Laser Reflection Autofocus data present")
             else:
                 if not load_laser_af_reference:
-                    MAIN_LOG.log("warning - you specified to move to reference z without loading the laser af data")
+                    MAIN_LOG.log("warning - you specified to move to reference z without loading the Laser Reflection Autofocus data")
 
                 z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
                 MAIN_LOG.log(f"focus - moving objective to {z_mm=:.3f}")

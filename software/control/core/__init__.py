@@ -518,7 +518,7 @@ class Core(QObject):
                     print(f"recorded image {i} of focus camera after {time.time()-start_time:.3f}s")
 
         except Exception as e:
-            MAIN_LOG.log('! laser AF camera not detected !')
+            MAIN_LOG.log('! Laser Reflection Autofocus camera not detected !')
             raise e
 
         try:

@@ -15,31 +15,31 @@ MOVE_TO_TARGET_BUTTON_TEXT_IN_PROGRESS="Move to target (in progress)"
 DEINITIALIZE_BUTTON_TEXT="Deinitialize (!)"
 
 BTN_INITIALIZE_TOOLTIP="""
-Prepare the Laser Autofocus system to work with the current plate type
+Prepare the Laser Reflection Autofocus system to work with the current plate type
 
 This only needs to be done once after program start-up \n(or after putting a new plate type into the microscope. It does not need to be re-run after putting a new plate of the same type on the microscope though.)
 
-If the Laser AF system is initialized while cells are not in focus, the system may not function reliably.
+If the Laser Reflection Autofocus system is initialized while cells are not in focus, the system may not function reliably.
 It is therefore recommended to initialize the system immediately before the first reference is set, i.e. \n\tafter program start, bring cells into focus, click this button, then set the reference plane afterwards.
 
-Loading the Laser AF data from a configuration file will also load this data, so\nafter loading a file that includes Laser AF data, there is no need to click this button.
+Loading the Laser Reflection Autofocus data from a configuration file will also load this data, so\nafter loading a file that includes Laser Reflection Autofocus data, there is no need to click this button.
 
 Note: If you press this button after you previously pressed 'set as reference', you will need to set a reference again.
 """
 BTN_SET_REFERENCE_TOOLTIP="""
 Set z reference plane
 
-The Laser AF system can focus on cells without bleaching them by effectively measuring the distance between the bottom of the well plate and the objective.
+The Laser Reflection Autofocus system can focus on cells without bleaching them by effectively measuring the distance between the bottom of the well plate and the objective.
 The bottom of a well plate is not strictly flat, and can vary from the lowest to the highest point across the whole plate by about 200um.
 
-To compensate for that, the Laser AF system needs to know what the ideal distance between the objective and the bottom of the well plate should be.
+To compensate for that, the Laser Reflection Autofocus system needs to know what the ideal distance between the objective and the bottom of the well plate should be.
 Clicking this button measures this distance, and saves it for later reference.
 
-When the Laser AF is actually 'used' later, it measures the new distance between the objective and the bottom of the well plate, and then moves the objective so 
+When the Laser Reflection Autofocus is actually 'used' later, it measures the new distance between the objective and the bottom of the well plate, and then moves the objective so 
 that the distance matches the distance set by this reference.
 
-Note: The Laser AF needs to have been initialized before a reference plane can be set. 
-      Initializing the Laser AF system again after a reference has already been set also invalidates the reference, i.e. a new reference needs to be set.
+Note: The Laser Reflection Autofocus needs to have been initialized before a reference plane can be set. 
+      Initializing the Laser Reflection Autofocus system again after a reference has already been set also invalidates the reference, i.e. a new reference needs to be set.
 """
 BTN_MEASURE_DISPLACEMENT_TOOLTIP="""
 Measure the distance between the objective and the bottom the wellplate
@@ -54,20 +54,20 @@ The difference in distance is determined by the text box on the left.
 A difference of zero means that on 'move to target', the objective is moved so that the distance between the objective and the bottom of the wellplate is exactly the same distance as in the reference.
 """
 BTN_DEINITIALIZE_TOOLTIP="""
-Deinitialize laser af config.
+Deinitialize Laser Reflection Autofocus config.
 
-WARNING: This will remove all laser af related configuration that was created since program start-up.
-         Laser AF initialization data needs to be recreated after this button has been clicked.
+WARNING: This will remove all Laser Reflection Autofocus related configuration that was created since program start-up.
+         Laser Reflection Autofocus initialization data needs to be recreated after this button has been clicked.
 
 You will be asked to confirm this action if you click this button.
 
-Primarily used to clear laser af config data so that other data can be read from a config file (which by design will not overwrite existing data)
+Primarily used to clear Laser Reflection Autofocus config data so that other data can be read from a config file (which by design will not overwrite existing data)
 """
 BTN_MOVE_Z_REF_TEXT="Move to Z reference"
 BTN_MOVE_Z_REF_TOOLTIP="""
 Move to Z reference
 
-When the laser AF reference was set, the Z height of the reference was saved internally.
+When the Laser Reflection Autofocus reference was set, the Z height of the reference was saved internally.
 Clicking this button allows you to return to this height.
 
 Note: This height should be _close_ to the focus plane, but might not be the focus plane directly.
@@ -147,7 +147,7 @@ class LaserAutofocusControlWidget(QFrame):
 
     def deinitialize(self,_btn_state=None,require_confirmation:bool=True):
         if require_confirmation:
-            answer=MessageBox(title="Deinitialize laser AF?",mode="question",text="are you sure you want to deinitialize the laser AF?\nthis will require you to perform the initialization procedure again (or to load reference data from a file)\nClick Yes to clear the laser af initialization data.").run()
+            answer=MessageBox(title="Deinitialize Laser Reflection Autofocus?",mode="question",text="are you sure you want to deinitialize the Laser Reflection Autofocus?\nthis will require you to perform the initialization procedure again (or to load reference data from a file)\nClick Yes to clear the Laser Reflection Autofocus initialization data.").run()
             if answer!=QMessageBox.Yes:
                 return
 
@@ -167,7 +167,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_z_ref.setDisabled(True)
         self.entry_target.setDisabled(True)
 
-        self.laser_af_validity_changed.emit(False) # signal that laser af is now invalid
+        self.laser_af_validity_changed.emit(False) # signal that Laser Reflection Autofocus is now invalid
 
     def initialize(self):
         """ automatically initialize laser autofocus """
@@ -189,7 +189,7 @@ class LaserAutofocusControlWidget(QFrame):
 
         if not initialization_error is None:
             MessageBox(
-                title="Could not initialize laser AF",
+                title="Could not initialize Laser Reflection Autofocus",
                 mode="information",
                 text=f"there was a problem initializing the laser autofocus. is the plate in focus?\nError: {initialization_error}"
             ).run()
@@ -232,7 +232,7 @@ class LaserAutofocusControlWidget(QFrame):
 
         self.on_focus_in_progress(False)
 
-        # allow actual use of laser AF now
+        # allow actual use of Laser Reflection Autofocus now
         self.call_after_set_reference()
 
     def call_after_set_reference(self):
@@ -251,7 +251,7 @@ class LaserAutofocusControlWidget(QFrame):
         self.btn_move_to_target.setText(MOVE_TO_TARGET_BUTTON_TEXT_IDLE)
         self.entry_target.setDisabled(False)
 
-        self.laser_af_validity_changed.emit(True) # signal that laser af is now valid
+        self.laser_af_validity_changed.emit(True) # signal that Laser Reflection Autofocus is now valid
 
     def measure_displacement(self):
         self.btn_measure_displacement.setDisabled(True)

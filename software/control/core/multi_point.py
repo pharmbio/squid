@@ -243,25 +243,25 @@ class MultiPointWorker(QObject):
         with Profiler("run autofocus",parent=profiler) as autofocusprof:
             # autofocus
             if self.do_reflection_af == False:
-                # perform AF only when (not taking z stack) or (doing z stack from center)
+                # perform Autofocus only when (not taking z stack) or (doing z stack from center)
                 if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter % Acquisition.NUMBER_OF_FOVS_PER_AF == 0):
                     self.perform_software_autofocus()
             else:
                 # first FOV
                 if self.reflection_af_initialized==False:
-                    MAIN_LOG.log("setting up laser AF")
+                    MAIN_LOG.log("setting up Laser Reflection Autofocus")
                     # initialize the reflection AF
                     self.laserAutofocusController.initialize_auto()
-                    # do contrast AF for the first FOV
+                    # do contrast Autofocus for the first FOV
                     if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter==0):
                         self.perform_software_autofocus()
                     # set the current plane as reference
                     self.laserAutofocusController.set_reference(z_pos_mm=0.0) # z pos does not matter here
                     self.reflection_af_initialized = True
                 else:
-                    MAIN_LOG.log("laser AF: started")
+                    MAIN_LOG.log("Laser Reflection Autofocus: started")
                     self.laserAutofocusController.move_to_target(0.0)
-                    MAIN_LOG.log("laser AF: done")
+                    MAIN_LOG.log("Laser Reflection Autofocus: done")
 
         if (self.NZ > 1):
             with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
@@ -364,7 +364,7 @@ class MultiPointWorker(QObject):
         # along y
         for i in range(self.NY):
 
-            self.FOV_counter = 0 # so that AF at the beginning of each new row
+            self.FOV_counter = 0 # so that Autofocus at the beginning of each new row
 
             # along x
             for j in range(self.NX):

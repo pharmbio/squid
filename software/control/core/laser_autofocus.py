@@ -115,7 +115,7 @@ class LaserAutofocusController(QObject):
             # set reference
             self.x_reference = x1
 
-        MAIN_LOG.log("laser AF initialization done")
+        MAIN_LOG.log("Laser Reflection Autofocus initialization done")
 
     def measure_displacement(self,override_num_images:Optional[int]=None)->float:
         assert self.is_initialized and not self.x_reference is None
@@ -133,7 +133,7 @@ class LaserAutofocusController(QObject):
         self.signal_displacement_um.emit(displacement_um)
 
         if math.isnan(displacement_um):
-            MAIN_LOG.log("! error - displacement was measured as NaN. Either you are out of range for the laser AF (more than 200um away from focus plane), or something has gone wrong. Make sure that the laser AF laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
+            MAIN_LOG.log("! error - displacement was measured as NaN. Either you are out of range for the Laser Reflection Autofocus (more than 200um away from focus plane), or something has gone wrong. Make sure that the Laser Reflection Autofocus laser is not currently used for live imaging. Displacement measured as NaN is treated as zero in the program, to avoid crashing.")
 
         return displacement_um
 
@@ -141,7 +141,7 @@ class LaserAutofocusController(QObject):
         with self.camera.wrapper.ensure_streaming():
             current_displacement_um = self.measure_displacement()
             if math.isnan(current_displacement_um):
-                MAIN_LOG.log("laser AF: failed with NaN")
+                MAIN_LOG.log("Laser Reflection Autofocus: failed with NaN")
                 return
             
             total_movement_um=0.0
@@ -149,13 +149,13 @@ class LaserAutofocusController(QObject):
             num_repeat=0
             while np.abs(um_to_move := target_um - current_displacement_um) >= MACHINE_CONFIG.LASER_AUTOFOCUS_TARGET_MOVE_THRESHOLD_UM:
                 if math.isnan(current_displacement_um):
-                    MAIN_LOG.log("laser AF: failed with NaN after {num_repeat} iterations moving {total_movement_um:.3f}um")
+                    MAIN_LOG.log("Laser Reflection Autofocus: failed with NaN after {num_repeat} iterations moving {total_movement_um:.3f}um")
                     break
 
                 # limit the range of movement
                 um_to_move = np.clip(um_to_move,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_LOWER,MACHINE_CONFIG.LASER_AUTOFOCUS_MOVEMENT_BOUNDARY_UPPER)
 
-                #print(f"laser af - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
+                #print(f"Laser Reflection Autofocus - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
 
                 if counter_backlash:
                     self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
@@ -168,10 +168,10 @@ class LaserAutofocusController(QObject):
                 total_movement_um+=um_to_move
 
                 if num_repeat==max_repeats:
-                    MAIN_LOG.log(f"laser AF: failed with measured offset {current_displacement_um:.3f}um and target {target_um}um")
+                    MAIN_LOG.log(f"Laser Reflection Autofocus: failed with measured offset {current_displacement_um:.3f}um and target {target_um}um")
                     break
 
-            MAIN_LOG.log(f"laser AF: done after {num_repeat} iterations and moving {total_movement_um:.3f}um")
+            MAIN_LOG.log(f"Laser Reflection Autofocus: done after {num_repeat} iterations and moving {total_movement_um:.3f}um")
 
     @TypecheckFunction()
     def set_reference(self,z_pos_mm:float):
@@ -282,11 +282,11 @@ class LaserAutofocusController(QObject):
             if len(idx)>1:
                 peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
             if len(idx)==0:
-                raise Exception("did not find any peaks in laser AF signal. this is a major problem.")
+                raise Exception("did not find any peaks in Laser Reflection Autofocus signal. this is a major problem.")
             
             # choose which surface to use
             if self.use_glass_top:
-                assert len(idx)>1, "only found a single peak in the laser af signal, but trying to use the second one."
+                assert len(idx)>1, "only found a single peak in the Laser Reflection Autofocus signal, but trying to use the second one."
                 x1 = peak_1_location
             else:
                 x1 = peak_0_location
