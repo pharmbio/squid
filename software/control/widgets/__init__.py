@@ -7,6 +7,15 @@ from enum import Enum
 from qtpy.QtWidgets import QWidget
 import pyqtgraph.dockarea as dock
 
+class ComponentLimit(float,Enum):
+    # testing has shown that most LEDs set to a value below 20% do no turn on at all
+    MIN_ILLUMINATION_PERCENT=20.0
+    MAX_ILLUMINATION_PERCENT=100.0
+    MIN_ANALOG_GAIN=0.0
+    MAX_ANALOG_GAIN=24.0
+    MIN_EXPOSURE_TIME_MS=0.1
+    MAX_EXPOSURE_TIME_MS=936.0
+
 class ComponentLabel(str,Enum):
     LIVE_BUTTON_IDLE_TEXT="Start Live"
     LIVE_BUTTON_RUNNING_TEXT="Stop Live"
@@ -56,24 +65,24 @@ Note: This box only impacts the snap selection functionality.
     """
 
     EXPOSURE_TIME_LABEL="Exposure time:"
-    EXPOSURE_TIME_TOOLTIP="""
+    EXPOSURE_TIME_TOOLTIP=f"""
 Exposure time in ms.
 
 The exposure time is the duration for which the camera sensor records a single image.
 
 Higher exposure time means more time to record light emitted from a sample, which also increases bleaching (the light source is activate as long as the camera sensor records the light).
 
-Range is 0.01ms to 968.0ms
+Range: {ComponentLimit.MIN_EXPOSURE_TIME_MS:.1f}ms - {ComponentLimit.MAX_EXPOSURE_TIME_MS:.1f}ms
     """
     ANALOG_GAIN_LABEL="Analog gain:"
-    ANALOG_GAIN_TOOLTIP="""
+    ANALOG_GAIN_TOOLTIP=f"""
 Analog gain increases the camera sensor sensitiviy.
 
 Higher gain will make the image look brighter so that a lower exposure time can be used, but also introduces more noise.
 
 Note that a value of zero means that a (visible) will still be recorded.
 
-Range is 0.0 to 24.0
+Range: {ComponentLimit.MIN_ANALOG_GAIN:.1f} - {ComponentLimit.MAX_ANALOG_GAIN:.1f}
     """
     CHANNEL_OFFSET_LABEL="Z Offset:"
     CHANNEL_OFFSET_TOOLTIP="""
@@ -83,14 +92,15 @@ Channel/Light source specific Z offset used in multipoint acquisition.
 
 Can be used to focus on cell organelles in different Z planes."""
     ILLUMINATION_LABEL="Illumination:"
-    ILLUMINATION_TOOLTIP="""
+
+    ILLUMINATION_TOOLTIP=f"""
 Illumination %.
 
 Fraction of laser power used for illumination of the sample.
 
 Similar effect as exposure time, e.g. the signal is about the same at 50% illumination as it is at half the exposure time.
 
-Range is 0.1 - 100.0 %.
+Range: {ComponentLimit.MIN_ILLUMINATION_PERCENT:.1f} - {ComponentLimit.MAX_ILLUMINATION_PERCENT:.1f} %
     """
     CAMERA_PIXEL_FORMAT_TOOLTIP="""
 Camera pixel format

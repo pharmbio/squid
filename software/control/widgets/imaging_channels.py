@@ -15,7 +15,7 @@ from control.gui import ObjectManager, HBox, VBox, TabBar, Tab, Button, Dropdown
 from control.core import Core, ReferenceFile, CameraWrapper
 from control.core.configuration import Configuration, ConfigurationManager
 import control.widgets as widgets
-from control.widgets import ComponentLabel
+from control.widgets import ComponentLabel, ComponentLimit
 from control.typechecker import TypecheckFunction
 
 import numpy
@@ -99,7 +99,7 @@ class ImagingChannels:
                     GridItem(None,colSpan=4),
                     Label(ComponentLabel.ILLUMINATION_LABEL,tooltip=ComponentLabel.ILLUMINATION_TOOLTIP).widget,
                     config_manager.illumination_strength == SpinBoxDouble(
-                        minimum=0.1,maximum=100.0,step=0.1,
+                        minimum=ComponentLimit.MIN_ILLUMINATION_PERCENT,maximum=ComponentLimit.MAX_ILLUMINATION_PERCENT,step=0.1,
                         default=config.illumination_intensity,
                         tooltip=ComponentLabel.ILLUMINATION_TOOLTIP,
                         on_valueChanged=[
@@ -122,7 +122,7 @@ class ImagingChannels:
                     ).widget,
                     Label(ComponentLabel.ANALOG_GAIN_LABEL,tooltip=ComponentLabel.ANALOG_GAIN_TOOLTIP).widget,
                     config_manager.analog_gain == SpinBoxDouble(
-                        minimum=0.0,maximum=24.0,step=0.1,
+                        minimum=ComponentLimit.MIN_ANALOG_GAIN,maximum=ComponentLimit.MAX_ANALOG_GAIN,step=0.1,
                         default=config.analog_gain,
                         tooltip=ComponentLabel.ANALOG_GAIN_TOOLTIP,
                         on_valueChanged=[
