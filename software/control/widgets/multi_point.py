@@ -676,7 +676,7 @@ class MultiPointWidget(QObject):
         else:
             if QMessageBox.Open==MessageBox(title="Acquisition finished",text="Acquisition is finished. See progress bar for details.\n\nClick 'Open' button to open experiment output folder.",mode="information",button_override=QMessageBox.Ok|QMessageBox.Open).run():
                 # linux only (unsure if other things are linux only so far, but this is definitely one of them)
-                subprocess.Popen(f'xdg-open {os.path.realpath(self.experiment_config_data.output_path)}'.split(" "))
+                subprocess.Popen(['xdg-open',os.path.realpath(self.experiment_config_data.output_path)])
 
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
