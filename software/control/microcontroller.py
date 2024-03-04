@@ -606,102 +606,110 @@ class Microcontroller:
 
     @TypecheckFunction
     def read_received_packet(self):
-        while self.terminate_reading_received_packet_thread == False:
-            # wait to receive data
-            try:
-                if self.serial is None:
-                    serial_in_waiting_status=0
-                else:
-                    serial_in_waiting_status=self.serial.in_waiting
-            except OSError as e:
-                if e.errno == 5:
-                    MAIN_LOG.log("failed to get serial waiting status because of I/O error: microcontroller might be disconnected")
-                    time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY*1000)
-                    try:
-                        self.attempt_connection()
-                    except OSError as e:
-                        if e.args[0]=="no controller found":
-                            pass
-                        else:
-                            raise e
-                        
+        try:
+            while self.terminate_reading_received_packet_thread == False:
+                # wait to receive data
+                try:
+                    if self.serial is None:
+                        serial_in_waiting_status=0
+                    else:
+                        serial_in_waiting_status=self.serial.in_waiting
+                except OSError as e:
+                    if e.errno == 5:
+                        MAIN_LOG.log("failed to get serial waiting status because of I/O error: microcontroller might be disconnected")
+                        time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY*1000)
+                        try:
+                            self.attempt_connection()
+                        except OSError as e:
+                            if e.args[0]=="no controller found":
+                                pass
+                            else:
+                                raise e
+                            
+                        continue
+
+                    raise e
+
+                if serial_in_waiting_status==0:
+                    time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
                     continue
+                if serial_in_waiting_status % self.rx_buffer_length != 0: # incomplete data
+                    time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
+                    continue
+                
+                # get rid of old data
+                num_bytes_in_rx_buffer = serial_in_waiting_status
+                if num_bytes_in_rx_buffer > self.rx_buffer_length:
+                    # print('getting rid of old data')
+                    for i in range(num_bytes_in_rx_buffer-self.rx_buffer_length):
+                        self.serial.read()
+                
+                # read the buffer
+                msg=[]
+                for i in range(self.rx_buffer_length):
+                    msg.append(ord(self.serial.read()))
 
-                raise e
+                # parse the message
+                '''
+                - command ID (1 byte)
+                - execution status (1 byte)
+                - X pos (4 bytes)
+                - Y pos (4 bytes)
+                - Z pos (4 bytes)
+                - Theta (4 bytes)
+                - buttons and switches (1 byte)
+                - reserved (4 bytes)
+                - CRC (1 byte)
+                '''
 
-            if serial_in_waiting_status==0:
-                time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
-                continue
-            if serial_in_waiting_status % self.rx_buffer_length != 0: # incomplete data
-                time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY)
-                continue
-            
-            # get rid of old data
-            num_bytes_in_rx_buffer = serial_in_waiting_status
-            if num_bytes_in_rx_buffer > self.rx_buffer_length:
-                # print('getting rid of old data')
-                for i in range(num_bytes_in_rx_buffer-self.rx_buffer_length):
-                    self.serial.read()
-            
-            # read the buffer
-            msg=[]
-            for i in range(self.rx_buffer_length):
-                msg.append(ord(self.serial.read()))
+                call_stack=inspect.stack()
+                formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
 
-            # parse the message
-            '''
-            - command ID (1 byte)
-            - execution status (1 byte)
-            - X pos (4 bytes)
-            - Y pos (4 bytes)
-            - Z pos (4 bytes)
-            - Theta (4 bytes)
-            - buttons and switches (1 byte)
-            - reserved (4 bytes)
-            - CRC (1 byte)
-            '''
+                self._cmd_id_mcu = msg[0]
+                self._cmd_execution_status = msg[1]
+                if (self._cmd_id_mcu == self._cmd_id) and (self._cmd_execution_status == CMD_EXECUTION_STATUS.COMPLETED_WITHOUT_ERRORS):
+                    if self.mcu_cmd_execution_in_progress == True:
+                        self.mcu_cmd_execution_in_progress = False
+                        # print('   mcu command ' + str(self._cmd_id) + ' complete')
+                elif self._cmd_id_mcu != self._cmd_id and time.time() - self.last_command_timestamp > 5 and self.last_command != None:
+                    self.timeout_counter = self.timeout_counter + 1
+                    if self.timeout_counter > 10:
+                        self.resend_last_command()
+                        MAIN_LOG.log(f'      *** resend the last command (callstack: {formatted_stack})')
+                elif self._cmd_execution_status == CMD_EXECUTION_STATUS.CMD_CHECKSUM_ERROR:
+                    MAIN_LOG.log(f'! cmd checksum error, resending command (callstack: {formatted_stack})')
+                    if self.retry > 10:
+                        MAIN_LOG.log(f'!! resending command failed for more than 10 times, the program will exit (callstack: {formatted_stack})')
+                        exit()
+                    else:
+                        self.resend_last_command()
+                
+                self.x_pos = self._payload_to_int(msg[2:6],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
+                self.y_pos = self._payload_to_int(msg[6:10],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
+                self.z_pos = self._payload_to_int(msg[10:14],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
+                self.theta_pos = self._payload_to_int(msg[14:18],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
+                
+                self.button_and_switch_state = msg[18]
+                # joystick button
+                tmp = self.button_and_switch_state & (1 << BIT_POS_JOYSTICK_BUTTON)
+                joystick_button_pressed = tmp > 0
+                if self.joystick_button_pressed == False and joystick_button_pressed == True:
+                    self.signal_joystick_button_pressed_event = True
+                    self.ack_joystick_button_pressed()
+                self.joystick_button_pressed = joystick_button_pressed
+                # switch
+                tmp = self.button_and_switch_state & (1 << BIT_POS_SWITCH)
+                self.switch_state = tmp > 0
 
+                if self.new_packet_callback_external is not None:
+                    self.new_packet_callback_external(self)
+                    
+        except Exception as e:
             call_stack=inspect.stack()
             formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
 
-            self._cmd_id_mcu = msg[0]
-            self._cmd_execution_status = msg[1]
-            if (self._cmd_id_mcu == self._cmd_id) and (self._cmd_execution_status == CMD_EXECUTION_STATUS.COMPLETED_WITHOUT_ERRORS):
-                if self.mcu_cmd_execution_in_progress == True:
-                    self.mcu_cmd_execution_in_progress = False
-                    # print('   mcu command ' + str(self._cmd_id) + ' complete')
-            elif self._cmd_id_mcu != self._cmd_id and time.time() - self.last_command_timestamp > 5 and self.last_command != None:
-                self.timeout_counter = self.timeout_counter + 1
-                if self.timeout_counter > 10:
-                    self.resend_last_command()
-                    MAIN_LOG.log(f'      *** resend the last command (callstack: {formatted_stack})')
-            elif self._cmd_execution_status == CMD_EXECUTION_STATUS.CMD_CHECKSUM_ERROR:
-                MAIN_LOG.log(f'! cmd checksum error, resending command (callstack: {formatted_stack})')
-                if self.retry > 10:
-                    MAIN_LOG.log(f'!! resending command failed for more than 10 times, the program will exit (callstack: {formatted_stack})')
-                    exit()
-                else:
-                    self.resend_last_command()
-            
-            self.x_pos = self._payload_to_int(msg[2:6],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
-            self.y_pos = self._payload_to_int(msg[6:10],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
-            self.z_pos = self._payload_to_int(msg[10:14],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
-            self.theta_pos = self._payload_to_int(msg[14:18],MicrocontrollerDef.N_BYTES_POS) # unit: microstep or encoder resolution
-            
-            self.button_and_switch_state = msg[18]
-            # joystick button
-            tmp = self.button_and_switch_state & (1 << BIT_POS_JOYSTICK_BUTTON)
-            joystick_button_pressed = tmp > 0
-            if self.joystick_button_pressed == False and joystick_button_pressed == True:
-                self.signal_joystick_button_pressed_event = True
-                self.ack_joystick_button_pressed()
-            self.joystick_button_pressed = joystick_button_pressed
-            # switch
-            tmp = self.button_and_switch_state & (1 << BIT_POS_SWITCH)
-            self.switch_state = tmp > 0
-
-            if self.new_packet_callback_external is not None:
-                self.new_packet_callback_external(self)
+            MAIN_LOG.log(f"error - unhandled exception in microcontroller read function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc(e)}")
+            raise e
 
     @TypecheckFunction
     def get_pos(self)->Tuple[int,int,int,int]:
