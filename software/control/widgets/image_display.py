@@ -7,8 +7,6 @@ from control.gui import Label, Grid, VBox, Button, HBox, Checkbox, BlankWidget
 
 from control.core import ConfigurationManager
 
-from queue import Queue
-from threading import Thread, Lock
 import numpy
 import pyqtgraph as pg
 
