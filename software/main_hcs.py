@@ -2,11 +2,12 @@
 import os
 os.environ["QT_API"] = "pyqt5"
 
+import traceback
 import sys
 
 # qt libraries
 from qtpy.QtWidgets import QApplication
-from control._def import SOFTWARE_NAME
+from control._def import SOFTWARE_NAME, MAIN_LOG
 
 # app specific libraries
 import control.gui_hcs as gui
@@ -46,4 +47,10 @@ if __name__ == "__main__":
             )
         )
 
-    sys.exit(app.exec())
+    try:
+        exit_code=app.exec()
+        sys.exit(exit_code)
+    except Exception as e:
+        root_exception_str=traceback.format_exc(e)
+        MAIN_LOG.log(f"error - exception will terminate program: {root_exception_str}")
+        sys.exit(1)

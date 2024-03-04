@@ -6,6 +6,7 @@ import numpy as np
 import threading
 import inspect
 from crc import CrcCalculator, Crc8
+import traceback
 
 from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD_SET, AXIS, HOME_OR_ZERO, CMD_EXECUTION_STATUS, BIT_POS_JOYSTICK_BUTTON, BIT_POS_SWITCH, MCU_PINS, MAIN_LOG
 from control.camera import retry_on_failure
@@ -721,12 +722,12 @@ class Microcontroller:
     @TypecheckFunction
     def wait_till_operation_is_completed(
         self,
-        timeout_limit_s:Optional[Union[float,int]]=2.0,
+        timeout_limit_s:Optional[Union[float,int]]=3.0,
         time_step:Optional[float]=None,
         timeout_msg:str='Error - microcontroller timeout, the program will exit'
     ):
         time_step=time_step or MACHINE_CONFIG.SLEEP_TIME_S
-        timeout_limit_s=timeout_limit_s or 2.0 # there should never actually be no limit on command execution
+        timeout_limit_s=timeout_limit_s or 3.0 # there should never actually be no limit on command execution
 
         # count how long this function has been running in total, and how often commands/reconnections have happened
         wait_start=time.time()
@@ -740,7 +741,7 @@ class Microcontroller:
         absolute_timeout_s=300 # 5 minutes, arbitrary choice
 
         # try resending a command after timeout this many times before reconnecting
-        num_cmd_resends=3
+        num_cmd_resends=5
 
         # 'retry' indicates retry waiting for completion
         retry=False
@@ -762,7 +763,9 @@ class Microcontroller:
                         time.sleep(time_step)
                         if not timeout_limit_s is None:
                             # check if max wait time has been reached and raise exception if so
-                            if time.time() - timestamp_start > timeout_limit_s:
+                            wait_time_test=time.time() - timestamp_start
+                            if wait_time_test > timeout_limit_s:
+                                MAIN_LOG.log(f"warning - microcontroller timed out after {wait_time_test:.3f}s (timeout limit {timeout_limit_s:.3f}s). raising.")
                                 raise RuntimeError(timeout_msg)
                             
                 # only catch the timeout exception specifically
@@ -771,8 +774,9 @@ class Microcontroller:
                         # if this function has failed enough times to exceed the absolute maximum wait time, terminate the program.
                         # if the program is not able to recover in a somewhat resonable timeframe, a human should intervene, because there is likely some larger issue at play
                         fail_time=time.time()
-                        if fail_time-wait_start>absolute_timeout_s:
-                            msg=f"error - absolute `microcontroller timeout - waited for {(fail_time-wait_start):.3f}s in total, resent command {total_num_cmd_resends} times, reconnected to microcontroller {total_num_reconnects} times (timeout limit {timeout_limit_s:.3f}s, time step {time_step:.3f}s, callstack: {formatted_stack})"
+                        total_command_resend_time=fail_time-wait_start
+                        if total_command_resend_time>absolute_timeout_s:
+                            msg=f"error - absolute `microcontroller timeout - waited for {total_command_resend_time:.3f}s in total, resent command {total_num_cmd_resends} times, reconnected to microcontroller {total_num_reconnects} times (timeout limit {timeout_limit_s:.3f}s, time step {time_step:.3f}s, callstack: {formatted_stack})"
                             MAIN_LOG.log(msg)
                             raise RuntimeError(msg)
 
@@ -799,6 +803,7 @@ class Microcontroller:
                         # continue inner loop (to retry command)
                         continue
                     else:
+                        MAIN_LOG.log(f"error - unhandled exception in microcontroller wait function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc(e)}")
                         raise e
 
                 # if no timeout exception occured (i.e. command finished on time):
