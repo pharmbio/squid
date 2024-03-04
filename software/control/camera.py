@@ -323,6 +323,8 @@ class Camera(object):
         self.camera.ReverseY.set(value)
 
     def exception_shows_camera_connection_issue(self,e)->bool:
+        QApplication.processEvents()
+        
         if self.camera is None or str(e.__class__.__module__)=="control.gxipy.gxiapi":
             e_classname=str(e.__class__.__name__)
             
