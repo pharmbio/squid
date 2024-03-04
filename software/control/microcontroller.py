@@ -708,7 +708,7 @@ class Microcontroller:
             call_stack=inspect.stack()
             formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
 
-            MAIN_LOG.log(f"error - unhandled exception in microcontroller read function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc(e)}")
+            MAIN_LOG.log(f"error - unhandled exception in microcontroller read function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc()}")
             raise e
 
     @TypecheckFunction
@@ -811,7 +811,7 @@ class Microcontroller:
                         # continue inner loop (to retry command)
                         continue
                     else:
-                        MAIN_LOG.log(f"error - unhandled exception in microcontroller wait function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc(e)}")
+                        MAIN_LOG.log(f"error - unhandled exception in microcontroller wait function (callstack: {formatted_stack})\n-- traceback:\n{traceback.format_exc()}")
                         raise e
 
                 # if no timeout exception occured (i.e. command finished on time):

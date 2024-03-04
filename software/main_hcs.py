@@ -51,6 +51,6 @@ if __name__ == "__main__":
         exit_code=app.exec()
         sys.exit(exit_code)
     except Exception as e:
-        root_exception_str=traceback.format_exc(e)
+        root_exception_str=traceback.format_exc()
         MAIN_LOG.log(f"error - exception will terminate program: {root_exception_str}")
         sys.exit(1)

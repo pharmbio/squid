@@ -505,7 +505,7 @@ class Gui(QMainWindow):
             )
         
         except Exception as e:
-            msg_text:str=str(e)+"\n"*2+"-"*64+"\n"*2+traceback.format_exc(e)
+            msg_text:str=str(e)+"\n"*2+"-"*64+"\n"*2+traceback.format_exc()
             MAIN_LOG.log(f"error - an exception occured while starting the experiment: {msg_text}")
             try:
                 web_service.set_status(error=repr(e))

@@ -4,6 +4,19 @@ from qtpy.QtWidgets import QApplication
 
 from control._def import *
 
+import traceback
+
+class ExcQtThread(QThread):
+    """ QThread with an exception signal to catch signals thrown from inside """
+    error_signal = Signal(Exception)
+
+    def run_try(self,func):
+        try:
+            func()
+        except Exception as e:
+            MAIN_LOG.log(f"error - in multipoint worker thread: {traceback.format_exc()}")
+            self.error_signal.emit(e)
+
 import os
 import time
 import cv2
@@ -706,11 +719,11 @@ class MultiPointController(QObject):
             self.multiPointWorker = MultiPointWorker(self,image_positions,is_async=RUN_WORKER_ASYNC,total_num_acquisitions=total_num_acquisitions,image_return=image_return)
             
             if RUN_WORKER_ASYNC:
-                self.thread = QThread()
+                self.thread = ExcQtThread()
                 self.multiPointWorker.moveToThread(self.thread)
 
                 # connect signals and slots
-                self.thread.started.connect(self.multiPointWorker.run)
+                self.thread.started.connect(lambda:self.thread.run_try(self.multiPointWorker.run))
                 if not on_new_acquisition is None:
                     self.multiPointWorker.signal_new_acquisition.connect(on_new_acquisition)
 
