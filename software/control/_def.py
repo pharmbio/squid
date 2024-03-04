@@ -77,7 +77,7 @@ class Logger:
         self,
         file_name:Optional[str]
     ):
-        self.lines=[]
+        # self.lines=[]
         if not file_name is None:
             self.file_backing=open(file_name,mode="x",buffering=1)
     
@@ -86,7 +86,7 @@ class Logger:
             time=datetime.now(),
             text=text
         )
-        self.lines.append(new_log_entry)
+        # self.lines.append(new_log_entry)
 
         log_msg=f"{format_timestamp(t=new_log_entry.time)} : {new_log_entry.text}"
         print(f"LOG {log_msg}")
