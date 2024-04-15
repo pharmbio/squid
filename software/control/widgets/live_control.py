@@ -90,13 +90,17 @@ class LiveControlWidget(QFrame):
                 self.liveController.turn_on_illumination()
                 self.liveController.control_illumination=False
 
-            max_fps=float(self.entry_triggerFPS.value())
+            # target framerate
+            # is capped by exposure time in practice, i.e. actual fps may be lower
+            target_fps=float(self.entry_triggerFPS.value())
 
             with self.liveController.camera.wrapper.ensure_streaming():
                 last_image_time=time.monotonic()
                 while not self.stop_requested:
+                    QApplication.processEvents()
+
                     current_time=time.monotonic()
-                    time_to_next_image=1/max_fps - (current_time-last_image_time)
+                    time_to_next_image=1/target_fps - (current_time-last_image_time)
                     if time_to_next_image>0:
                         time.sleep(time_to_next_image)
                         QApplication.processEvents()
@@ -104,6 +108,8 @@ class LiveControlWidget(QFrame):
                     new_image=self.liveController.snap(config=self.currentConfiguration)
                     self.on_new_frame(new_image)
                     last_image_time=current_time
+
+                    QApplication.processEvents()
 
             if keep_light_on:
                 self.liveController.control_illumination=True
