@@ -199,7 +199,7 @@ class ConfigLoadConditionSet:
             "LOAD_OBJECTIVE":False,
         }.get(field)
 
-    def always()->"Self":
+    def always()->"ConfigLoadConditionSet":
         return ConfigLoadConditionSet(
             LOAD_PROJECT_NAME = ConfigLoadCondition.ALWAYS,
             LOAD_PLATE_NAME = ConfigLoadCondition.ALWAYS,
@@ -404,7 +404,7 @@ class CameraWrapper:
         core_,
         camera,
         filename:str, # file backing up the configurations on disk
-        microcontroller,
+        microcontroller:"microcontroller.Microcontroller",
         use_streamhandler:bool=True, # use streamhandler by default to handle images
 
         **kwargs
@@ -467,7 +467,7 @@ class Core(QObject):
     def liveController_focus_camera(self):
         return self.focus_camera.live_controller
 
-    microcontroller:microcontroller.Microcontroller
+    microcontroller:"microcontroller.Microcontroller"
     main_camera:CameraWrapper
     focus_camera:CameraWrapper
     navigation:NavigationController

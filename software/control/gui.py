@@ -58,7 +58,7 @@ class ObjectManager:
             return managed_object.value
 
 def as_widget(layout)->QWidget:
-    w=QWidget()
+    w:QWidget=QWidget()
     w.setLayout(layout)
     return w
 
@@ -260,7 +260,7 @@ class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
         
         **kwargs,
     ):
-        self.widget=QDoubleSpinBox()
+        self.widget:QDoubleSpinBox=QDoubleSpinBox()
 
         if not minimum is None:
             self.widget.setMinimum(minimum) 
@@ -288,7 +288,7 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
 
         **kwargs,
     ):
-        self.widget=QSpinBox()
+        self.widget:QSpinBox=QSpinBox()
 
         if not minimum is None:
             self.widget.setMinimum(minimum) 

@@ -12,6 +12,7 @@ from control._def import MACHINE_CONFIG, ControllerType, MicrocontrollerDef, CMD
 from control.camera import retry_on_failure
 
 from control.typechecker import TypecheckFunction, ClosedRange, ClosedSet
+import typing as tp
 from typing import Union, Any, Tuple, List, Optional
 
 from qtpy.QtWidgets import QApplication
@@ -36,29 +37,41 @@ class Microcontroller:
     @TypecheckFunction
     def __init__(self,version:ControllerType=ControllerType.DUE,sn:Optional[str]=None,parent:Any=None):
         self.platform_name = platform.system()
-        self.tx_buffer_length = MicrocontrollerDef.CMD_LENGTH
-        self.rx_buffer_length = MicrocontrollerDef.MSG_LENGTH
 
-        self._cmd_id = 0
-        self._cmd_id_mcu = None # command id of mcu's last received command 
-        self._cmd_execution_status = None
-        self.mcu_cmd_execution_in_progress = False
+        self.tx_buffer_length = MicrocontrollerDef.CMD_LENGTH
+        """ CMD_LENGTH """
+
+        self.rx_buffer_length = MicrocontrollerDef.MSG_LENGTH
+        """ MSG_LENGTH """
+
+        self._cmd_id:int = 0
+        """ mod 256 id of last sent command"""
+        self._cmd_id_mcu:tp.Optional[int] = None
+        """ command id (mod 256) of mcu's last received command """
+        self._cmd_execution_status:tp.Optional[CMD_EXECUTION_STATUS] = None
+        self.mcu_cmd_execution_in_progress:bool = False
 
         self.x_pos = 0 # unit: microstep or encoder resolution
         self.y_pos = 0 # unit: microstep or encoder resolution
         self.z_pos = 0 # unit: microstep or encoder resolution
         self.theta_pos = 0 # unit: microstep or encoder resolution
         self.button_and_switch_state = 0
-        self.joystick_button_pressed = 0
-        self.signal_joystick_button_pressed_event = False
+        self.joystick_button_pressed:int = 0
+        """ indicates whether the joystick button is pressed """
+        self.signal_joystick_button_pressed_event:bool = False
         self.switch_state = 0
+        """ indicates the state of the switch """
 
-        self.last_command = None
+        self.last_command:tp.Optional[bytearray] = None
+        """ last command (as bytearray) sent to the microcontroller """
         self.timeout_counter = 0
-        self.last_command_timestamp = time.time()
+        """ number of times the last command has timed out """
+        self.last_command_timestamp:float = time.time()
+        """ timestamp of the last command sent to the microcontroller """
 
         self.crc_calculator = CrcCalculator(Crc8.CCITT,table_based=True)
         self.retry = 0
+        """ number of times the last command has been resent """
 
         self.version=version
         self.sn=sn
@@ -583,10 +596,10 @@ class Microcontroller:
         function_uses_self=True,
         try_recover=lambda:Microcontroller.attempt_connection
     )
-    def write_command_to_serial(self,command):
+    def write_command_to_serial(self,command:bytearray):
         self.serial.write(command)
 
-    def send_command(self,command):
+    def send_command(self,command:bytearray):
         self._cmd_id = (self._cmd_id + 1)%256
         command[0] = self._cmd_id
         command[-1] = self.crc_calculator.calculate_checksum(command[:-1])
@@ -615,7 +628,9 @@ class Microcontroller:
                     else:
                         serial_in_waiting_status=self.serial.in_waiting
                 except OSError as e:
-                    if e.errno == 5:
+                    ERRNO_IOERROR:int = 5
+                    """ errno for I/O error (raised by operating system) """
+                    if e.errno == ERRNO_IOERROR:
                         MAIN_LOG.log("failed to get serial waiting status because of I/O error: microcontroller might be disconnected")
                         time.sleep(MACHINE_CONFIG.MICROCONTROLLER_PACKET_RETRY_DELAY*1000)
                         try:
@@ -667,19 +682,25 @@ class Microcontroller:
 
                 self._cmd_id_mcu = msg[0]
                 self._cmd_execution_status = msg[1]
+                COMMAND_TIMEOUT_S:float = 5.0
+                """ wait this many seconds after command send until microscope reply before a command timeout is triggered """
+                NUM_COMMAND_TIMEOUTS_TO_RESEND:int = 10
+                """ number of command timeouts before a command is resent """
+                NUM_COMMAND_RESEND_TO_FAILURE:int = 10
+                """ number of command resends without reply before the program exits """
                 if (self._cmd_id_mcu == self._cmd_id) and (self._cmd_execution_status == CMD_EXECUTION_STATUS.COMPLETED_WITHOUT_ERRORS):
                     if self.mcu_cmd_execution_in_progress == True:
                         self.mcu_cmd_execution_in_progress = False
                         # print('   mcu command ' + str(self._cmd_id) + ' complete')
-                elif self._cmd_id_mcu != self._cmd_id and time.time() - self.last_command_timestamp > 5 and self.last_command != None:
+                elif (self._cmd_id_mcu != self._cmd_id) and ( (time.time() - self.last_command_timestamp) > COMMAND_TIMEOUT_S ) and (self.last_command != None):
                     self.timeout_counter = self.timeout_counter + 1
-                    if self.timeout_counter > 10:
+                    if self.timeout_counter > NUM_COMMAND_TIMEOUTS_TO_RESEND:
                         self.resend_last_command()
                         MAIN_LOG.log(f'      *** resend the last command (callstack: {formatted_stack})')
                 elif self._cmd_execution_status == CMD_EXECUTION_STATUS.CMD_CHECKSUM_ERROR:
                     MAIN_LOG.log(f'! cmd checksum error, resending command (callstack: {formatted_stack})')
-                    if self.retry > 10:
-                        MAIN_LOG.log(f'!! resending command failed for more than 10 times, the program will exit (callstack: {formatted_stack})')
+                    if self.retry > NUM_COMMAND_RESEND_TO_FAILURE:
+                        MAIN_LOG.log(f'!! resending command failed for more than {NUM_COMMAND_RESEND_TO_FAILURE} times, the program will exit (callstack: {formatted_stack})')
                         exit()
                     else:
                         self.resend_last_command()

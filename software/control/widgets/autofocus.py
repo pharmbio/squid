@@ -78,7 +78,7 @@ class SoftwareAutoFocusWidget(QFrame):
 
 def create_empty_image_display(
     invert_y:bool=False
-):
+)->pg.GraphicsLayoutWidget:
     graph_display=pg.GraphicsLayoutWidget()
     graph_display.view = graph_display.addViewBox()
     graph_display.img = pg.ImageItem(border='w')
@@ -91,6 +91,7 @@ def create_empty_image_display(
     return graph_display
 
 class LaserAfDebugdisplay:
+    """ Laser Autofocus Debug Panel """
     def __init__(self,
         laser_af_controller:LaserAutofocusController,
     ):

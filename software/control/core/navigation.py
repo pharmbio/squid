@@ -4,13 +4,10 @@ from qtpy.QtWidgets import QApplication
 
 from control._def import *
 
-import numpy as np
-import pyqtgraph as pg
-import cv2
 import time
 import math
 
-from typing import Optional, List, Union, Tuple
+import typing as tp
 
 import control.microcontroller as microcontroller
 from control.typechecker import TypecheckFunction
@@ -55,20 +52,20 @@ class NavigationController(QObject):
         return WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT]
 
     @TypecheckFunction
-    def move_x(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_x(self,x_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.move_x_usteps(self.microcontroller.mm_to_ustep_x(x_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
-    def move_y(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_y(self,y_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.move_y_usteps(self.microcontroller.mm_to_ustep_y(y_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
-    def move_z(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_z(self,z_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         """ this takes 210 ms ?! """
         self.move_z_usteps(self.microcontroller.mm_to_ustep_z(z_mm),wait_for_completion=wait_for_completion,wait_for_stabilization=wait_for_stabilization)
 
     @TypecheckFunction
-    def move_x_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_x_usteps(self,usteps:int,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_x_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
@@ -76,7 +73,7 @@ class NavigationController(QObject):
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_X/1000)
 
     @TypecheckFunction
-    def move_y_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_y_usteps(self,usteps:int,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_y_usteps(usteps)
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
@@ -84,7 +81,7 @@ class NavigationController(QObject):
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Y/1000)
 
     @TypecheckFunction
-    def move_z_usteps(self,usteps:int,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_z_usteps(self,usteps:int,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         """ this takes 210 ms ?! """
 
         self.microcontroller.move_z_usteps(usteps)
@@ -94,7 +91,7 @@ class NavigationController(QObject):
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Z/1000)
 
     @TypecheckFunction
-    def move_x_to(self,x_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_x_to(self,x_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_x_to_usteps(self.microcontroller.mm_to_ustep_x(x_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
@@ -102,7 +99,7 @@ class NavigationController(QObject):
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_X/1000)
 
     @TypecheckFunction
-    def move_y_to(self,y_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_y_to(self,y_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_y_to_usteps(self.microcontroller.mm_to_ustep_y(y_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
@@ -110,7 +107,7 @@ class NavigationController(QObject):
             time.sleep(MACHINE_CONFIG.SCAN_STABILIZATION_TIME_MS_Y/1000)
 
     @TypecheckFunction
-    def move_z_to(self,z_mm:float,wait_for_completion:Optional[Any]=None,wait_for_stabilization:bool=False):
+    def move_z_to(self,z_mm:float,wait_for_completion:tp.Optional[dict]=None,wait_for_stabilization:bool=False):
         self.microcontroller.move_z_to_usteps(self.microcontroller.mm_to_ustep_z(z_mm))
         if not wait_for_completion is None:
             self.microcontroller.wait_till_operation_is_completed(**wait_for_completion)
@@ -133,7 +130,7 @@ class NavigationController(QObject):
         self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm,wait_for_completion={})
     
     @TypecheckFunction
-    def move_by_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,wait_for_completion:Optional[dict]=None):
+    def move_by_mm(self,x_mm:tp.Optional[float]=None,y_mm:tp.Optional[float]=None,z_mm:tp.Optional[float]=None,wait_for_completion:Optional[dict]=None):
         self.move_to_mm(
             x_mm=None if x_mm is None else x_mm+self.x_pos_mm,
             y_mm=None if y_mm is None else y_mm+self.y_pos_mm,
@@ -142,7 +139,7 @@ class NavigationController(QObject):
         )
 
     @TypecheckFunction
-    def move_to_mm(self,x_mm:Optional[float]=None,y_mm:Optional[float]=None,z_mm:Optional[float]=None,wait_for_completion:Optional[dict]=None):
+    def move_to_mm(self,x_mm:tp.Optional[float]=None,y_mm:tp.Optional[float]=None,z_mm:tp.Optional[float]=None,wait_for_completion:Optional[dict]=None):
         if not x_mm is None and not y_mm is None:
             def distance_to_wellplate_center(y_mm:float,x_mm:float)->float:
                 """ calculate distance of any point on the plate to the center of the wellplate """

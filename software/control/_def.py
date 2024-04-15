@@ -323,8 +323,11 @@ class PosUpdate:
 
 class MicrocontrollerDef:
     MSG_LENGTH = 24
+    """ number of bytes for message data """
     CMD_LENGTH = 8
+    """ number of bytes for command data """
     N_BYTES_POS = 4
+    """ number of bytes for position data """
 
 class MCU_PINS:
     PWM1 = 5
