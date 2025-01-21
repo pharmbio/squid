@@ -140,7 +140,7 @@ class NavigationController(QObject):
 
     @TypecheckFunction
     def move_to_mm(self,x_mm:tp.Optional[float]=None,y_mm:tp.Optional[float]=None,z_mm:tp.Optional[float]=None,wait_for_completion:Optional[dict]=None):
-        if not x_mm is None and not y_mm is None:
+        if (x_mm is not None) and (y_mm is not None):
             def distance_to_wellplate_center(y_mm:float,x_mm:float)->float:
                 """ calculate distance of any point on the plate to the center of the wellplate """
 
@@ -174,13 +174,13 @@ class NavigationController(QObject):
                 # then move to target column
                 self.move_x_to(target_x_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
         else:
-            if not x_mm is None:
+            if x_mm is not None:
                 self.move_x_to(x_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=y_mm is None)
-            if not y_mm is None:
+            if y_mm is not None:
                 self.move_y_to(y_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
 
-        if not z_mm is None:
-            self.move_y_to(y_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
+        if z_mm is not None:
+            self.move_z_to(z_mm,wait_for_completion=wait_for_completion,wait_for_stabilization=True)
 
     @TypecheckFunction
     def update_pos(self,microcontroller:microcontroller.Microcontroller):

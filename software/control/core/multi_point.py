@@ -253,12 +253,21 @@ class MultiPointWorker(QObject):
 
         ret_coords=[]
 
+        # store current z coordinate (may be used e.g. when no autofocus is used to restore original z coordinate)
+        z_stack_origin_z_mm=self.navigation.z_pos_mm
+
+        # use software autofocus to initialize laser autofocus system
+        do_perform_initial_software_autofocus=( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter % Acquisition.NUMBER_OF_FOVS_PER_AF == 0)
+
         with Profiler("run autofocus",parent=profiler) as autofocusprof:
             # autofocus
             if self.do_reflection_af == False:
                 # perform Autofocus only when (not taking z stack) or (doing z stack from center)
-                if ( (self.NZ == 1) or MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER' ) and (self.do_autofocus) and (self.FOV_counter % Acquisition.NUMBER_OF_FOVS_PER_AF == 0):
+                if do_perform_initial_software_autofocus:
                     self.perform_software_autofocus()
+                else:
+                    # do not perform any autofocus
+                    pass 
             else:
                 # first FOV
                 if self.reflection_af_initialized==False:
@@ -354,6 +363,9 @@ class MultiPointWorker(QObject):
             self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
 
             MAIN_LOG.log("moved to target z in z-stack (part 2)")
+
+        if self.do_reflection_af == False and not do_perform_initial_software_autofocus:
+            self.navigation.move_to_mm(z_mm=z_stack_origin_z_mm,wait_for_completion={})
 
         # update FOV counter
         self.FOV_counter = self.FOV_counter + 1
