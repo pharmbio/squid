@@ -298,6 +298,8 @@ class MultiPointWorker(QObject):
                 MAIN_LOG.log("moved to target z in z-stack (part 1)")
 
         # z-stack
+        Zs = list(range(self.NZ))
+        middle_of_Z = Zs[len(Zs) // 2]
         for k in range(self.NZ):
             if self.num_positions_per_well>1:
                 _=next(self.well_tqdm_iter,0)
@@ -313,6 +315,11 @@ class MultiPointWorker(QObject):
 
                 # iterate through selected modes
                 for config_i,config in tqdm(enumerate(self.selected_configurations),desc="channel",unit="channel",leave=False):
+
+                    if config.name.startswith("Fluorescence") and k != middle_of_Z:
+                        MAIN_LOG.log(f"skipping {config.name} because Z is {k} and middle is {middle_of_Z}")
+                        continue
+
                     saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
 
                     if self.multiPointController.abort_acqusition_requested:
