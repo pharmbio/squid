@@ -578,7 +578,7 @@ class Gui(QMainWindow):
             web_service.set_status(progress_bar_text=progress_bar_text)
             return
         
-        if progress_data.completed_steps<=1:
+        if progress_data.completed_steps<=1 or not hasattr(self, 'completed_steps'):
             self.total_num_acquisitions=progress_data.total_steps
             self.acquisition_widget.progress_bar.setValue(0)
             self.acquisition_widget.progress_bar.setMinimum(0)

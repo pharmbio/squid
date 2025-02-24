@@ -300,6 +300,7 @@ class MultiPointWorker(QObject):
         # z-stack
         Zs = list(range(self.NZ))
         middle_of_Z = Zs[len(Zs) // 2]
+        self.movement_deviation_from_focusplane=0.0
         for k in range(self.NZ):
             if self.num_positions_per_well>1:
                 _=next(self.well_tqdm_iter,0)
@@ -309,14 +310,16 @@ class MultiPointWorker(QObject):
             else:
                 file_ID = f'{coordinate_name}'
 
-            self.movement_deviation_from_focusplane=0.0
 
             with Profiler("image all configs",parent=profiler) as image_all_configs:
 
+                last_used_config = None
+
                 # iterate through selected modes
-                for config_i,config in tqdm(enumerate(self.selected_configurations),desc="channel",unit="channel",leave=False):
+                for _config_i,config in tqdm(enumerate(self.selected_configurations),desc="channel",unit="channel",leave=False):
 
                     if config.name.startswith("Fluorescence") and k != middle_of_Z:
+                        self.progress.completed_steps+=1
                         MAIN_LOG.log(f"skipping {config.name} because Z is {k} and middle is {middle_of_Z}")
                         continue
 
@@ -326,12 +329,13 @@ class MultiPointWorker(QObject):
                         raise AbortAcquisitionException()
                         
                     counter_backlash=True
-                    if config_i>0:
-                        previous_channel_z_offset=self.selected_configurations[config_i-1].channel_z_offset
-                        current_channel_offset=self.selected_configurations[config_i-1].channel_z_offset
+                    if last_used_config is not None:
+                        previous_channel_z_offset=last_used_config.channel_z_offset
+                        current_channel_offset=last_used_config.channel_z_offset
                         counter_backlash=previous_channel_z_offset<current_channel_offset
 
                     self.image_config(config=config,saving_path=saving_path,profiler=image_all_configs,counter_backlash=counter_backlash,x=x,y=y,z=k,well_name=well_name)
+                    last_used_config = config
 
             with Profiler("ret coords append",parent=profiler) as retcoordsappend:
                 # add the coordinate of the current location
