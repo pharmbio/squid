@@ -4,6 +4,7 @@ import time
 
 from qtpy.QtCore import Qt, QEvent
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication
+from qtpy import QtWidgets
 
 import pyqtgraph as pg
 
@@ -35,9 +36,9 @@ IMAGE_ADJUST_BRIGHTNESS_TOOLTIP="Image brightness adjustment factor.\nThis facto
 IMAGE_ADJUST_CONTRAST_TOOLTIP="Image contrast adjustment factor.\nThis factor is used to artificially enhance the contrast of the image displayed in the single image view.\nThis is not applied to images displayed during acqusition, and also not to images saved."
 
 CHANNEL_COLORS={
-    0:"grey", # bf led full
-    1:"grey", # bf led left half
-    2:"grey", # bf led right half
+    0:"#222", # bf led full
+    1:"#222", # bf led left half
+    2:"#222", # bf led right half
     15:"darkRed", # 730
     13:"red", # 638
     14:"green", # 561
@@ -58,6 +59,7 @@ class ImagingChannels:
         on_live_status_changed:Optional[Callable[[],bool]]=None,
         on_snap_status_changed:Optional[Callable[[],bool]]=None,
         move_to_offset:Optional[Callable[[float,],None]]=None,
+        measure_displacement:Callable[[],float]=lambda: float('nan'),
 
         get_current_position_xy_mm:Optional[Callable[[],Tuple[float,float,WellplateFormatPhysical]]]=None,
     ):
@@ -68,6 +70,7 @@ class ImagingChannels:
         self.on_live_status_changed=on_live_status_changed
         self.on_snap_status_changed=on_snap_status_changed
         self.move_to_offset=move_to_offset
+        self.measure_displacement=measure_displacement
         self.get_current_position_xy_mm=get_current_position_xy_mm
 
         self.interactive_widgets=ObjectManager()
@@ -78,38 +81,40 @@ class ImagingChannels:
 
         imaging_modes_widget_list=[]
         imaging_modes_wide_widgets=[]
-        for config_num,config in enumerate(self.configuration_manager.configurations):
+        for config_index, config in enumerate(self.configuration_manager.configurations):
             config_manager=ObjectManager()
 
+            short_name = config.name
+            short_name = short_name.replace('Fluorescence', 'FL')
+            short_name = short_name.replace('Ex', '')
+            short_name = short_name.replace('LED matrix', '')
+            short_name = short_name.replace('half', '')
+            short_name = short_name.replace('  ', ' ').strip()
+
+            if 'left' in short_name or 'right' in short_name:
+                # pass
+                continue
+
             imaging_modes_wide_widgets.extend([
-                GridItem(
-                    Label(config.name,tooltip=config.automatic_tooltip(),text_color=CHANNEL_COLORS[config.illumination_source]).widget,
-                    row=config_num*2,colSpan=2
-                ),
-                GridItem(
-                    config_manager.snap == Button(ComponentLabel.BTN_SNAP_LABEL,tooltip=ComponentLabel.BTN_SNAP_TOOLTIP,
-                        on_clicked=lambda btn_state,c=config: self.snap_single(btn_state,config=self.configuration_manager.config_by_name(c.name))
-                    ).widget,
-                    row=config_num*2,column=2,colSpan=2
-                )
             ])
 
-            imaging_modes_widget_list.extend([
+            paired_settings_widget = [
                 [
-                    GridItem(None,colSpan=4),
-                    Label(ComponentLabel.ILLUMINATION_LABEL,tooltip=ComponentLabel.ILLUMINATION_TOOLTIP).widget,
-                    config_manager.illumination_strength == SpinBoxDouble(
-                        minimum=ComponentLimit.MIN_ILLUMINATION_PERCENT,maximum=ComponentLimit.MAX_ILLUMINATION_PERCENT,step=0.1,
-                        default=config.illumination_intensity,
-                        tooltip=ComponentLabel.ILLUMINATION_TOOLTIP,
+                    # Label('Z offset:',tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP, alignment=Qt.AlignCenter | Qt.AlignBottom).widget,
+                    Label('Z offset:',tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP, alignment=Qt.AlignRight | Qt.AlignVCenter).widget,
+                    # Label('Z offset:',tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP, alignment=Qt.AlignRight | Qt.AlignBottom).widget,
+                    config_manager.z_offset == SpinBoxDouble(
+                        minimum=MIN_CHANNEL_Z_OFFSET_UM,maximum=MAX_CHANNEL_Z_OFFSET_UM,step=0.1,
+                        default=config.channel_z_offset,
+                        tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP,
                         on_valueChanged=[
-                            lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_illumination_intensity(val),
+                            lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_offset(val),
                             self.configuration_manager.save_configurations,
-                        ]
+                        ],
                     ).widget,
                 ],
-                [   
-                    Label(ComponentLabel.EXPOSURE_TIME_LABEL,tooltip=ComponentLabel.EXPOSURE_TIME_TOOLTIP).widget,
+                [
+                    Label('Exposure:',tooltip=ComponentLabel.EXPOSURE_TIME_TOOLTIP, alignment=Qt.AlignCenter | Qt.AlignBottom).widget,
                     config_manager.exposure_time == SpinBoxDouble(
                         minimum=self.camera.EXPOSURE_TIME_MS_MIN,
                         maximum=self.camera.EXPOSURE_TIME_MS_MAX,step=1.0,
@@ -118,9 +123,11 @@ class ImagingChannels:
                         on_valueChanged=[
                             lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_exposure_time(val),
                             self.configuration_manager.save_configurations,
-                        ]
+                        ],
                     ).widget,
-                    Label(ComponentLabel.ANALOG_GAIN_LABEL,tooltip=ComponentLabel.ANALOG_GAIN_TOOLTIP).widget,
+                ],
+                [
+                    Label(ComponentLabel.ANALOG_GAIN_LABEL,tooltip=ComponentLabel.ANALOG_GAIN_TOOLTIP, alignment=Qt.AlignCenter | Qt.AlignBottom).widget,
                     config_manager.analog_gain == SpinBoxDouble(
                         minimum=ComponentLimit.MIN_ANALOG_GAIN,maximum=ComponentLimit.MAX_ANALOG_GAIN,step=0.1,
                         default=config.analog_gain,
@@ -128,18 +135,60 @@ class ImagingChannels:
                         on_valueChanged=[
                             lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_analog_gain(val),
                             self.configuration_manager.save_configurations,
-                        ]
+                        ],
                     ).widget,
-                    Label(ComponentLabel.CHANNEL_OFFSET_LABEL,tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP).widget,
-                    config_manager.z_offset == SpinBoxDouble(
-                        minimum=MIN_CHANNEL_Z_OFFSET_UM,maximum=MAX_CHANNEL_Z_OFFSET_UM,step=0.1,
-                        default=config.channel_z_offset,
-                        tooltip=ComponentLabel.CHANNEL_OFFSET_TOOLTIP,
+                ],
+                [
+                    Label(ComponentLabel.ILLUMINATION_LABEL,tooltip=ComponentLabel.ILLUMINATION_TOOLTIP, alignment=Qt.AlignCenter | Qt.AlignBottom).widget,
+                    config_manager.illumination_strength == SpinBoxDouble(
+                        minimum=ComponentLimit.MIN_ILLUMINATION_PERCENT,maximum=ComponentLimit.MAX_ILLUMINATION_PERCENT,step=0.1,
+                        default=config.illumination_intensity,
+                        tooltip=ComponentLabel.ILLUMINATION_TOOLTIP,
                         on_valueChanged=[
-                            lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_offset(val),
+                            lambda val,c=config: self.configuration_manager.config_by_name(c.name).set_illumination_intensity(val),
                             self.configuration_manager.save_configurations,
-                        ]
+                        ],
                     ).widget,
+                ],
+            ]
+
+            imaging_modes_widget_list.extend([
+                [
+                    GridItem(Label('', style='font-size: 10px') if config_index > 0 else None, colSpan=6),
+                ],
+                [
+                    GridItem(
+                        Label(short_name,tooltip=config.automatic_tooltip(),text_color=CHANNEL_COLORS[config.illumination_source], alignment=Qt.AlignCenter, style='font-weight:bold').widget,
+                        # row=config_num*2,colSpan=2
+                    ),
+                    *paired_settings_widget[0],
+                    *[label for label, widget in paired_settings_widget[1:]]
+                ],
+                [
+                    GridItem(
+                        config_manager.snap == Button('snap',tooltip=ComponentLabel.BTN_SNAP_TOOLTIP,
+                            on_clicked=lambda btn_state,c=config: self.snap_single(btn_state,config=self.configuration_manager.config_by_name(c.name))
+                        ).widget,
+                        # row=config_num*2,column=2,colSpan=2
+                    ),
+                    GridItem(
+                        config_manager.snap_with_offset == Button('snap offset',tooltip='Snap image using the Z offset.',
+                            on_clicked=lambda btn_state,c=config: self.snap_single(btn_state,with_offset=True,config=self.configuration_manager.config_by_name(c.name)),
+                        ).widget,
+                        # row=config_num*2,column=2,colSpan=2
+                    ),
+                    GridItem(
+                        config_manager.set_offset == Button('store offset',tooltip='Measure the current displacement and store it as Z offset',
+                            on_clicked=lambda btn_state,c=config, config_manager=config_manager: [
+                                (lambda offset=self.measure_displacement():
+                                    numpy.isnan(offset) or
+                                    config_manager.z_offset.setValue(offset)
+                                )()
+                            ]
+                        ).widget,
+                        # row=config_num*2,column=2,colSpan=2
+                    ),
+                    *[widget for label, widget in paired_settings_widget[1:]]
                 ]
             ])
 
@@ -161,11 +210,14 @@ class ImagingChannels:
                     channel_included_in_snap_all_flags[i]=not channel_included_in_snap_all_flags[i]
 
                 vbox_widgets.append(Checkbox(config.name,checked=channel_included_in_snap_all_flags[config_i],on_stateChanged=lambda _btn,i=config_i:toggle_selection(i)))
-                            
+
             somewidget.setCentralWidget(VBox(*vbox_widgets).widget)
             somewidget.show()
 
-        self.channel_included_in_snap_all_flags=[True for c in self.configuration_manager.configurations]
+        self.channel_included_in_snap_all_flags=[
+            'left' not in config.name and 'right' not in config.name
+            for config in self.configuration_manager.configurations
+        ]
 
         self.snap_channels=HBox(
             self.interactive_widgets.snap_all_button == Button(
@@ -184,7 +236,8 @@ class ImagingChannels:
             ).widget,
             self.interactive_widgets.snap_all_with_offset_checkbox == Checkbox(
                 label=ComponentLabel.BTN_SNAP_ALL_OFFSET_CHECKBOX_LABEL,
-                tooltip=ComponentLabel.BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP
+                tooltip=ComponentLabel.BTN_SNAP_ALL_OFFSET_CHECKBOX_TOOLTIP,
+                checked=True,
             ).widget,
 
             with_margins=False,

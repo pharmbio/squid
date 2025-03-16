@@ -33,12 +33,18 @@ class WebService:
     exposed: t.Dict[str, t.Callable[[t.Dict[str, t.Any]], t.Any]] = field(default_factory=dict)
     lock: Lock = field(default_factory=Lock)
     status: t.Dict[str, t.Any] = field(default_factory=dict)
+    settings: t.Dict[str, t.Any] = field(default_factory=dict)
 
     def set_status(self, **kws: t.Any):
         self.status.update(kws)
 
+    def set_settings(self, **kws: t.Any):
+        self.settings.update(kws)
+
     def start(self, host: str = 'localhost', port: int = 4321, namespace: str = 'squid'):
         self.expose(lambda: self.status, name='status')
+        self.expose(lambda: self.settings, name='settings')
+        self.expose(self.set_settings, name='set_settings')
 
         app = Flask(__name__)
         app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True # type: ignore

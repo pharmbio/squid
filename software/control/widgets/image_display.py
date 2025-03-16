@@ -152,7 +152,8 @@ class ImageArrayDisplayWindow(QMainWindow):
                 13:3,
                 15:4,
 
-                0:6,
+                0:5,
+
                 1:7,
                 2:8,
             },
@@ -163,9 +164,11 @@ class ImageArrayDisplayWindow(QMainWindow):
         self.widget=VBox(
             self.image_display_widget,
             HBox(
-                Checkbox("Hide BF",checked=False,on_stateChanged=lambda check_state:self.set_rows_visible([True,True,check_state!=Qt.Checked]))
+                Checkbox("Hide BF Left and BF Right",checked=True,on_stateChanged=lambda check_state:self.set_rows_visible([True,True,check_state!=Qt.Checked]))
             )
         ).widget
+
+        self.set_rows_visible([True, True, False])
 
         self.setCentralWidget(self.widget)
 

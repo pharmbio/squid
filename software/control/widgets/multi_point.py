@@ -192,9 +192,9 @@ class MultiPointWidget(QObject):
         # add image saving options (path where to save)
         self.btn_setBaseDir = Button('Browse',default=False,on_clicked=self.set_saving_dir).widget
         self.btn_setBaseDir.setIcon(QIcon('icon/folder.png'))
-        
+
         self.lineEdit_baseDir = QLineEdit()
-        self.lineEdit_baseDir.setReadOnly(True)
+        # self.lineEdit_baseDir.setReadOnly(True)
         self.lineEdit_baseDir.setText(MACHINE_CONFIG.DISPLAY.DEFAULT_SAVING_PATH)
         self.base_path_is_set = True
 
@@ -204,7 +204,7 @@ class MultiPointWidget(QObject):
         self.lineEdit_cellLine.setText(DEFAULT_CELL_LINE_STR)
 
         self.image_format_widget=Dropdown(
-            items=["BMP","TIF","TIF (compr.)"],
+            items=["BMP","TIFF","compressed TIFF"],
             current_index=list(ImageFormat).index(Acquisition.IMAGE_FORMAT),
             tooltip=ComponentLabels.IMAGE_FORMAT_TOOLTIP,
         ).widget
@@ -225,10 +225,10 @@ class MultiPointWidget(QObject):
                 QLabel('Plate Name:'),
                 GridItem(self.lineEdit_plateName,colSpan=3),
             ],
-            [
-                QLabel('Cell line:'),
-                GridItem(self.lineEdit_cellLine,colSpan=3),
-            ],
+            # [
+            #     QLabel('Cell line:'),
+            #     GridItem(self.lineEdit_cellLine,colSpan=3),
+            # ],
 
             with_margins=False,
         ).widget

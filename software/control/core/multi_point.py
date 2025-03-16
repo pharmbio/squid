@@ -42,6 +42,8 @@ from pathlib import Path
 
 from control.gui import *
 
+from control.web_service import web_service
+
 class AbortAcquisitionException(Exception):
     def __init__(self):
         super().__init__()
@@ -285,22 +287,26 @@ class MultiPointWorker(QObject):
                     self.laserAutofocusController.move_to_target(0.0)
                     MAIN_LOG.log("Laser Reflection Autofocus: done")
 
-        if (self.NZ > 1):
-            with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
-                # move to bottom of the z stack
-                if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
-                    base_z=int(-self.deltaZ_usteps*round((self.NZ-1)/2))
-                    self.navigation.move_z_usteps(base_z,wait_for_completion={})
-                # maneuver for achieving uniform step size and repeatability when using open-loop control
-                self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-                self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+        self.movement_deviation_from_focusplane=0.0
 
-                MAIN_LOG.log("moved to target z in z-stack (part 1)")
+        if (self.NZ > 1):
+            if web_service.settings.get('speedy'):
+                self.movement_deviation_from_focusplane=self.deltaZ*round((self.NZ-1)/2)
+            else:
+                with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
+                    # move to bottom of the z stack
+                    if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
+                        base_z=int(-self.deltaZ_usteps*round((self.NZ-1)/2))
+                        self.navigation.move_z_usteps(base_z,wait_for_completion={})
+                    # maneuver for achieving uniform step size and repeatability when using open-loop control
+                    self.navigation.move_z(-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                    self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={},wait_for_stabilization=True)
+
+                    MAIN_LOG.log("moved to target z in z-stack (part 1)")
 
         # z-stack
         Zs = list(range(self.NZ))
         middle_of_Z = Zs[len(Zs) // 2]
-        self.movement_deviation_from_focusplane=0.0
         for k in range(self.NZ):
             if self.num_positions_per_well>1:
                 _=next(self.well_tqdm_iter,0)
@@ -320,6 +326,8 @@ class MultiPointWorker(QObject):
 
                     if config.name.startswith("Fluorescence") and k != middle_of_Z:
                         self.progress.completed_steps+=1
+                        self.progress.last_completed_action=f"imaged config {config.name}"
+                        self.signal_new_acquisition.emit(self.progress)
                         MAIN_LOG.log(f"skipping {config.name} because Z is {k} and middle is {middle_of_Z}")
                         continue
 
@@ -354,26 +362,32 @@ class MultiPointWorker(QObject):
                 raise AbortAcquisitionException()
 
             if self.NZ > 1:
-                # move z
-                if k < self.NZ - 1:
-                    self.navigation.move_z_usteps(self.deltaZ_usteps,wait_for_completion={},wait_for_stabilization=True)
-                    self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
+                if web_service.settings.get('speedy'):
+                    self.movement_deviation_from_focusplane -= self.deltaZ
+                else:
+                    # move z
+                    if k < self.NZ - 1:
+                        self.navigation.move_z_usteps(self.deltaZ_usteps,wait_for_completion={},wait_for_stabilization=True)
+                        self.on_abort_dz_usteps = self.on_abort_dz_usteps + self.deltaZ_usteps
 
-                MAIN_LOG.log("moved to target z in z-stack (part 3)")
+                    MAIN_LOG.log("moved to target z in z-stack (part 3)")
 
             self.progress.last_completed_action="image z slice"
             self.signal_new_acquisition.emit(self.progress)
         
         if self.NZ > 1:
-            # move z back
-            latest_offset=-self.deltaZ_usteps*(self.NZ-1)
-            if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
-                latest_offset+=self.deltaZ_usteps*round((self.NZ-1)/2)
+            if web_service.settings.get('speedy'):
+                pass
+            else:
+                # move z back
+                latest_offset=-self.deltaZ_usteps*(self.NZ-1)
+                if MACHINE_CONFIG.Z_STACKING_CONFIG == 'FROM CENTER':
+                    latest_offset+=self.deltaZ_usteps*round((self.NZ-1)/2)
 
-            self.on_abort_dz_usteps += latest_offset
-            self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
+                self.on_abort_dz_usteps += latest_offset
+                self.navigation.move_z_usteps(latest_offset,wait_for_completion={})
 
-            MAIN_LOG.log("moved to target z in z-stack (part 2)")
+                MAIN_LOG.log("moved to target z in z-stack (part 2)")
 
         if self.do_reflection_af == False and not do_perform_initial_software_autofocus:
             self.navigation.move_to_mm(z_mm=z_stack_origin_z_mm,wait_for_completion={})

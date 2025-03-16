@@ -257,7 +257,8 @@ class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
         step:Optional[float]=None,
         num_decimals=None,
         keyboard_tracking=None,
-        
+        style:Optional[str]=None,
+
         **kwargs,
     ):
         self.widget:QDoubleSpinBox=QDoubleSpinBox()
@@ -274,7 +275,9 @@ class SpinBoxDouble(HasCallbacks,HasToolTip,HasWidget):
             self.widget.setDecimals(num_decimals)
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
-
+        if style:
+            self.widget.setStyleSheet(f'QSpinBox {{ {style} }}')
+        self.widget.setAlignment(Qt.AlignRight)
         super().__init__(**kwargs)
 
 class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
@@ -285,6 +288,7 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
         step:Optional[int]=None,
         num_decimals=None,
         keyboard_tracking=None,
+        style:Optional[str]=None,
 
         **kwargs,
     ):
@@ -302,7 +306,9 @@ class SpinBoxInteger(HasCallbacks,HasToolTip,HasWidget):
             self.widget.setDecimals(num_decimals)
         if not keyboard_tracking is None:
             self.widget.setKeyboardTracking(keyboard_tracking)
-
+        if style:
+            self.widget.setStyleSheet(f'QSpinBox {{ {style} }}')
+        self.widget.setAlignment(Qt.AlignRight)
         super().__init__(**kwargs)
 
 class Label(HasFramestyle,TextSelectable,HasToolTip,HasWidget):
@@ -310,19 +316,24 @@ class Label(HasFramestyle,TextSelectable,HasToolTip,HasWidget):
         text:str,
         text_color:Optional[str]=None,
         background_color:Optional[str]=None,
-
+        style:Optional[str]=None,
+        alignment:Optional[Any]=None,
         **kwargs,
     ):
         self.widget=QLabel(text)
-        
+
         stylesheet=""
-        if not text_color is None:
+        if text_color is not None:
             stylesheet+=f"color : {text_color} ; "
-        if not background_color is None:
+        if background_color is not None:
             stylesheet+=f"background-color : {background_color} ; "
+        if style is not None:
+            stylesheet+=style
         if len(stylesheet)>0:
             final_stylesheet=f"QLabel {{ { stylesheet } }}"
             self.widget.setStyleSheet(final_stylesheet)
+        if alignment is not None:
+            self.widget.setAlignment(alignment)
 
         super().__init__(**kwargs)
 
@@ -333,6 +344,7 @@ class Button(HasCallbacks,HasToolTip,HasWidget):
         default:Optional[bool]=None,
         checkable:Optional[bool]=None,
         checked:Optional[bool]=None,
+        style:Optional[str]=None,
 
         **kwargs,
     ):
@@ -344,8 +356,10 @@ class Button(HasCallbacks,HasToolTip,HasWidget):
             self.widget.setCheckable(checkable)
         if not checked is None:
             self.widget.setChecked(checked)
+        if style:
+            self.widget.setStyleSheet(f'{self.widget.__class__.__name__} {{ {style} }}')
 
-        super().__init__(**kwargs)            
+        super().__init__(**kwargs)
 
 class ItemList(HasCallbacks,HasToolTip,HasWidget):
     def __init__(self,

@@ -3,3 +3,4 @@ configuration.txt
 machine_config.json
 reference_config_files
 *.log
+*.stdio.txt
