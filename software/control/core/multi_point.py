@@ -21,6 +21,7 @@ import os
 import time
 import cv2
 
+import time
 import json
 import pandas as pd
 import numpy
@@ -99,6 +100,7 @@ class MultiPointWorker(QObject):
         self.plate_type=self.multiPointController.plate_type
         self.image_saver=self.multiPointController.image_saver
         self.image_return=image_return
+        self.t0 = time.monotonic()
 
         if not self.grid_mask is None:
             assert len(self.grid_mask)==self.NY
@@ -242,6 +244,25 @@ class MultiPointWorker(QObject):
                     well_name=well_name
                 ))
 
+                with open(Path(self.current_path) / 'coords.jsonl', 'a') as file:
+                    x_pos, y_pos, z_pos, _theta_pos = self.microcontroller.get_pos()
+                    print(
+                        json.dumps(
+                            dict(
+                                well=well_name,
+                                site_x=x,
+                                site_y=y,
+                                site_z=z,
+                                x=self.microcontroller.ustep_to_mm_x(x_pos),
+                                y=self.microcontroller.ustep_to_mm_y(y_pos),
+                                z=self.microcontroller.ustep_to_mm_z(z_pos) * 1000.0,
+                                channel=config.name,
+                                ts=time.monotonic() - self.t0,
+                            )
+                        ),
+                        file=file,
+                    )
+
         self.progress.completed_steps+=1
         self.progress.last_completed_action=f"imaged config {config.name}"
         self.signal_new_acquisition.emit(self.progress)
@@ -291,7 +312,7 @@ class MultiPointWorker(QObject):
 
         if (self.NZ > 1):
             if web_service.settings.get('speedy'):
-                self.movement_deviation_from_focusplane=self.deltaZ*round((self.NZ-1)/2)
+                self.movement_deviation_from_focusplane=1000 * self.deltaZ*round((self.NZ-1)/2)
             else:
                 with Profiler("actual zstack (should be 0)",parent=profiler) as zstack:
                     # move to bottom of the z stack
@@ -363,7 +384,7 @@ class MultiPointWorker(QObject):
 
             if self.NZ > 1:
                 if web_service.settings.get('speedy'):
-                    self.movement_deviation_from_focusplane -= self.deltaZ
+                    self.movement_deviation_from_focusplane -= 1000 * self.deltaZ
                 else:
                     # move z
                     if k < self.NZ - 1:

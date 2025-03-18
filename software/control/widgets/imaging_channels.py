@@ -91,10 +91,6 @@ class ImagingChannels:
             short_name = short_name.replace('half', '')
             short_name = short_name.replace('  ', ' ').strip()
 
-            if 'left' in short_name or 'right' in short_name:
-                # pass
-                continue
-
             imaging_modes_wide_widgets.extend([
             ])
 
@@ -152,7 +148,7 @@ class ImagingChannels:
                 ],
             ]
 
-            imaging_modes_widget_list.extend([
+            widgets_for_this_config = [
                 [
                     GridItem(Label('', style='font-size: 10px') if config_index > 0 else None, colSpan=6),
                 ],
@@ -190,9 +186,15 @@ class ImagingChannels:
                     ),
                     *[widget for label, widget in paired_settings_widget[1:]]
                 ]
-            ])
+            ]
 
             self.imaging_mode_config_managers[config.mode_id]=config_manager
+
+            if 'left' in short_name or 'right' in short_name:
+                pass
+            else:
+                imaging_modes_widget_list.extend(widgets_for_this_config)
+
 
         def create_snap_selection_popup(
             configuration_manager,
