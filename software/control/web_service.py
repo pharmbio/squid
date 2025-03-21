@@ -33,7 +33,7 @@ class WebService:
     exposed: t.Dict[str, t.Callable[[t.Dict[str, t.Any]], t.Any]] = field(default_factory=dict)
     lock: Lock = field(default_factory=Lock)
     status: t.Dict[str, t.Any] = field(default_factory=dict)
-    settings: t.Dict[str, t.Any] = field(default_factory=dict)
+    settings: t.Dict[str, t.Any] = field(default_factory=lambda: dict(speedy=True))
 
     def set_status(self, **kws: t.Any):
         self.status.update(kws)

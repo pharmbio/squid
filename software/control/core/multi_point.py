@@ -464,7 +464,7 @@ class MultiPointWorker(QObject):
                             # update coordinates before imaging starts, because signal will be emitted for every image recorded, i.e. images would be recorded then signal with outdated position emitted
                             self.progress.last_imaged_coordinates=(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
                             imaged_coords_dict_list=self.image_zstack_here(
-                                x=j,y=i,
+                                x=j_actual,y=i,
                                 coordinate_name=coordinate_name,
                                 profiler=imagezstack,
                                 well_name=well_name,
