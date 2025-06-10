@@ -418,6 +418,10 @@ class Gui(QMainWindow):
             @web_service.expose
             def leave_loading():
                 self.loading_position_toggle(loading_position_enter=False)
+    
+            @web_service.expose
+            def is_in_loading_position():
+                return self.core.navigation.is_in_loading_position
 
             @web_service.expose
             def load_config(
