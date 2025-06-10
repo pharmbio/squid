@@ -240,8 +240,8 @@ class NavigationController(QObject):
             MAIN_LOG.log('homing - objective retracted')
 
             if home_z and home_y and home_x:
-                # for the new design, need to home y before home x; x also needs to be at > + 10 mm when homing y
-                self.move_x(12.0)
+                # for the new design, need to home y before home x; x also needs to be at > + 20 mm when homing y
+                self.move_x(25.0)
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x moving timeout, the program will exit')
                 
                 self.microcontroller.home_y()
@@ -259,9 +259,9 @@ class NavigationController(QObject):
 
         if home_z:
             if home_z and home_y and home_x:
-                # move by (from home to) (20 mm, 20 mm)
-                self.move_x(x_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
-                self.move_y(y_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+                # move by (from home to) (19 mm, 12 mm)
+                # self.move_x(x_mm=19.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+                self.move_y(y_mm=12.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
             
                 self.set_x_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_POSITIVE)
                 self.set_x_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_NEGATIVE)
@@ -272,9 +272,9 @@ class NavigationController(QObject):
                 MAIN_LOG.log("homing - left loading position")
 
 			# move the objective back
-            self.move_z(MACHINE_CONFIG.DEFAULT_Z_POS_MM)
+            # self.move_z(MACHINE_CONFIG.DEFAULT_Z_POS_MM)
 			# wait for the operation to finish
-            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z return timeout, the program will exit')
+            # self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z return timeout, the program will exit')
 
             self.is_in_loading_position=False
 
