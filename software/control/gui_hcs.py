@@ -521,6 +521,7 @@ class Gui(QMainWindow):
             return AcquisitionStartResult(whole_acquisition_config,exception=e)
         
         if acquisition_thread is None:
+            Path(f"{whole_acquisition_config.output_path}/.capture_done").touch(exist_ok=True)
             return AcquisitionStartResult(whole_acquisition_config,"done")
 
         return AcquisitionStartResult(whole_acquisition_config,async_signal_on_finish=acquisition_thread.finished)

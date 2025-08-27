@@ -949,7 +949,7 @@ class MachineDisplayConfiguration:
     DEFAULT_SAVING_PATH:str = str(Path.home()/"Downloads")
     DEFAULT_DISPLAY_CROP:ClosedRange[int](1,100) = 100
     MULTIPOINT_SOFTWARE_AUTOFOCUS_ENABLE_BY_DEFAULT:bool = False
-    SHOW_XY_MOVEMENT:bool = False
+    SHOW_XY_MOVEMENT:bool = True
     DEBUG_LASER_AF:bool=False # enable gui component that allows debug access to the Laser Reflection Autofocus system
 
     def from_json(json_data:dict):

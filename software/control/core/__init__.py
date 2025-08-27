@@ -723,11 +723,7 @@ class Core(QObject):
 
         if self.home_on_startup:
             # move the objective to a defined position upon exit
-            self.navigation.move_x(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_x needs to be called before move_x_to if the stage has been moved by the joystick
-            self.navigation.move_x_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
-
-            self.navigation.move_y(0.1,{'timeout_limit_s':5, 'time_step':0.005}) # temporary bug fix - move_y needs to be called before move_y_to if the stage has been moved by the joystick
-            self.navigation.move_y_to(30.0,{'timeout_limit_s':5, 'time_step':0.005})
+            self.navigation.loading_position_leave(move_objective_up_afterwards=False)
 
         self.main_camera.close()
         self.focus_camera.close()

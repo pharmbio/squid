@@ -217,72 +217,85 @@ class NavigationController(QObject):
             microcontroller.signal_joystick_button_pressed_event = False
 
         QApplication.processEvents()
-        
+
 
     #def home_theta(self):
     #    self.microcontroller.home_theta()
 
     def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        # if used through GUI, this should never be the case
-        # but the API must account for this function being called twice
         if self.is_in_loading_position:
+            # if used through GUI, this should never be the case
+            # but the API must account for this function being called twice
             MAIN_LOG.log("tried to enter loading position when already in loading position")
-            return
+            #return
 
-        if home_z:
-			# retract the objective
-            self.microcontroller.home_z()
-			# wait for the operation to finish
-            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
+	    # retract the objective
+        self.microcontroller.home_z()
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
-            self.is_in_loading_position=True
+        MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod)
+    
+        self.set_x_limit_pos_mm(10000)
+        self.set_x_limit_neg_mm(-9000)
+        self.set_y_limit_pos_mm(10000)
+        self.set_y_limit_neg_mm(-9000)
 
-            MAIN_LOG.log('homing - objective retracted')
+        self.move_y_to(74.0) # make sure we can get around the rod
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
+        
+        self.move_x_to(0.0)
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
 
-            if home_z and home_y and home_x:
-                # for the new design, need to home y before home x; x also needs to be at > + 10 mm when homing y
-                self.move_x(12.0)
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x moving timeout, the program will exit')
-                
-                self.microcontroller.home_y()
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
-                
-                self.microcontroller.home_x()
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
+        self.move_y_to(84.0) # now at the corner
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
 
-                MAIN_LOG.log("homing - in loading position")
+        self.move_x(26.7) # to the rod
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
 
-    def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
+        self.is_in_loading_position=True        
+
+        MAIN_LOG.log("loading position - ready to load")
+
+    def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True,move_objective_up_afterwards:bool=True):
         if not self.is_in_loading_position:
             MAIN_LOG.log("tried to leave loading position while not actually in loading position")
-            return
+            #return
 
-        if home_z:
-            if home_z and home_y and home_x:
-                # move by (from home to) (20 mm, 20 mm)
-                self.move_x(x_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
-                self.move_y(y_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
-            
-                self.set_x_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_POSITIVE)
-                self.set_x_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_NEGATIVE)
-                self.set_y_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_POSITIVE)
-                self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
-                self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
+        self.is_in_loading_position=False
 
-                MAIN_LOG.log("homing - left loading position")
+        MAIN_LOG.log('homing - objective retracted')
 
-			# move the objective back
+	    # retract the objective
+        self.microcontroller.home_z()
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
+
+        self.microcontroller.home_x()
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
+
+        self.microcontroller.home_y()
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
+
+        MAIN_LOG.log("homing - in homing position")
+
+        self.set_x_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_POSITIVE)
+        self.set_x_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_NEGATIVE)
+        self.set_y_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_POSITIVE)
+        self.set_y_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Y_NEGATIVE)
+        self.set_z_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.Z_POSITIVE)
+
+        # move by (from home to) (20 mm, 20 mm)
+        self.move_x(x_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+        self.move_y(y_mm=20.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+
+        if move_objective_up_afterwards:
+            # move the objective back. at closing the entire application there is no point in having it up
             self.move_z(MACHINE_CONFIG.DEFAULT_Z_POS_MM)
-			# wait for the operation to finish
             self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z return timeout, the program will exit')
 
-            self.is_in_loading_position=False
-
-            MAIN_LOG.log("homing - objective raised")
-
+        MAIN_LOG.log("homing - left homing position, software limits are set")
 
     def home(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        self.loading_position_enter(home_x,home_y,home_z)
+        #self.loading_position_enter(home_x,home_y,home_z)
         self.loading_position_leave(home_x,home_y,home_z)
 
     def set_x_limit_pos_mm(self,value_mm):
