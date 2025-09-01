@@ -1,4 +1,3 @@
-# qt libraries
 from qtpy.QtCore import QObject, Signal, QThread, Qt # type: ignore
 from qtpy.QtWidgets import QApplication
 
@@ -23,7 +22,6 @@ import cv2
 
 import time
 import json
-import pandas as pd
 import numpy
 
 from typing import Optional, List, Union, Tuple, Callable
@@ -63,6 +61,7 @@ class MultiPointWorker(QObject):
         multiPointController,
         scan_coordinates:Tuple[List[str],List[Tuple[float,float]]],
         total_num_acquisitions:int,
+        total_num_sites:int,
         is_async:bool=True,
         image_return:Optional[Callable[[Any],None]]=None,
     ):
@@ -101,6 +100,8 @@ class MultiPointWorker(QObject):
         self.image_saver=self.multiPointController.image_saver
         self.image_return=image_return
         self.t0 = time.monotonic()
+        import uuid
+        self.uuid = str(uuid.uuid4())
 
         if not self.grid_mask is None:
             assert len(self.grid_mask)==self.NY
@@ -114,11 +115,12 @@ class MultiPointWorker(QObject):
         self.scan_coordinates_name,self.scan_coordinates_mm = scan_coordinates
 
         self.progress=AcqusitionProgress(
-            total_steps=total_num_acquisitions,
+            total_steps=total_num_sites,
             completed_steps=0,
             start_time=0.0,
             last_imaged_coordinates=(float("nan"),float("nan")),
         )
+        self.signal_new_acquisition.emit(self.progress)
 
     def run(self):
         self.progress.start_time=time.time()
@@ -179,15 +181,18 @@ class MultiPointWorker(QObject):
 
     def image_config(self,
         config:Configuration,
-        saving_path:str,
+        saving_filename:str,
         profiler:Optional[Profiler]=None,
         counter_backlash:bool=True,
         # the params below are just for gui display purposes
-        x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None,
+        site_index:Optional[int]=None,x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None,
     ):
         """ take image for specified configuration and save to specified path """
         
+
         MAIN_LOG.log(f"imaging channel {config.name}: started")
+
+        saving_path = str(Path(self.output_path) / saving_filename)
 
         if 'USB Spectrometer' in config.name:
             raise Exception("usb spectrometer not supported")
@@ -244,37 +249,32 @@ class MultiPointWorker(QObject):
                     well_name=well_name
                 ))
 
-                with open(Path(self.current_path) / 'coords.jsonl', 'a') as file:
+                with open(Path(self.current_path) / 'images.jsonl', 'a') as file:
                     x_pos, y_pos, z_pos, _theta_pos = self.microcontroller.get_pos()
-                    print(
-                        json.dumps(
-                            dict(
-                                well=well_name,
-                                site_x=x,
-                                site_y=y,
-                                site_z=z,
-                                x=self.microcontroller.ustep_to_mm_x(x_pos),
-                                y=self.microcontroller.ustep_to_mm_y(y_pos),
-                                z=self.microcontroller.ustep_to_mm_z(z_pos) * 1000.0,
-                                channel=config.name,
-                                ts=time.monotonic() - self.t0,
-                            )
-                        ),
-                        file=file,
+                    image_metadata = dict(
+                        well=well_name,
+                        site_index=site_index,
+                        site_x=x,
+                        site_y=y,
+                        site_z=z,
+                        stage_x_mm=round(self.microcontroller.ustep_to_mm_x(x_pos), 3),
+                        stage_y_mm=round(self.microcontroller.ustep_to_mm_y(y_pos), 3),
+                        stage_z_um=round(self.microcontroller.ustep_to_mm_z(z_pos) * 1000.0, 3),
+                        ts=round(time.monotonic() - self.t0, 3),
+                        dt=datetime.now().astimezone().isoformat(),
+                        channel=config.name,
+                        pathname=self.output_path,
+                        filename=saving_filename,
+                        time_point=self.time_point,
                     )
-
-        self.progress.completed_steps+=1
-        self.progress.last_completed_action=f"imaged config {config.name}"
-        self.signal_new_acquisition.emit(self.progress)
+                    print(json.dumps(image_metadata, separators=(',', ':')), file=file)
 
         MAIN_LOG.log(f"imaging channel {config.name}: done")
 
-    def image_zstack_here(self,x:int,y:int,coordinate_name:str,profiler:Optional[Profiler]=None,well_name:Optional[str]=None):
-        """ x and y are for internal naming stuff only, not for anything position dependent """
+    def image_zstack_here(self,x:int,y:int,site_index:int,coordinate_name:str,profiler:Optional[Profiler]=None,well_name:Optional[str]=None):
+        """ x, y and site_index are for internal naming stuff only, not for anything position dependent """
 
         MAIN_LOG.log(f"acquiring position {coordinate_name}: started")
-
-        ret_coords=[]
 
         # store current z coordinate (may be used e.g. when no autofocus is used to restore original z coordinate)
         z_stack_origin_z_mm=self.navigation.z_pos_mm
@@ -346,13 +346,13 @@ class MultiPointWorker(QObject):
                 for _config_i,config in tqdm(enumerate(self.selected_configurations),desc="channel",unit="channel",leave=False):
 
                     if config.name.startswith("Fluorescence") and k != middle_of_Z:
-                        self.progress.completed_steps+=1
-                        self.progress.last_completed_action=f"imaged config {config.name}"
-                        self.signal_new_acquisition.emit(self.progress)
+                        # self.progress.completed_steps+=1
+                        # self.progress.last_completed_action=f"imaged config {config.name}"
+                        # self.signal_new_acquisition.emit(self.progress)
                         MAIN_LOG.log(f"skipping {config.name} because Z is {k} and middle is {middle_of_Z}")
                         continue
 
-                    saving_path = os.path.join(self.current_path, file_ID + '_' + str(config.name).replace(' ','_'))
+                    saving_filename = file_ID + '_' + str(config.name).replace(' ','_')
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
@@ -363,17 +363,8 @@ class MultiPointWorker(QObject):
                         current_channel_offset=last_used_config.channel_z_offset
                         counter_backlash=previous_channel_z_offset<current_channel_offset
 
-                    self.image_config(config=config,saving_path=saving_path,profiler=image_all_configs,counter_backlash=counter_backlash,x=x,y=y,z=k,well_name=well_name)
+                    self.image_config(config=config,saving_filename=saving_filename,profiler=image_all_configs,counter_backlash=counter_backlash,site_index=site_index,x=x,y=y,z=k,well_name=well_name)
                     last_used_config = config
-
-            with Profiler("ret coords append",parent=profiler) as retcoordsappend:
-                # add the coordinate of the current location
-                ret_coords.append({
-                    'i':y,'j':x,'k':k,
-                    'x (mm)':self.navigation.x_pos_mm,
-                    'y (mm)':self.navigation.y_pos_mm,
-                    'z (um)':self.navigation.z_pos_mm*1000
-                })
 
             # register the current fov in the navigationViewer 
             self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
@@ -418,10 +409,8 @@ class MultiPointWorker(QObject):
 
         MAIN_LOG.log(f"acquiring position {coordinate_name}: done")
 
-        return ret_coords
-
     @TypecheckFunction
-    def image_grid_here(self,coordinates_pd:pd.DataFrame,well_name:str,profiler:Optional[Profiler]=None)->pd.DataFrame:
+    def image_grid_here(self,well_name:str,profiler:Optional[Profiler]=None):
         """ image xyz grid starting at current position """
 
         if self.num_positions_per_well>1:
@@ -461,20 +450,19 @@ class MultiPointWorker(QObject):
 
                     try:
                         with Profiler("image z stack",parent=profiler) as imagezstack:
-                            # update coordinates before imaging starts, because signal will be emitted for every image recorded, i.e. images would be recorded then signal with outdated position emitted
+                            # update coordinates to show in GUI for current coord
                             self.progress.last_imaged_coordinates=(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
+                            self.signal_new_acquisition.emit(self.progress)
                             imaged_coords_dict_list=self.image_zstack_here(
                                 x=j_actual,y=i,
+                                site_index=site_index,
                                 coordinate_name=coordinate_name,
                                 profiler=imagezstack,
                                 well_name=well_name,
                             )
-
-                        with Profiler("concat pd",parent=profiler) as concat_pd:
-                            coordinates_pd = pd.concat([
-                                coordinates_pd,
-                                pd.DataFrame(imaged_coords_dict_list)
-                            ])
+                            self.progress.completed_steps+=1
+                            self.progress.last_completed_action=f"imaged site {site_index} of well {well_name}"
+                            self.signal_new_acquisition.emit(self.progress)
 
                     except AbortAcquisitionException:
                         if ENABLE_TQDM_STUFF:
@@ -482,7 +470,6 @@ class MultiPointWorker(QObject):
 
                         self.liveController.turn_off_illumination()
 
-                        coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                         self.navigation.enable_joystick_button_action = True
 
                         raise AbortAcquisitionException()
@@ -510,8 +497,6 @@ class MultiPointWorker(QObject):
         if self.num_positions_per_well>1:
             _=next(self.well_tqdm_iter,0)
 
-        return coordinates_pd
-
     def run_single_time_point(self):
         with Profiler("run_single_time_point",parent=None,discard_if_parent_none=False) as profiler:
             if self.reflection_af_initialized:
@@ -536,9 +521,6 @@ class MultiPointWorker(QObject):
                 else:
                     # only one time point, save it directly in the experiment folder
                     self.current_path=str(self.output_path)
-
-                # create a dataframe to save coordinates
-                coordinates_pd = pd.DataFrame(columns = ['i', 'j', 'k', 'x (mm)', 'y (mm)', 'z (um)'])
 
                 if not self.grid_mask is None:
                     self.num_positions_per_well=numpy.sum(self.grid_mask)*self.NZ
@@ -570,7 +552,7 @@ class MultiPointWorker(QObject):
                         self.deltaZ_usteps = -abs(self.deltaZ_usteps)
 
                     with Profiler("image_grid_here",parent=profiler) as image_grid_here_profiler:
-                        coordinates_pd=self.image_grid_here(coordinates_pd=coordinates_pd,well_name=well_name,profiler=image_grid_here_profiler)
+                        self.image_grid_here(well_name=well_name,profiler=image_grid_here_profiler)
 
                     if n_regions == 1:
                         # only move to the start position if there's only one region in the scan
@@ -587,7 +569,6 @@ class MultiPointWorker(QObject):
                         self.navigation.microcontroller.move_z_to_usteps(z_usteps_before_current_position_acquisition)
                         self.navigation.microcontroller.wait_till_operation_is_completed()
 
-                coordinates_pd.to_csv(os.path.join(self.current_path,'coordinates.csv'),index=False,header=True)
                 self.navigation.enable_joystick_button_action = True
 
 class MultiPointController(QObject):
@@ -731,9 +712,10 @@ class MultiPointController(QObject):
 
         num_wells=len(image_positions[0])
         if grid_mask is None:
-            num_images_per_well=self.NX*self.NY*self.NZ*self.Nt
+            num_sites_per_well=self.NX*self.NY
         else:
-            num_images_per_well=numpy.sum(grid_mask)*self.NZ*self.Nt
+            num_sites_per_well=numpy.sum(grid_mask)
+        num_images_per_well=num_sites_per_well*self.NZ*self.Nt
         num_channels=len(self.selected_configurations)
 
         self.abort_acqusition_requested = False
@@ -754,6 +736,7 @@ class MultiPointController(QObject):
             raise ValueError(warning_text)
         else:
             total_num_acquisitions=int(num_wells*num_images_per_well*num_channels)
+            total_num_sites=int(num_wells*num_sites_per_well*self.Nt)
             msg=f"starting multipoint with {num_wells} wells, {num_images_per_well} images per well, {num_channels} channels, total={total_num_acquisitions} images (AF is {'on' if self.do_autofocus or self.do_reflection_af else 'off'})"
             MAIN_LOG.log(msg)
 
@@ -774,7 +757,7 @@ class MultiPointController(QObject):
             self.timestamp_acquisition_started = time.time()
 
             RUN_WORKER_ASYNC=False
-            self.multiPointWorker = MultiPointWorker(self,image_positions,is_async=RUN_WORKER_ASYNC,total_num_acquisitions=total_num_acquisitions,image_return=image_return)
+            self.multiPointWorker = MultiPointWorker(self,image_positions,is_async=RUN_WORKER_ASYNC,total_num_sites=total_num_sites,total_num_acquisitions=total_num_acquisitions,image_return=image_return)
             
             if RUN_WORKER_ASYNC:
                 self.thread = ExcQtThread()

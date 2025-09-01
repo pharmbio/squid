@@ -712,6 +712,9 @@ class Core(QObject):
 
         self.recording_start_time = time.time()
 
+        import uuid
+        complete_experiment_data = dict(complete_experiment_data, acquisition_uuid=str(uuid.uuid4()))
+
         # config : complete set of config used for the experiment
         complete_data_path = Path(output_path) / 'parameters.json'
         complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))

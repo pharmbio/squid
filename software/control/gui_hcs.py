@@ -143,7 +143,7 @@ def create_referenceFile_widget(
                 Checkbox(
                     "Move to Z reference",
                     tooltip="Check this box if you want the objective to move into a position where it can focus on the plate, as indicated by the Laser Reflection Autofocus calibration data contained in the file.",
-                    checked=False,
+                    checked=True,
                     enabled=laser_af_reference_is_present,
                     on_stateChanged=lambda s,w=workaround:w.update(dict(
                                                                       load_laser_af_data_requested=s==Qt.CheckState.Checked
@@ -155,14 +155,14 @@ def create_referenceFile_widget(
                 Label(f"Objective: {config.objective}"),
                 Label(f"Timestamp: {config.timestamp}"),
             ],
-            GridItem(
-                HBox(*[
-                    Button("Load (default)",on_clicked=lambda _,w=workaround:load_callback(file,w)),
-                    Button("Load (advanced)",on_clicked=lambda _,file=file:selective_load(file)),
-                    Button("Load (all)",on_clicked=lambda _,w=workaround_load_all,file=file:load_callback(file,w)),
-                ]),
-                colSpan=3
-            )
+            Button("Load (all)",on_clicked=lambda _,w=workaround_load_all,file=file:load_callback(file,w)),
+            # GridItem(
+            #     HBox(*[
+            #         Button("Load (default)",on_clicked=lambda _,w=workaround:load_callback(file,w)),
+            #         Button("Load (advanced)",on_clicked=lambda _,file=file:selective_load(file)),
+            #     ]),
+            #     colSpan=3
+            # )
         ).widget,
         title=f"File: {file}",
         minimize_height=True,
@@ -316,9 +316,10 @@ class Gui(QMainWindow):
         super().__init__()
         self.setWindowTitle(SOFTWARE_NAME)
         self.interactive_enabled=True
+        self.completed_steps=0
 
-        # skip_homing is expected to be '1' to skip homing, '0' to not skip it. environment variables are strings though, and bool() cannot parse strings, int() can though. if an env var does not exist, os.environ.get() returns None, so fall back to case where homing is not skipped.
-        do_home=not bool(int(os.environ.get('skip_homing') or 0))
+        # skip_homing iff it is set to '1'
+        do_home=os.environ.get('skip_homing', '0') != '1'
 
         self.core=Core(home=do_home)
 
@@ -501,6 +502,7 @@ class Gui(QMainWindow):
 
         # actually start imaging
         try:
+            self.completed_steps = 0
             acquisition_thread=self.core.acquire(
                 whole_acquisition_config,
                 additional_data=additional_data,
@@ -584,7 +586,7 @@ class Gui(QMainWindow):
             web_service.set_status(progress_bar_text=progress_bar_text)
             return
         
-        if progress_data.completed_steps<=1 or not hasattr(self, 'completed_steps'):
+        if progress_data.completed_steps<=1:
             self.total_num_acquisitions=progress_data.total_steps
             self.acquisition_widget.progress_bar.setValue(0)
             self.acquisition_widget.progress_bar.setMinimum(0)
@@ -605,13 +607,13 @@ class Gui(QMainWindow):
 
             elapsed_time_str=format_seconds_nicely(time_elapsed_since_start)
             if self.acquisition_progress==self.total_num_acquisitions:
-                progress_bar_text=f"done. (acquired {self.total_num_acquisitions:4} images in {elapsed_time_str})"
+                progress_bar_text=f"done. (acquired {self.total_num_acquisitions:4} sites in {elapsed_time_str})"
                 web_service.set_status(progress_bar_text=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             else:
                 approx_time_left_str=format_seconds_nicely(approx_time_left)
                 done_percent=int(self.acquisition_progress*100/self.total_num_acquisitions)
-                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} images ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
+                progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} sites ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
                 web_service.set_status(progress_bar_text=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
             

@@ -233,7 +233,7 @@ class NavigationController(QObject):
         self.microcontroller.home_z()
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
-        MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod)
+        MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod")
     
         self.set_x_limit_pos_mm(10000)
         self.set_x_limit_neg_mm(-9000)
@@ -269,11 +269,13 @@ class NavigationController(QObject):
         self.microcontroller.home_z()
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
+        self.microcontroller.home_y()
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
+
         self.microcontroller.home_x()
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
 
-        self.microcontroller.home_y()
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
+
 
         MAIN_LOG.log("homing - in homing position")
 
