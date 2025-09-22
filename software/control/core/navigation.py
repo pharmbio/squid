@@ -234,25 +234,31 @@ class NavigationController(QObject):
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
         MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod")
-    
-        self.set_x_limit_pos_mm(10000)
-        self.set_x_limit_neg_mm(-9000)
-        self.set_y_limit_pos_mm(10000)
-        self.set_y_limit_neg_mm(-9000)
+
+        self.set_x_limit_pos_mm(+10000)
+        self.set_x_limit_neg_mm(-10000)
+        self.set_y_limit_pos_mm(+10000)
+        self.set_y_limit_neg_mm(-10000)
+
+        MAIN_LOG.log(f"loading position - step 1/5: ({self.x_pos_mm}, {self.y_pos_mm})")
 
         self.move_y_to(74.0) # make sure we can get around the rod
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
-        
-        self.move_x_to(0.0)
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+        MAIN_LOG.log(f"loading position - step 2/5: ({self.x_pos_mm}, {self.y_pos_mm})")
 
-        self.move_y_to(84.0) # now at the corner
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
+        self.move_x_to(2.0) # move away from the rod
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+        MAIN_LOG.log(f"loading position - step 3/5: ({self.x_pos_mm}, {self.y_pos_mm})")
 
-        self.move_x(26.7) # to the rod
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='') 
+        self.move_y_to(MACHINE_CONFIG.STAGE_ROD_Y) # to the corner
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+        MAIN_LOG.log(f"loading position - step 4/5: ({self.x_pos_mm}, {self.y_pos_mm})")
 
-        self.is_in_loading_position=True        
+        self.move_x_to(MACHINE_CONFIG.STAGE_ROD_X) # to the rod
+        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+        MAIN_LOG.log(f"loading position - step 5/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+
+        self.is_in_loading_position=True
 
         MAIN_LOG.log("loading position - ready to load")
 
