@@ -240,23 +240,23 @@ class NavigationController(QObject):
         self.set_y_limit_pos_mm(+10000)
         self.set_y_limit_neg_mm(-10000)
 
-        MAIN_LOG.log(f"loading position - step 1/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+        MAIN_LOG.log(f"loading position - step 1/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.move_y_to(74.0) # make sure we can get around the rod
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 2/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+        MAIN_LOG.log(f"loading position - step 2/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.move_x_to(2.0) # move away from the rod
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 3/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+        MAIN_LOG.log(f"loading position - step 3/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.move_y_to(MACHINE_CONFIG.STAGE_ROD_Y) # to the corner
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 4/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+        MAIN_LOG.log(f"loading position - step 4/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.move_x_to(MACHINE_CONFIG.STAGE_ROD_X) # to the rod
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 5/5: ({self.x_pos_mm}, {self.y_pos_mm})")
+        MAIN_LOG.log(f"loading position - step 5/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.is_in_loading_position=True
 
