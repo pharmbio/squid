@@ -63,7 +63,7 @@ class Version:
             minor=d["minor"],
             patch=d["patch"],
         )
-    
+
 @TypecheckClass
 class LogEntry:
     time:datetime
@@ -80,7 +80,7 @@ class Logger:
         # self.lines=[]
         if not file_name is None:
             self.file_backing=open(file_name,mode="x",buffering=1)
-    
+
     def log(self,text:str):
         new_log_entry=LogEntry(
             time=datetime.now(),
@@ -168,7 +168,7 @@ class AcquisitionStartResult:
             else: # is str
                 self.type=AcquisitionStartResultType(type)
         else:
-            _=self.type # make sure that self.type has been set        
+            _=self.type # make sure that self.type has been set
 
 class AcqusitionProgress:
     total_steps:int
@@ -194,7 +194,7 @@ class AcqusitionProgress:
     @property
     def last_completed_action(self)->float:
         return self._last_completed_action
-    
+
     @last_completed_action.setter
     def last_completed_action(self,new_last_action:str):
         self._last_completed_action=new_last_action
@@ -307,7 +307,7 @@ class CAMERA_PIXEL_FORMATS(Enum):
 
 class Acquisition:
     """ config stuff for (multi point) image acquisition """
-    
+
     CROP_WIDTH:int = 2500
     """ crop width for images after recording from camera sensor """
     CROP_HEIGHT:int = 2500
@@ -480,16 +480,16 @@ class WellplateFormatPhysical:
     """ url to product spec sheet"""
     additional_info:Optional[str]=None
     """ if there is more info about the plate than is already contained in this structure, it can be provided here """
-    
+
     plate_length_mm:float=float("nan")
     plate_width_mm:float=float("nan")
     plate_height_mm:float=float("nan")
-    
+
     well_depth_mm:float=float("nan")
     """ z distance from top to bottom of well """
     well_diameter_mm:float=float("nan")
     """ distance between opposite walls in a well (does not necessarily imply circular wells) """
-    
+
     column_spacing_mm:float=float("nan")
     """ distance between centers of adjacent wells in the same row """
     row_spacing_mm:float=float("nan")
@@ -508,12 +508,12 @@ class WellplateFormatPhysical:
 
     def imageable_origin(self)->Tuple[float,float]:
         """
-        
+
         offset for coordinate origin, based on calibration with 384 wellplate
 
         returns x,y coordinate in mm of imageable origin, i.e. top left coordinate of top-left well (does NOT mean that the corner can actualle be imaged, i.e. the well containing that corner may not be valid.)
         this should only be used for internal reference
-        
+
         """
 
         wellplate_format_384=WELLPLATE_FORMATS["Generic 384"]
@@ -532,7 +532,7 @@ class WellplateFormatPhysical:
         origin_x_mm = self.column_offset_mm - self.well_diameter_mm/2 + \
             MACHINE_CONFIG.X_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
             (wellplate_format_384.column_offset_mm + wellplate_format_384.row_spacing_mm )
-        
+
         origin_y_mm = self.row_offset_mm - self.well_diameter_mm/2 + \
             MACHINE_CONFIG.Y_MM_384_WELLPLATE_UPPERLEFT + wellplate_format_384.well_diameter_mm/2 - \
             (wellplate_format_384.row_offset_mm + wellplate_format_384.column_spacing_mm )
@@ -590,7 +590,7 @@ class WellplateFormatPhysical:
         column_upper_bound=self.columns-1-self.number_of_skip
 
         well_reachable=(row >= row_lower_bound and row <= row_upper_bound ) and ( column >= column_lower_bound and column <= column_upper_bound )
-        
+
         if self.corners_forbidden:
             is_in_top_left_corner     = ( row == row_lower_bound ) and ( column == column_lower_bound )
             is_in_bottom_left_corner  = ( row == row_upper_bound ) and ( column == column_lower_bound )
@@ -622,7 +622,7 @@ class WellplateFormatPhysical:
                 return True
 
         return False
-    
+
     @TypecheckFunction
     def pos_mm_to_well_index(self,x_mm:float,y_mm:float,return_nearest_valid_well_instead_of_none_if_outside:bool=False)->Optional[Tuple[int,int]]:
         origin_x,origin_y=self.imageable_origin()
@@ -654,7 +654,7 @@ class WellplateFormatPhysical:
             Y_POSITIVE = 76.0,
             Z_POSITIVE = 6.7,
         )
-        
+
     def limit_unsafe(self,calibrated:bool=False)->"StagePositionLimits":
         physical_wellplate_format=self
 
@@ -772,14 +772,14 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 
 		brand="Thermo Fischer Scientific Nunc MicroWell",
         product_url="https://www.fishersci.se/shop/products/nunc-384-well-optical-bottom-plates-cell-culture-treated-lid/10184221#?keyword=142761",
-		
+
 		plate_length_mm=127.8,
 		plate_width_mm=85.5,
 		plate_height_mm=14.4,
-		
+
 		well_depth_mm=11.7,
 		well_diameter_mm=3.3, # they say 3.7, but thats only at the top
-		
+
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
@@ -795,14 +795,14 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 
 		brand="Agilent",
         product_url="https://www.agilent.com/store/productDetail.jsp?catalogId=204628-100",
-		
+
 		plate_length_mm=127.8,
 		plate_width_mm=85.48,
 		plate_height_mm=14,
-		
+
 		well_depth_mm=11.500,
 		well_diameter_mm=3.3,
-		
+
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
@@ -817,14 +817,14 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 
 		brand="Greiner",
         product_url="https://shop.gbo.com/en/row/products/bioscience/cell-culture-products/cellstar-cell-culture-microplates/384-well-cell-culture-microplates-clear-black-white/781091.html?sword_list%5B0%5D=781091&no_cache=1&_ga=2.165393145.737561910.1661856636-730791705.1661856636",
-		
+
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
 		plate_height_mm=14.4,
-		
+
 		well_depth_mm=11.500,
 		well_diameter_mm=3.3,
-		
+
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
@@ -839,14 +839,14 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 
 		brand="Corning Falcon Optilux",
         product_url="https://ecatalog.corning.com/life-sciences/b2c/US/en/Microplates/Assay-Microplates/384-Well-Microplates/Falcon%C2%AE-384-well-Microplates/p/353962",
-		
+
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
 		plate_height_mm=14.4,
-		
+
 		well_depth_mm=11.500,
 		well_diameter_mm=3.3,
-		
+
 		column_spacing_mm=4.5,
 		row_spacing_mm=4.5,
 
@@ -861,14 +861,14 @@ WELLPLATE_FORMATS:Dict[str,WellplateFormatPhysical]={
 
 		brand="PerkinElmer PhenoPlate",
         product_url="https://www.perkinelmer.com/product/cellcarrier-384-f-ultra-lid-8x20b-6057308",
-		
+
 		plate_length_mm=127.76,
 		plate_width_mm=85.48,
 		plate_height_mm=14.35,
-		
+
 		well_depth_mm=12.7,
 		well_diameter_mm=3.26,
-		
+
 		column_spacing_mm=4.5-(950-720)*0.6e-3/(23-2), # 4.5 is from spec sheet, offset at A23 relative to A2 is (972-720)px, measured at magnification where pixel size was about 0.6um/px
 		row_spacing_mm=4.5-(234-84)*0.6e-3/(ord('p')-ord('a')),
 
@@ -1025,7 +1025,7 @@ class MachineConfiguration:
 
     # hardware specific stuff
     ROTATE_IMAGE_ANGLE:ClosedSet[int](-90,0,90,180)=0
-    
+
     FLIP_IMAGE:ClosedSet[Optional[str]](None,'Vertical','Horizontal','Both')=None
 
     # note: XY are the in-plane axes, Z is the focus axis

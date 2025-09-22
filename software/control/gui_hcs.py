@@ -54,7 +54,7 @@ def create_radio_selection(
 
             new_button=QRadioButton(new_button_label,parent=parent)
             new_button.clicked.connect(lambda _,a=arg:setattr(condition_set,segment,a))
-            
+
             # check radio button representing default condition
             if arg==default_condition:
                 new_button.setChecked(True)
@@ -100,7 +100,7 @@ def create_referenceFile_widget(
         load_laser_af_data_requested=False,
         condition_set=condition_set, # this is a reference to an object that can be manipulated by the gui below
     )
-    
+
     workaround_load_all=dict(
         load_laser_af_data_requested=True,
         condition_set=ConfigLoadConditionSet.always(),
@@ -214,7 +214,7 @@ class ConfigurationDatabase(QMainWindow):
                                condition_set=w["condition_set"],
                             )
         self.close()
-    
+
     def browse_for_custom_load_file(self):
         file=FileDialog(mode="open",caption="Load Microscope Acquisition Settings",filter_type=FILTER_JSON).run()
         if file!="":
@@ -252,7 +252,7 @@ Hardware trigger:
 class BasicSettings(QWidget):
     def __init__(self,
         main_camera:Camera,
-        
+
         on_save_all_config:Callable[[],None],
         on_load_all_config:Callable[[],None],
     ):
@@ -298,7 +298,7 @@ class BasicSettings(QWidget):
             self.interactive_widgets.save_all_config,
             self.interactive_widgets.load_all_config
         ]
-    
+
     @TypecheckFunction
     def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
         for widget in self.get_all_interactive_widgets():
@@ -419,7 +419,7 @@ class Gui(QMainWindow):
             @web_service.expose
             def leave_loading():
                 self.loading_position_toggle(loading_position_enter=False)
-    
+
             @web_service.expose
             def is_in_loading_position():
                 return self.core.navigation.is_in_loading_position
@@ -427,16 +427,29 @@ class Gui(QMainWindow):
             @web_service.expose
             def load_config(
                 file_path: str,
-
-                project_override: Optional[str]=None, 
-                plate_override: Optional[str]=None
+                project_override: Optional[str]=None,
+                plate_override: Optional[str]=None,
+                description_override: Optional[str]=None,
             ):
                 self.load_config_from_file(
                     file_path,
                     go_to_z_reference=True,
                     project_override=project_override,
                     plate_override=plate_override,
+                    description_override=description_override,
                     condition_set=ConfigLoadConditionSet.always()
+                )
+
+            @web_service.expose
+            def load_plate_overrides(
+                project_override: Optional[str]=None,
+                plate_override: Optional[str]=None,
+                description_override: Optional[str]=None,
+            ):
+                self.load_plate_overrides(
+                    project_override=project_override,
+                    plate_override=plate_override,
+                    description_override=description_override,
                 )
 
             @web_service.expose
@@ -468,7 +481,7 @@ class Gui(QMainWindow):
                     grid_item_color=LIGHT_GREY
 
                 preview_fov_list.append((x_grid_item,y_grid_item,grid_item_color))
-        
+
         # write view to display buffer
         self.well_widget.interactive_widgets.navigation_viewer.set_preview_list(preview_fov_list)
 
@@ -510,7 +523,7 @@ class Gui(QMainWindow):
                 on_new_acquisition=self.on_step_completed,
                 image_return=self.handle_acquired_image,
             )
-        
+
         except Exception as e:
             msg_text:str=str(e)+"\n"*2+"-"*64+"\n"*2+traceback.format_exc()
             MAIN_LOG.log(f"error - an exception occured while starting the experiment: {msg_text}")
@@ -521,13 +534,13 @@ class Gui(QMainWindow):
             MessageBox("Cannot start acquisition",mode="critical",text=f"An exception occured during acqusition preparation: {msg_text}").run()
             self.set_all_interactible_enabled(set_enabled=True)
             return AcquisitionStartResult(whole_acquisition_config,exception=e)
-        
+
         if acquisition_thread is None:
             Path(f"{whole_acquisition_config.output_path}/.capture_done").touch(exist_ok=True)
             return AcquisitionStartResult(whole_acquisition_config,"done")
 
         return AcquisitionStartResult(whole_acquisition_config,async_signal_on_finish=acquisition_thread.finished)
-        
+
     def handle_acquired_image(self,image_data:AcquisitionImageData):
         self.imaging_channels_widget.live_display.display_image(image_data.image,name=f"{image_data.config.name} in well {image_data.well_name}")
         self.imaging_channels_widget.channel_display.display_image(image_data.image,image_data.config.illumination_source)
@@ -540,12 +553,12 @@ class Gui(QMainWindow):
         #   y:Optional[int]
         #   z:Optional[int]
         #   well_name
-    
+
     def abort_experiment(self):
         MAIN_LOG.log("aborting acquisition on button press")
         self.core.multipointController.request_abort_aquisition()
         # todo kill acquisition thread here if it exists
-        
+
     @TypecheckFunction
     def get_all_interactive_widgets(self)->List[QWidget]:
         return flatten([
@@ -585,7 +598,7 @@ class Gui(QMainWindow):
             self.set_all_interactible_enabled(set_enabled=True)
             web_service.set_status(progress_bar_text=progress_bar_text)
             return
-        
+
         if progress_data.completed_steps<=1:
             self.total_num_acquisitions=progress_data.total_steps
             self.acquisition_widget.progress_bar.setValue(0)
@@ -616,7 +629,7 @@ class Gui(QMainWindow):
                 progress_bar_text=f"completed {self.acquisition_progress:4}/{self.total_num_acquisitions:4} sites ({done_percent:2}%) in {elapsed_time_str} (eta: {approx_time_left_str})"
                 web_service.set_status(progress_bar_text=progress_bar_text)
                 self.acquisition_widget.progress_bar.setFormat(progress_bar_text)
-            
+
             if not math.isnan(progress_data.last_imaged_coordinates[0]):
                 self.well_widget.interactive_widgets.navigation_viewer.add_history(*progress_data.last_imaged_coordinates)
                 QApplication.processEvents()
@@ -635,6 +648,7 @@ class Gui(QMainWindow):
         base_dir_str:str=self.acquisition_widget.lineEdit_baseDir.text()
         project_name_str:str=self.acquisition_widget.lineEdit_projectName.text()
         plate_name_str:str=self.acquisition_widget.lineEdit_plateName.text()
+        description_str:str=self.acquisition_widget.lineEdit_description.text()
         cell_line_str:str=self.acquisition_widget.lineEdit_cellLine.text()
 
         objective_str:str=MACHINE_CONFIG.MUTABLE_STATE.DEFAULT_OBJECTIVE
@@ -642,11 +656,11 @@ class Gui(QMainWindow):
         if not allow_invalid_values:
             if len(project_name_str)==0:
                 if dry:
-                    MessageBox(title="Project name is empty!",mode="critical",text="You did not provide a name for the project. Please provide one.").run()
+                    MessageBox(title="Project name is empty!",mode="critical",text="Please provide a project name.").run()
                 raise RuntimeError("project name empty")
             if len(plate_name_str)==0:
                 if dry:
-                    MessageBox(title="Wellplate name is empty!",mode="critical",text="You did not provide a name for the wellplate. Please provide one.").run()
+                    MessageBox(title="Wellplate name is empty!",mode="critical",text="Please provide a barcode or plate name.").run()
                 raise RuntimeError("wellplate name empty")
 
         # check validity of output path names
@@ -662,20 +676,40 @@ class Gui(QMainWindow):
             "\t":"tab",
             "\n":"newline",
             "\r":"carriage return",
+            "<":"less than",
+            ">":"greater than",
+            '"':"double quote",
+            "|":"pipe",
+            "?":"question mark",
+            "*":"asterisk",
         }
         if not allow_invalid_values:
             for C,char_name in FORBIDDEN_CHARS.items():
                 if C in project_name_str:
                     if dry:
-                        MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                        MessageBox(title="Forbidden character in Experiment Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Project Name. Please remove the character from the name.").run()
                     raise RuntimeError("forbidden character in experiment name")
 
                 if C in plate_name_str:
                     if dry:
-                        MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name. (or contact the microscope IT-support: Patrick or Dan)").run()
+                        MessageBox(title="Forbidden character in Wellplate Name!",mode="critical",text=f"Found forbidden character '{C}' ({char_name}) in the Wellplate Name. Please remove the character from the name.").run()
                     raise RuntimeError("forbidden character in wellplate name")
 
-        full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_str)
+        description_filtered = ''
+        for c in description_str:
+            if c.isalnum() or c == '-':
+                description_filtered += c
+            elif description_filtered.endswith('_'):
+                pass
+            else:
+                description_filtered += '_'
+
+        if description_filtered:
+            plate_name_and_description = project_name_str + '_' + plate_name_str + '_' + description_filtered
+        else:
+            plate_name_and_description = project_name_str + '_' + plate_name_str
+
+        full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_and_description)
 
         # try generating unique experiment ID (that includes current timestamp) until successfull
         def gen_dir_name(base_output_path:str)->Tuple[str,Path]:
@@ -688,7 +722,7 @@ class Gui(QMainWindow):
         while experiment_path.exists():
             time.sleep(1) # wait until next second to get a unique experiment ID
             experiment_path=gen_dir_name(base_output_path=full_output_path)
-            
+
         if not (dry or allow_invalid_values):
             experiment_path.mkdir(parents=True) # create a new folder
 
@@ -696,6 +730,7 @@ class Gui(QMainWindow):
             output_path=str(experiment_path),
             project_name=project_name_str,
             plate_name=plate_name_str,
+            description=description_str,
             cell_line=cell_line_str,
 
             well_list=self.well_widget.get_selected_wells(),
@@ -723,15 +758,30 @@ class Gui(QMainWindow):
         output_file=FileDialog(mode="save",directory=".",caption="Save all configuration data",filter_type=FILTER_JSON).run()
         if len(output_file)==0:
             return
-        
+
         if not output_file.endswith(".json"):
             output_file+=".json"
-    
+
         self.get_all_config(dry=True,allow_invalid_values=True).save_json(file_path=output_file,well_index_to_name=True)
 
     def load_all_config(self):
         cdb=ConfigurationDatabase(parent=self,on_load_from_file=self.load_config_from_file)
         cdb.show()
+
+    def load_plate_overrides(
+        self,
+        project_override: Optional[str]=None,
+        plate_override: Optional[str]=None,
+        description_override: Optional[str]=None
+    ):
+        if project_override is not None:
+            self.acquisition_widget.lineEdit_projectName.setText(project_override)
+
+        if plate_override is not None:
+            self.acquisition_widget.lineEdit_plateName.setText(plate_override)
+
+        if description_override is not None:
+            self.acquisition_widget.lineEdit_description.setText(description_override)
 
     def load_config_from_file(self,
         file_path:Optional[str]=None,
@@ -739,8 +789,9 @@ class Gui(QMainWindow):
         go_to_z_reference:bool=False,
         condition_set:Optional[ConfigLoadConditionSet]=None,
 
-        project_override: Optional[str]=None, 
+        project_override: Optional[str]=None,
         plate_override: Optional[str]=None,
+        description_override: Optional[str]=None
     ):
         """
         if file_path is None, this function will open a dialog to ask for the file to loiad
@@ -749,39 +800,50 @@ class Gui(QMainWindow):
         # use default set of conditions when none are provided
         if condition_set is None:
             condition_set=ConfigLoadConditionSet()
-        
+
         if file_path is None:
             input_file=FileDialog(mode="open",directory=".",caption="Load all configuration data",filter_type=FILTER_JSON).run()
             if len(input_file)==0:
                 return
         else:
             input_file=file_path
-        
+
         config_data=AcquisitionConfig.from_json(file_path=input_file)
 
         # load the config file segment when the circumstances allow it
 
         load_project_name=False
-        if not project_override is None:
-            load_project_name=True
         if condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.ALWAYS:
             load_project_name=True
         elif condition_set.LOAD_PROJECT_NAME==ConfigLoadCondition.WHEN_EMPTY:
             if self.acquisition_widget.lineEdit_projectName.text()=="":
                 load_project_name=True
         if load_project_name:
-            self.acquisition_widget.lineEdit_projectName.setText(project_override or config_data.project_name)
+            self.acquisition_widget.lineEdit_projectName.setText(config_data.project_name)
 
         load_plate_name=False
-        if not plate_override is None:
-            load_plate_name=True
         if condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.ALWAYS:
             load_plate_name=True
         elif condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.WHEN_EMPTY:
             if self.acquisition_widget.lineEdit_plateName.text()=="":
                 load_plate_name=True
         if load_plate_name:
-            self.acquisition_widget.lineEdit_plateName.setText(plate_override or config_data.plate_name)
+            self.acquisition_widget.lineEdit_plateName.setText(config_data.plate_name)
+
+        load_description=False
+        if condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.ALWAYS:
+            load_description=True
+        elif condition_set.LOAD_PLATE_NAME==ConfigLoadCondition.WHEN_EMPTY:
+            if self.acquisition_widget.lineEdit_description.text()=="":
+                load_description=True
+        if load_description:
+            self.acquisition_widget.lineEdit_description.setText(config_data.description)
+
+        self.load_plate_overrides(
+            project_override=project_override,
+            plate_override=plate_override,
+            description_override=description_override,
+        )
 
         load_cell_line=False
         if condition_set.LOAD_CELL_LINE==ConfigLoadCondition.ALWAYS:
@@ -800,7 +862,7 @@ class Gui(QMainWindow):
         # there is always a pixel format set, so only load when overwriting is allowed
         if condition_set.LOAD_PIXEL_FORMAT==ConfigLoadCondition.ALWAYS:
             self.basic_settings.interactive_widgets.pixel_format.setCurrentIndex(self.core.main_camera.pixel_formats.index(config_data.pixel_format))
-        
+
         # there is always an image file format set, so only load when overwriting is allowed
         if condition_set.LOAD_IMAGE_FILE_FORMAT==ConfigLoadCondition.ALWAYS:
             self.acquisition_widget.set_image_file_format(config_data.image_file_format)
@@ -825,7 +887,7 @@ class Gui(QMainWindow):
                 load_well_selection=True
         if load_well_selection:
             self.well_widget.set_selected_wells(config_data.well_list) # set selected wells after change of wellplate type (changing wellplate type may clear or invalidate parts of the current well selection)
-        
+
         load_channel_selection=False
         if condition_set.LOAD_CHANNEL_SELECTION==ConfigLoadCondition.ALWAYS:
             load_channel_selection=True
@@ -859,7 +921,7 @@ class Gui(QMainWindow):
 
                 z_mm=config_data.af_laser_reference.z_um_at_reference*1e-3
                 MAIN_LOG.log(f"focus - moving objective to {z_mm=:.3f}")
-                
+
                 self.core.navigation.move_z_to(z_mm=z_mm,wait_for_completion={})
 
     def closeEvent(self, event:QEvent):
@@ -867,6 +929,6 @@ class Gui(QMainWindow):
         self.get_all_config(dry=True,allow_invalid_values=True).save_json(file_path=LAST_PROGRAM_STATE_BACKUP_FILE_PATH,well_index_to_name=True)
 
         self.core.close()
-        
+
         event.accept()
 

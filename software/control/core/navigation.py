@@ -17,7 +17,7 @@ class NavigationController(QObject):
     xPos = Signal(float)
     yPos = Signal(float)
     zPos = Signal(float)
-    
+
     thetaPos = Signal(float)
     xyPos = Signal(float,float)
     signal_joystick_button_pressed = Signal()
@@ -128,7 +128,7 @@ class NavigationController(QObject):
         target_y_mm+=well_origin_y_offset
 
         self.move_to_mm(x_mm=target_x_mm,y_mm=target_y_mm,wait_for_completion={})
-    
+
     @TypecheckFunction
     def move_by_mm(self,x_mm:tp.Optional[float]=None,y_mm:tp.Optional[float]=None,z_mm:tp.Optional[float]=None,wait_for_completion:Optional[dict]=None):
         self.move_to_mm(
@@ -150,7 +150,7 @@ class NavigationController(QObject):
                 x_center=plate_limits.X_NEGATIVE+(plate_limits.X_POSITIVE-plate_limits.X_NEGATIVE)/2
 
                 return ((y_mm-y_center)**2+(x_mm-x_center)**2)**0.5
-            
+
             # rename some things for better code readability
             target_x_mm=x_mm
             target_y_mm=y_mm
@@ -160,7 +160,7 @@ class NavigationController(QObject):
             # calculate distance of both possible edge points (well where movement in x/y is done and movement in y/x starts, respectively) to the center of the wellplate
             d1=distance_to_wellplate_center(current_y_mm,target_x_mm)
             d2=distance_to_wellplate_center(target_y_mm,current_x_mm)
-            
+
             # move to the edge point that is closer to the center of the wellplate
             # because this point will always avoid moving the objective over/through the forbidden edge areas on the wellplate (since any point on the wellplate is closer to the center than the points on the edge..)
             if d1<d2:
@@ -189,7 +189,7 @@ class NavigationController(QObject):
         # get position from the microcontroller
         x_pos, y_pos, z_pos, theta_pos = microcontroller.get_pos()
         self.z_pos_usteps = z_pos
-        
+
         # calculate position in mm or rad
         self.x_pos_mm = self.microcontroller.ustep_to_mm_x(x_pos)
         self.y_pos_mm = self.microcontroller.ustep_to_mm_y(y_pos)

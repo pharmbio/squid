@@ -80,7 +80,7 @@ class ImageSaver(QObject):
                 # if queue is empty, and signal was received, terminate the thread
                 if self.stop_signal_received:
                     return
-        
+
     @TypecheckFunction
     def enqueue(self,path:str,image:numpy.ndarray,file_format:ImageFormat):
         log_msg=f"submitting image {path} to storage queue ({self.queue.qsize()}/{self.queue_size_max} slots in queue occupied)"
@@ -88,7 +88,7 @@ class ImageSaver(QObject):
 
         if self.stop_signal_received:
             MAIN_LOG.log('! critical - attempted to save image even though stop signal was received!')
-        
+
         try:
             self.queue.put_nowait([path,image,file_format])
         except:
@@ -105,7 +105,7 @@ class ImageSaver(QObject):
 
             # if putting in image in there fails initially, try again but wait for a free slot this time
             self.queue.put([path,image,file_format])
-            
+
             # log this incident properly, to be able to trace if submitting has worked again later, and when
             log_msg=f"warning - submitted {path} to previously full storage queue"
             MAIN_LOG.log(log_msg)

@@ -160,13 +160,13 @@ class MultiPointWorker(QObject):
 
             self.progress.last_completed_action="finished acquisition"
             self.signal_new_acquisition.emit(self.progress)
-                        
+
         except AbortAcquisitionException:
             MAIN_LOG.log("acquisition successfully cancelled")
 
             self.progress.last_completed_action="acquisition_cancelled"
             self.signal_new_acquisition.emit(self.progress)
-            
+
         self.finished.emit()
 
         MAIN_LOG.log("\nfinished multipoint acquisition\n")
@@ -188,7 +188,7 @@ class MultiPointWorker(QObject):
         site_index:Optional[int]=None,x:Optional[int]=None,y:Optional[int]=None,z:Optional[int]=None,well_name:Optional[str]=None,
     ):
         """ take image for specified configuration and save to specified path """
-        
+
 
         MAIN_LOG.log(f"imaging channel {config.name}: started")
 
@@ -208,7 +208,7 @@ class MultiPointWorker(QObject):
                     self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})#,wait_for_stabilization=True)
                 else:
                     self.navigation.move_z(um_to_move/1000,wait_for_completion={})#,wait_for_stabilization=True)
-                
+
                 MAIN_LOG.log(f"moved to channel offset {um_to_move}um (relative to previous)")
 
         with Profiler("snap",parent=profiler) as snap:
@@ -231,7 +231,7 @@ class MultiPointWorker(QObject):
                             image = image[:,:,1]
                     else:
                         image = cv2.cvtColor(image,cv2.COLOR_RGB2BGR)
-                        
+
                     image=numpy.asarray(image)
 
             with Profiler("actual enqueue",parent=enqueuesaveimages) as actualenqueueprof:
@@ -290,7 +290,7 @@ class MultiPointWorker(QObject):
                     self.perform_software_autofocus()
                 else:
                     # do not perform any autofocus
-                    pass 
+                    pass
             else:
                 # first FOV
                 if self.reflection_af_initialized==False:
@@ -356,7 +356,7 @@ class MultiPointWorker(QObject):
 
                     if self.multiPointController.abort_acqusition_requested:
                         raise AbortAcquisitionException()
-                        
+
                     counter_backlash=True
                     if last_used_config is not None:
                         previous_channel_z_offset=last_used_config.channel_z_offset
@@ -366,7 +366,7 @@ class MultiPointWorker(QObject):
                     self.image_config(config=config,saving_filename=saving_filename,profiler=image_all_configs,counter_backlash=counter_backlash,site_index=site_index,x=x,y=y,z=k,well_name=well_name)
                     last_used_config = config
 
-            # register the current fov in the navigationViewer 
+            # register the current fov in the navigationViewer
             self.signal_register_current_fov.emit(self.navigation.x_pos_mm,self.navigation.y_pos_mm)
 
             # check if the acquisition should be aborted
@@ -386,7 +386,7 @@ class MultiPointWorker(QObject):
 
             self.progress.last_completed_action="image z slice"
             self.signal_new_acquisition.emit(self.progress)
-        
+
         if self.NZ > 1:
             if web_service.settings.get('speedy'):
                 pass
@@ -616,7 +616,7 @@ class MultiPointController(QObject):
 
         self.crop_width = Acquisition.CROP_WIDTH
         self.crop_height = Acquisition.CROP_HEIGHT
-        
+
         self.counter:int = 0
         self.output_path: Optional[str] = None
         self.selected_configurations = []
@@ -694,7 +694,7 @@ class MultiPointController(QObject):
         self.selected_configurations = []
         for configuration_name in selected_configurations_name:
             self.selected_configurations.append(self.configuration_manager.config_by_name(configuration_name))
-        
+
     @TypecheckFunction
     def run_experiment(self,
         well_selection:Tuple[List[str],List[Tuple[float,float]]],
@@ -758,7 +758,7 @@ class MultiPointController(QObject):
 
             RUN_WORKER_ASYNC=False
             self.multiPointWorker = MultiPointWorker(self,image_positions,is_async=RUN_WORKER_ASYNC,total_num_sites=total_num_sites,total_num_acquisitions=total_num_acquisitions,image_return=image_return)
-            
+
             if RUN_WORKER_ASYNC:
                 self.thread = ExcQtThread()
                 self.multiPointWorker.moveToThread(self.thread)
@@ -776,7 +776,7 @@ class MultiPointController(QObject):
                 self.multiPointWorker.finished.connect(self.on_multipointworker_finished)
 
                 self.thread.finished.connect(self.on_thread_finished)
-                
+
                 self.thread.start()
 
                 return self.thread
@@ -790,7 +790,7 @@ class MultiPointController(QObject):
                 self.multiPointWorker.signal_register_current_fov.connect(self.slot_register_current_fov)
 
                 self.multiPointWorker.finished.connect(self._on_acquisition_completed)
-                    
+
                 self.multiPointWorker.run()
 
     def on_multipointworker_finished(self):
@@ -803,7 +803,7 @@ class MultiPointController(QObject):
         self.multiPointWorker=None
         self.thread=None
 
-    def _on_acquisition_completed(self):        
+    def _on_acquisition_completed(self):
         # emit the acquisition finished signal to enable the UI
         self.acquisitionFinished.emit()
 

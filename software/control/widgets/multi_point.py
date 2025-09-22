@@ -142,7 +142,7 @@ def time_in_s_to_components(t_s:float)->Tuple[float,float,float]:
     returns (second,minutes,hours) of t_s
     """
     return (
-        t_s%60.0, 
+        t_s%60.0,
         (t_s%3600.0)//60, # module to remove the hours, then floor divide to remove fractions of a minute
         t_s//3600.0 # floor divide to remove fractions of an hour
     )
@@ -151,7 +151,7 @@ class MultiPointWidget(QObject):
     @property
     def multipointController(self)->MultiPointController:
         return self.core.multipointController
-    
+
     core:Core
 
     start_experiment:Callable[[],Union[AcquisitionStartResult,AcquisitionConfig]]
@@ -178,7 +178,7 @@ class MultiPointWidget(QObject):
         """ start_experiment callable may return signal that is emitted on experiment completion"""
 
         super().__init__()
-        
+
         self.core = core
         self.start_experiment=start_experiment
         self.abort_experiment=abort_experiment
@@ -201,6 +201,7 @@ class MultiPointWidget(QObject):
         self.lineEdit_projectName = QLineEdit()
         self.lineEdit_plateName = QLineEdit()
         self.lineEdit_cellLine = QLineEdit()
+        self.lineEdit_description = QLineEdit()
         self.lineEdit_cellLine.setText(DEFAULT_CELL_LINE_STR)
 
         self.image_format_widget=Dropdown(
@@ -216,19 +217,19 @@ class MultiPointWidget(QObject):
                 self.btn_setBaseDir,
             ],
             [
-                QLabel('Project Name:'),
+                QLabel('Project:'),
                 self.lineEdit_projectName,
                 GridItem(Label("Image Format:",tooltip="File format used for the saved images.\nTIF is a widely supported format, but might take up a lot of space.\nTIF (comp.) compresses images (lossless) before saving as TIF files, which can reduce the filesize, but may not be as widely compatible with other software.\nBMP should only be used under special circumstances.").widget,row=1),
                 self.image_format_widget,
             ],
             [
-                QLabel('Plate Name:'),
+                QLabel('Barcode:'),
                 GridItem(self.lineEdit_plateName,colSpan=3),
             ],
-            # [
-            #     QLabel('Cell line:'),
-            #     GridItem(self.lineEdit_cellLine,colSpan=3),
-            # ],
+            [
+                Label("Description:",tooltip="Ad-hoc metadata for this plate: an informal description. Will be part of the filename, after the barcode.").widget,
+                GridItem(self.lineEdit_description,colSpan=3),
+            ],
 
             with_margins=False,
         ).widget
@@ -263,7 +264,7 @@ class MultiPointWidget(QObject):
             enabled=self.multipointController.NY > 1,
             on_valueChanged=lambda _new_value:self.grid_changed(True)
         ).widget
-        
+
         self.entry_NY = SpinBoxInteger(minimum=NY.min,maximum=NY.max,default=self.multipointController.NY,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaY.setDisabled(new_value==1),
             lambda _btn:self.grid_changed(True)
@@ -279,11 +280,11 @@ class MultiPointWidget(QObject):
             keyboard_tracking=False,
             enabled=self.multipointController.NZ > 1
         ).widget
-        
+
         self.entry_NZ = SpinBoxInteger(minimum=NZ.min,maximum=NZ.max,default=self.multipointController.NZ,keyboard_tracking=False,on_valueChanged=[
             lambda new_value:self.entry_deltaZ.setDisabled(new_value==1),
         ]).widget
-        
+
         # time-lapse config
         default_delta_s,default_delta_m,default_delta_h=time_in_s_to_components(self.multipointController.deltat)
         self.entry_dt_s = SpinBoxDouble(
@@ -327,20 +328,20 @@ class MultiPointWidget(QObject):
 
         self.grid_widget=Dock(
             Grid(
-                [ 
-                    Label('num acq. in x',tooltip=ComponentLabels.dx_tooltip), self.entry_NX, 
+                [
+                    Label('num acq. in x',tooltip=ComponentLabels.dx_tooltip), self.entry_NX,
                     Label('delta x (mm)',tooltip=ComponentLabels.dx_tooltip), self.entry_deltaX,
                 ],
-                [ 
-                    Label('num acq. in y',tooltip=ComponentLabels.dy_tooltip), self.entry_NY, 
+                [
+                    Label('num acq. in y',tooltip=ComponentLabels.dy_tooltip), self.entry_NY,
                     Label('delta y (mm)',tooltip=ComponentLabels.dy_tooltip), self.entry_deltaY,
                 ],
-                [ 
-                    Label('num acq. in z',tooltip=ComponentLabels.dz_tooltip), self.entry_NZ, 
+                [
+                    Label('num acq. in z',tooltip=ComponentLabels.dz_tooltip), self.entry_NZ,
                     Label('delta z (um)',tooltip=ComponentLabels.dz_tooltip), self.entry_deltaZ,
                 ],
-                [ 
-                    Label('num acq. in t',tooltip=ComponentLabels.dt_tooltip), self.entry_Nt, 
+                [
+                    Label('num acq. in t',tooltip=ComponentLabels.dt_tooltip), self.entry_Nt,
                     Label('delta t', tooltip=ComponentLabels.dt_tooltip),
                         HBox(
                             Label("h"), self.entry_dt_h,
@@ -411,7 +412,7 @@ class MultiPointWidget(QObject):
             GridItem( self.list_configurations,           row=0, column=0, colSpan=2 ),
             GridItem( grid_multipoint_acquisition_config, row=0, column=2, colSpan=2 ),
             GridItem( self.progress_bar,                  row=1, column=0, colSpan=4 ),
-            
+
             with_margins=False,
         ).widget
 
@@ -480,18 +481,18 @@ class MultiPointWidget(QObject):
             ),
             mask=numpy.array(self.well_grid_items_selected)
         )
-    
+
     @TypecheckFunction
     def get_af_software_is_enabled(self)->bool:
         return self.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked
-    
+
     @TypecheckFunction
     def get_af_software_channel(self,only_when_enabled:bool=True)->Optional[str]:
         if only_when_enabled and not self.get_af_software_is_enabled():
             return None
-        
+
         return self.af_software_channel_names[self.af_channel_dropdown.currentIndex()]
-    
+
     @TypecheckFunction
     def get_af_laser_is_enabled(self)->bool:
         return self.interactive_widgets.checkbox_laserAutofocus.checkState()==Qt.Checked
@@ -499,7 +500,7 @@ class MultiPointWidget(QObject):
     @TypecheckFunction
     def set_af_laser_is_enabled(self,af_laser_on:bool):
         self.interactive_widgets.checkbox_laserAutofocus.setCheckState(Qt.Checked if af_laser_on else Qt.Unchecked)
-    
+
     @TypecheckFunction
     def set_selected_channels(self,new_selection:List[str]):
         for item_index in range(len(self.list_channel_names)):
@@ -507,7 +508,7 @@ class MultiPointWidget(QObject):
             item.setSelected(item.text() in new_selection)
 
         # todo change order as well! (new_selection is ordered)
-    
+
     @TypecheckFunction
     def get_selected_channels(self)->List[str]:
         """
@@ -520,10 +521,10 @@ class MultiPointWidget(QObject):
         imaging_channel_list=[channel for channel in self.list_channel_names if channel in selected_channel_list]
 
         return imaging_channel_list
-    
+
     def set_image_file_format(self,new_format:ImageFormat):
         self.image_format_widget.setCurrentIndex(list(ImageFormat).index(new_format))
-    
+
     def get_image_file_format(self)->ImageFormat:
         return list(ImageFormat)[self.image_format_widget.currentIndex()]
 
@@ -549,7 +550,7 @@ class MultiPointWidget(QObject):
 
             self.well_grid_items_selected=[
                 [
-                    False 
+                    False
                     for _c
                     in range(nx)
                 ]
@@ -633,7 +634,7 @@ class MultiPointWidget(QObject):
         if not self.acquisition_is_running:
             # make sure all the parameters are fine
             _=self.start_experiment(dry=True)
-            
+
             self.acquisition_is_running=True
 
             self.btn_startAcquisition.setText(ComponentLabels.BUTTON_START_ACQUISITION_RUNNING_TEXT)
@@ -660,7 +661,7 @@ class MultiPointWidget(QObject):
                 self.experiment_finished_signal.disconnect(self.acquisition_is_finished)
             except:
                 pass
-            
+
             self.acquisition_is_finished(aborted=True)
 
     @TypecheckFunction
@@ -691,7 +692,7 @@ class MultiPointWidget(QObject):
 
             *([self.interactive_widgets.checkbox_laserAutofocus] if self.is_laser_af_initialized else []),
         ]
-    
+
     def set_all_interactible_enabled(self,set_enabled:bool,exceptions:List[QWidget]=[]):
         for widget in self.get_all_interactive_widgets():
             if not widget in exceptions:

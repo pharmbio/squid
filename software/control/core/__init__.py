@@ -1,5 +1,5 @@
 # set QT_API environment variable
-import os 
+import os
 os.environ["QT_API"] = "pyqt5"
 
 from datetime import datetime
@@ -57,7 +57,7 @@ class WellGridConfig:
             t=GridDimensionConfig.from_json(s["t"]),
             mask=numpy.array(s["mask"]),
         )
-    
+
     @TypecheckFunction
     def grid_positions_for_well(self,well_row:int,well_column:int,plate_type:WellplateFormatPhysical)->List[Tuple[float,float]]:
         well_center_x_mm,well_center_y_mm=plate_type.well_index_to_mm(well_row,well_column)
@@ -71,7 +71,7 @@ class WellGridConfig:
             y=base_y+i*self.y.d
             for j in range(self.x.N):
                 x=base_x+j*self.x.d
-                
+
                 if self.mask[i,j]:
                     coords.append((x,y))
 
@@ -138,14 +138,14 @@ class ConfigLoadCondition(str,Enum):
 
     WHEN_EMPTY:
         only load the section when the target section is empty
-    
-        e.g. only load project name when project name in the 
+
+        e.g. only load project name when project name in the
              software GUI is currently empty.
 
-        This option is treated as 'never' where it does not make sense, 
-            like for the channel configurations, which can  never be 
+        This option is treated as 'never' where it does not make sense,
+            like for the channel configurations, which can  never be
             empty.
-    
+
     NEVER:
         never load the section
     """
@@ -178,7 +178,7 @@ class ConfigLoadConditionSet:
     def __setattr__(self, __name: str, __value: Any) -> None:
         if ConfigLoadConditionSet.can_be_empty(__name)==False and __value==ConfigLoadCondition.WHEN_EMPTY:
             raise ValueError(f"ConfigLoadConditionSet.{__name} cannot be {__value}")
-        
+
         return super().__setattr__(__name,__value)
 
     def can_be_empty(field:str)->bool:
@@ -221,7 +221,8 @@ class AcquisitionConfig:
     output_path:str
     project_name:str
     plate_name:str
-    cell_line: str # possibly responsible for lighing settings incl. channel-specific z offsets
+    description:str  # ad-hoc "metadata" for a plate
+    cell_line: str   # inactivated: possibly responsible for lighing settings incl. channel-specific z offsets
 
     well_list:List[Tuple[int,int]]
 
@@ -271,6 +272,7 @@ class AcquisitionConfig:
             output_path=data["output_path"],
             project_name=data["project_name"],
             plate_name=data["plate_name"],
+            description=data.get("description", ""),
             cell_line=data["cell_line"] if "cell_line" in data else DEFAULT_CELL_LINE_STR,
 
             well_list=well_list,
@@ -306,6 +308,7 @@ class AcquisitionConfig:
             "output_path":self.output_path,
             "project_name":self.project_name,
             "plate_name":self.plate_name,
+            "description":self.description,
             "cell_line":self.cell_line,
 
             "image_file_format":self.image_file_format.name,
@@ -441,7 +444,7 @@ class CameraWrapper:
 
     def ensure_streaming(self)->StreamingCamera:
         return StreamingCamera(self.camera)
-        
+
     @property
     def pixel_formats(self)->List[str]:
         return list(self.camera.camera.PixelFormat.get_range().keys())
@@ -736,4 +739,4 @@ class Core(QObject):
 
         QApplication.quit()
 
-    
+
