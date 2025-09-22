@@ -264,7 +264,7 @@ class MultiPointWorker(QObject):
                         dt=datetime.now().astimezone().isoformat(),
                         channel=config.name,
                         pathname=self.output_path,
-                        filename=saving_filename,
+                        filename=saving_filename + '.' + ImageFormat.extension(Acquisition.IMAGE_FORMAT),
                         time_point=self.time_point,
                     )
                     print(json.dumps(image_metadata, separators=(',', ':')), file=file)

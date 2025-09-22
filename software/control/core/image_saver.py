@@ -53,13 +53,13 @@ class ImageSaver(QObject):
         # use tifffile to save tiff images
         if file_format in (ImageFormat.TIFF_COMPRESSED,ImageFormat.TIFF):
             if file_format==ImageFormat.TIFF_COMPRESSED:
-                tifffile.imwrite(path + '.tiff',image,compression=tifffile.COMPRESSION.LZW) # lossless and should be widely supported
+                tifffile.imwrite(path + '.' + ImageFormat.extension(file_format),image,compression=tifffile.COMPRESSION.LZW) # lossless and should be widely supported
             else:
-                tifffile.imwrite(path + '.tiff',image) # takes 7ms
+                tifffile.imwrite(path + '.' + ImageFormat.extension(file_format),image) # takes 7ms
         # use imageio to save other formats
         else:
             assert file_format==ImageFormat.BMP
-            iio.imwrite(path + '.bmp',image)
+            iio.imwrite(path + '.' + ImageFormat.extension(file_format),image)
 
     @TypecheckFunction
     def process_queue(self):

@@ -209,6 +209,19 @@ class ImageFormat(Enum):
     TIFF=1
     TIFF_COMPRESSED=2
 
+    @staticmethod
+    def extension(format: 'ImageFormat'):
+        '''
+        The extension of this image format, excluding the dot
+        '''
+        if format in (ImageFormat.TIFF, ImageFormat.TIFF_COMPRESSED):
+            return 'tiff'
+        elif format == ImageFormat.BMP:
+            return 'bmp'
+        else:
+            raise ValueError('No extension defined for ' + str(format))
+
+
 @TypecheckClass(create_str=True)
 class CameraPixelFormat:
     name:str
