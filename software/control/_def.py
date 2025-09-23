@@ -1184,9 +1184,9 @@ class MachineConfiguration:
 
         return MachineConfiguration(**kwargs)
 
-SOFTWARE_NAME="SQUID - HCS Microscope Control Software"
-
 MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
+
+SOFTWARE_NAME=f"{MACHINE_CONFIG.MACHINE_NAME}"
 
 #print(f"  safe             : {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_safe()}")
 #print(f"unsafe uncalibrated: {WELLPLATE_FORMATS[MACHINE_CONFIG.MUTABLE_STATE.WELLPLATE_FORMAT].limit_unsafe(calibrated=False)}")
