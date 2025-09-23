@@ -190,6 +190,7 @@ class AcqusitionProgress:
         self.start_time=start_time
         self.last_imaged_coordinates=last_imaged_coordinates
         self.last_step_completion_time=last_step_completion_time
+        self._last_completed_action=''
 
     @property
     def last_completed_action(self)->float:
