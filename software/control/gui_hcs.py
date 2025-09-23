@@ -707,9 +707,9 @@ class Gui(QMainWindow):
                 description_filtered += '_'
 
         if description_filtered:
-            plate_name_and_description = project_name_str + '_' + plate_name_str + '_' + description_filtered
+            plate_name_and_description = plate_name_str + '_' + project_name_str + '_' + description_filtered
         else:
-            plate_name_and_description = project_name_str + '_' + plate_name_str
+            plate_name_and_description = plate_name_str + '_' + project_name_str
 
         full_output_path=str(Path(base_dir_str)/project_name_str/plate_name_and_description)
 
