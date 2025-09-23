@@ -1,4 +1,4 @@
-import os 
+import os
 os.environ["QT_API"] = "pyqt5"
 
 # qt libraries
@@ -146,7 +146,7 @@ class LaserAutofocusController(QObject):
             if math.isnan(current_displacement_um):
                 MAIN_LOG.log("Laser Reflection Autofocus: failed with NaN")
                 return
-            
+
             total_movement_um=0.0
 
             num_repeat=0
@@ -161,10 +161,24 @@ class LaserAutofocusController(QObject):
                 #print(f"Laser Reflection Autofocus - rep {num_repeat}: off by {current_displacement_um:.2f} from target {target_um:.2f} therefore moving by {um_to_move:.2f}")
 
                 if counter_backlash:
-                    self.navigation.move_z(um_to_move/1000-self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
-                    self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
+                    delta_z_mm = um_to_move/1000-self.microcontroller.clear_z_backlash_mm
                 else:
-                    self.navigation.move_z(um_to_move/1000,wait_for_completion={})
+                    delta_z_mm = um_to_move/1000
+
+                _x_pos, _y_pos, z_pos, _theta_pos = self.microcontroller.get_pos()
+                stage_z_mm = self.microcontroller.ustep_to_mm_z(z_pos)
+                target_z_mm = stage_z_mm + delta_z_mm
+                if target_z_mm < 0.001:
+                    MAIN_LOG.log(f"Laser Reflection Autofocus: aborting, trying to move objective to negative Z (target: {target_z_mm * 1000:.1f} um, current: {stage_z_mm * 1000:.1f} um))")
+                    break
+                elif target_z_mm > 6.999:
+                    MAIN_LOG.log(f"Laser Reflection Autofocus: aborting, trying to move objective above 7 mm (target: {target_z_mm * 1000:.1f} um, current: {stage_z_mm * 1000:.1f} um))")
+                    break
+                else:
+                    self.navigation.move_z(delta_z_mm,wait_for_completion={})
+
+                if counter_backlash:
+                    self.navigation.move_z(self.microcontroller.clear_z_backlash_mm,wait_for_completion={})
 
                 current_displacement_um = self.measure_displacement()
                 num_repeat+=1
@@ -225,7 +239,7 @@ class LaserAutofocusController(QObject):
                     if DEBUG_THIS_STUFF:
                         print(f"laser autofocus centroid spot imaging attempt: {current_counter=}")
                         current_counter+=1
-            
+
                     image = self.liveController.snap(self.liveController.currentConfiguration)
 
                 imaging_times.append(time.time()-take_image_start_time)
@@ -286,7 +300,7 @@ class LaserAutofocusController(QObject):
                 peak_1_location = peak_locations[idx[-2]] # for air-glass-water, the smaller peak corresponds to the glass-water interface
             if len(idx)==0:
                 raise Exception("did not find any peaks in Laser Reflection Autofocus signal. this is a major problem.")
-            
+
             # choose which surface to use
             if self.use_glass_top:
                 assert len(idx)>1, "only found a single peak in the Laser Reflection Autofocus signal, but trying to use the second one."
@@ -306,4 +320,4 @@ class LaserAutofocusController(QObject):
             y1 = np.sum(y*I)/np.sum(I)
             return x1,y0-96+y1
 
-  
+
