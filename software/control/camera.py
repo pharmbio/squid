@@ -266,6 +266,10 @@ class Camera(object):
     def set_exposure_time(self,exposure_time_ms:float):
         assert not self.camera is None
         if self.exposure_time_ms!=exposure_time_ms: # takes 10ms, so avoid if possible
+            MAIN_LOG.log(f"{self.sn} {self.model} setting exposure time to {exposure_time_ms} ms")
+            # import traceback
+            # traceback.print_stack()
+            # print()
             self.exposure_time_ms = exposure_time_ms
             self.update_camera_exposure_time()
 

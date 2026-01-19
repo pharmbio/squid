@@ -188,7 +188,7 @@ class LaserAutofocusController(QObject):
                     MAIN_LOG.log(f"Laser Reflection Autofocus: failed with measured offset {current_displacement_um:.3f}um and target {target_um}um")
                     break
 
-            MAIN_LOG.log(f"Laser Reflection Autofocus: done after {num_repeat} iterations and moving {total_movement_um:.3f}um")
+            MAIN_LOG.log(f"Laser Reflection Autofocus: done after {num_repeat} iterations and moving {total_movement_um:.3f}um (exposure: {self.camera.exposure_time_ms}ms)")
 
     @TypecheckFunction()
     def set_reference(self,z_pos_mm:float):
