@@ -201,8 +201,8 @@ class Camera(object):
 
         self.set_pixel_format(list(self.camera.PixelFormat.get_range().keys())[0])
 
-        self.start_streaming() # debug , maybe temporary? there does not seem to be a reason to not just stream at all times...
-        
+        # self.start_streaming() # debug , maybe temporary? there does not seem to be a reason to not just stream at all times...
+
     @TypecheckFunction
     def open(self,index:int=0):
         (device_num, self.device_info_list) = self.device_manager.update_device_list()
