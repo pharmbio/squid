@@ -236,11 +236,12 @@ class Camera(object):
             return
 
         # Stop streaming first (fix ported from slaide/seafront)
-        self.is_streaming = False
-        try:
-            self.camera.stream_off()
-        except Exception as e:
-            MAIN_LOG.log(f"[camera close] stream_off failed: {e}")
+        if self.is_streaming:
+            self.is_streaming = False
+            try:
+                self.camera.stream_off()
+            except Exception as e:
+                MAIN_LOG.log(f"[camera close] stream_off failed: {e}")
 
         try:
             self.camera.close_device()
