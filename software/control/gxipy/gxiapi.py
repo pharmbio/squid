@@ -16,6 +16,31 @@ PIXEL_BIT_MASK = 0x00ff0000
 
 INT_TYPE = int
 
+def stamp():
+    '''journalctl short-precise format'''
+    import datetime as dt
+    return dt.datetime.now().strftime("%b %d %H:%M:%S.%f")
+
+def log_in_out(f, _calls=[1000], _depth=[0]):
+    import functools
+    f_name = getattr(f, '__qualname__', getattr(f, '__name__', ''))
+    @functools.wraps(f)
+    def wrapped(*args, **kwargs):
+        _depth[0] += 1
+        _calls[0] += 1
+        call_id = _calls[0]
+        depth = _depth[0]
+        d = ' ' * depth
+        print(f'{stamp()} {call_id}. {d} Call {f_name}')
+        try:
+            res = f(*args, **kwargs)
+        finally:
+            _depth[0] -= 1
+        print(f'{stamp()} {call_id}. {d} Done {f_name}')
+        return res
+    return wrapped
+
+
 class Feature:
     def __init__(self, handle, feature):
         """
@@ -26,6 +51,7 @@ class Feature:
         self.__feature = feature
         self.feature_name = self.__get_name()
 
+    @log_in_out
     def __get_name(self):
         """
         brief:  Getting Feature Name
@@ -38,6 +64,7 @@ class Feature:
 
         return name
 
+    @log_in_out
     def is_implemented(self):
         """
         brief:  Determining whether the feature is implemented
@@ -51,6 +78,7 @@ class Feature:
         else:
             StatusProcessor.process(status, 'Feature', 'is_implemented')
 
+    @log_in_out
     def is_readable(self):
         """
         brief:  Determining whether the feature is readable
@@ -64,6 +92,7 @@ class Feature:
         StatusProcessor.process(status, 'Feature', 'is_readable')
         return is_readable
 
+    @log_in_out
     def is_writable(self):
         """
         brief:  Determining whether the feature is writable
@@ -88,6 +117,7 @@ class IntFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def __range_dict(self, int_range):
         """
         :brief      Convert GxIntRange to dictionary
@@ -101,6 +131,7 @@ class IntFeature(Feature):
         }
         return range_dicts
 
+    @log_in_out
     def get_range(self):
         """
         :brief      Getting integer range
@@ -115,6 +146,7 @@ class IntFeature(Feature):
         StatusProcessor.process(status, 'IntFeature', 'get_range')
         return self.__range_dict(int_range)
 
+    @log_in_out
     def get(self):
         """
         :brief      Getting integer value
@@ -129,6 +161,7 @@ class IntFeature(Feature):
         StatusProcessor.process(status, 'IntFeature', 'get')
         return int_value
 
+    @log_in_out
     def set(self, int_value):
         """
         :brief      Setting integer value
@@ -167,6 +200,7 @@ class FloatFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def __range_dict(self, float_range):
         """
         :brief      Convert GxFloatRange to dictionary
@@ -182,6 +216,7 @@ class FloatFeature(Feature):
         }
         return range_dicts
 
+    @log_in_out
     def get_range(self):
         """
         :brief      Getting float range
@@ -196,6 +231,7 @@ class FloatFeature(Feature):
         StatusProcessor.process(status, 'FloatFeature', 'get_range')
         return self.__range_dict(float_range)
 
+    @log_in_out
     def get(self):
         """
         :brief      Getting float value
@@ -210,6 +246,7 @@ class FloatFeature(Feature):
         StatusProcessor.process(status, 'FloatFeature', 'get')
         return float_value
 
+    @log_in_out
     def set(self, float_value):
         """
         :brief      Setting float value
@@ -247,6 +284,7 @@ class EnumFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def get_range(self):
         """
         :brief      Getting range of Enum feature
@@ -269,6 +307,7 @@ class EnumFeature(Feature):
 
         return enum_dict
 
+    @log_in_out
     def get(self):
         """
         :brief      Getting value of Enum feature
@@ -288,6 +327,7 @@ class EnumFeature(Feature):
         new_dicts = {v: k for k, v in range_dict.items()}
         return enum_value, new_dicts[enum_value]
 
+    @log_in_out
     def set(self, enum_value):
         """
         :brief      Setting enum value
@@ -325,6 +365,7 @@ class BoolFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def get(self):
         """
         :brief      Getting bool value
@@ -339,6 +380,7 @@ class BoolFeature(Feature):
         StatusProcessor.process(status, 'BoolFeature', 'get')
         return bool_value
 
+    @log_in_out
     def set(self, bool_value):
         """
         :brief      Setting bool value
@@ -368,6 +410,7 @@ class StringFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def get_string_max_length(self):
         """
         :brief      Getting the maximum length that string can set
@@ -382,6 +425,7 @@ class StringFeature(Feature):
         StatusProcessor.process(status, 'StringFeature', 'get_string_max_length')
         return length
 
+    @log_in_out
     def get(self):
         """
         :brief      Getting string value
@@ -396,6 +440,7 @@ class StringFeature(Feature):
         StatusProcessor.process(status, 'StringFeature', 'get')
         return strings
 
+    @log_in_out
     def set(self, input_string):
         """
         :brief      Setting string value
@@ -433,6 +478,7 @@ class BufferFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def get_buffer_length(self)->Optional[int]:
         """
         :brief      Getting buffer length
@@ -447,6 +493,7 @@ class BufferFeature(Feature):
         StatusProcessor.process(status, 'BuffFeature', 'get_buffer_length')
         return length
 
+    @log_in_out
     def get_buffer(self):
         """
         :brief      Getting buffer data
@@ -462,6 +509,7 @@ class BufferFeature(Feature):
         StatusProcessor.process(status, 'BuffFeature', 'get_buffer')
         return Buffer(buf)
 
+    @log_in_out
     def set_buffer(self, buf):
         """
         :brief      Setting buffer data
@@ -482,7 +530,7 @@ class BufferFeature(Feature):
         if buf.get_length() > max_length:
             print("BuffFeature.set_buffer: "
                   "buff length out of bounds, %s.length_max:%s" % (self.feature_name, max_length))
-                  
+
             return
 
         status = gx_set_buffer(self.__handle, self.__feature,
@@ -500,6 +548,7 @@ class CommandFeature(Feature):
         self.__handle = handle
         self.__feature = feature
 
+    @log_in_out
     def send_command(self):
         """
         :brief      Sending command
@@ -525,6 +574,7 @@ class Buffer:
         self.data_array = data_array
 
     @staticmethod
+    @log_in_out
     def from_file(file_name):
         file_object = open(file_name, "rb")
         file_string = file_object.read()
@@ -533,10 +583,12 @@ class Buffer:
         return Buffer(data_array)
 
     @staticmethod
+    @log_in_out
     def from_string(string_data):
         data_array = create_string_buffer(string_data)
         return Buffer(data_array)
 
+    @log_in_out
     def get_data(self):
         buff_p = c_void_p()
         buff_p.value = addressof(self.data_array)
@@ -544,13 +596,16 @@ class Buffer:
         string_data = string_at(buff_p, len(self.data_array))
         return string_data
 
+    @log_in_out
     def get_ctype_array(self):
         return self.data_array
 
+    @log_in_out
     def get_numpy_array(self):
         numpy_array = numpy.array(self.data_array)
         return numpy_array
 
+    @log_in_out
     def get_length(self):
         return len(self.data_array)
 
@@ -725,6 +780,7 @@ class Device:
         self.ChunkEnable = BoolFeature(self.__dev_handle, GxFeatureID.BOOL_CHUNK_ENABLE)
 
 
+    @log_in_out
     def stream_on(self):
         """
         :brief      send start command, camera start transmission image data
@@ -737,6 +793,7 @@ class Device:
         self.data_stream[0].set_payload_size(payload_size)
         self.data_stream[0].acquisition_flag = True
 
+    @log_in_out
     def stream_off(self):
         """
         :brief      send stop command, camera stop transmission image data
@@ -746,6 +803,7 @@ class Device:
         status = gx_send_command(self.__dev_handle, GxFeatureID.COMMAND_ACQUISITION_STOP)
         StatusProcessor.process(status, 'Device', 'stream_off')
 
+    @log_in_out
     def export_config_file(self, file_path):
         """
         :brief      Export the current configuration file
@@ -759,6 +817,7 @@ class Device:
         status = gx_export_config_file(self.__dev_handle, file_path)
         StatusProcessor.process(status, 'Device', 'export_config_file')
 
+    @log_in_out
     def import_config_file(self, file_path, verify=False):
         """
         :brief      Imported configuration file
@@ -778,6 +837,7 @@ class Device:
         status = gx_import_config_file(self.__dev_handle, file_path, verify)
         StatusProcessor.process(status, 'Device', 'import_config_file')
 
+    @log_in_out
     def close_device(self):
         """
         :brief      close device, close device handle
@@ -787,6 +847,7 @@ class Device:
         StatusProcessor.process(status, 'Device', 'close_device')
         self.__dev_handle = None
 
+    @log_in_out
     def get_stream_channel_num(self):
         """
         :brief      Get the number of stream channels supported by the current device.
@@ -795,6 +856,7 @@ class Device:
         return len(self.data_stream)
 
 
+    @log_in_out
     def register_device_offline_callback(self, call_back):
         """
         :brief      Register the device offline event callback function.
@@ -807,6 +869,7 @@ class Device:
             (self.__dev_handle, self.__OfflineCallBack)
         StatusProcessor.process(status, 'Device', 'register_device_offline_callback')
 
+    @log_in_out
     def unregister_device_offline_callback(self):
         """
         :brief      Unregister the device offline event callback function.
@@ -817,6 +880,7 @@ class Device:
         self.__offline_callback_handle = None
         StatusProcessor.process(status, 'Device', 'unregister_device_offline_callback')
 
+    @log_in_out
     def __on_device_offline_call_back(self, c_user_param):
         """
         :brief      Device offline event callback function with an unused c_void_p.
@@ -825,6 +889,7 @@ class Device:
         self.__py_offline_callback() # type: ignore
 
 
+    @log_in_out
     def register_capture_callback(self, user_param, cap_call):
         """
         :brief      Register the capture event callback function.
@@ -837,6 +902,7 @@ class Device:
         status = gx_register_capture_callback(self.__dev_handle, self.__CaptureCallBack)
         StatusProcessor.process(status, 'Device', 'register_capture_callback')
 
+    @log_in_out
     def unregister_capture_callback(self):
         """
         :brief      Unregister the capture event callback function.
@@ -847,6 +913,7 @@ class Device:
         self.__user_param = None
         StatusProcessor.process(status, 'Device', 'unregister_capture_callback')
 
+    @log_in_out
     def __on_capture_call_back(self, capture_data:Any):
         """
         :brief      Capture event callback function with capture date.
@@ -929,9 +996,11 @@ class DataStream:
         self.payload_size = 0
         self.acquisition_flag = False
 
+    @log_in_out
     def set_payload_size(self, payload_size):
         self.payload_size = payload_size
 
+    @log_in_out
     def set_acquisition_buffer_number(self, buf_num):
         """
         :brief      set the number of acquisition buffer
@@ -950,6 +1019,7 @@ class DataStream:
         status = gx_set_acquisition_buffer_number(self.__dev_handle, buf_num)
         StatusProcessor.process(status, 'DataStream', 'set_acquisition_buffer_number')
 
+    @log_in_out
     def get_image(self, timeout=1000):
         """
         :brief          Get an image, get successfully create image class object
@@ -984,6 +1054,7 @@ class DataStream:
             StatusProcessor.process(status, 'DataStream', 'get_image')
             return None
 
+    @log_in_out
     def flush_queue(self):
         status = gx_flush_queue(self.__dev_handle)
         StatusProcessor.process(status, 'DataStream', 'flush_queue')
@@ -1156,6 +1227,7 @@ class ParameterTypeError(Exception):
         Exception.__init__(self, args)
 
 
+@log_in_out
 def exception_deal(status, args):
     """
     brief:  deal with different exception
@@ -1200,6 +1272,7 @@ class StatusProcessor:
         pass
 
     @staticmethod
+    @log_in_out
     def process(status, class_name, function_name):
         """
         :brief      1.Error code processing
@@ -1216,6 +1289,7 @@ class StatusProcessor:
             exception_deal(status, error_message)
 
     @staticmethod
+    @log_in_out
     def printing(status, class_name, function_name):
         """
         :brief      1.Error code processing
@@ -1241,6 +1315,7 @@ class RGBImage:
             self.__image_array = (c_ubyte * self.frame_data.image_size)()
             self.frame_data.image_buf = addressof(self.__image_array)
 
+    @log_in_out
     def image_improvement(self, color_correction_param=0, contrast_lut=None, gamma_lut=None):
         """
         :brief:     Improve image quality of the object itself
@@ -1280,6 +1355,7 @@ class RGBImage:
         if status != DxStatus.OK:
             raise UnexpectedError("RGBImage.image_improvement: failed, error code:%s" % hex(status).__str__())
 
+    @log_in_out
     def get_numpy_array(self):
         """
         :brief:     Return data as a numpy.Array type with dimension Image.height * Image.width * 3
@@ -1288,6 +1364,7 @@ class RGBImage:
         image_np = numpy.frombuffer(self.__image_array, dtype=numpy.ubyte).reshape(self.frame_data.height, self.frame_data.width, 3)
         return image_np
 
+    @log_in_out
     def get_image_size(self):
         """
         :brief      Get RGB data size
@@ -1306,6 +1383,7 @@ class RawImage:
             self.__image_array = (c_ubyte * self.frame_data.image_size)()
             self.frame_data.image_buf = addressof(self.__image_array)
 
+    @log_in_out
     def __get_bit_depth(self, pixel_format):
         """
         :brief      Calculate pixel depth based on pixel format
@@ -1338,6 +1416,7 @@ class RawImage:
         else:
             return -1
 
+    @log_in_out
     def __get_pixel_color_filter(self, pixel_format):
         """
         :brief      Calculate pixel color filter based on pixel format
@@ -1369,6 +1448,7 @@ class RawImage:
         else:
             return -1
 
+    @log_in_out
     def __pixel_format_raw16_to_raw8(self, pixel_format):
         """
         :brief      convert raw16 to raw8, the pixel format need convert to 8bit bayer format
@@ -1395,6 +1475,7 @@ class RawImage:
         else:
             return -1
 
+    @log_in_out
     def __raw16_to_raw8(self, pixel_bit_depth, valid_bits):
         """
         :brief      convert raw16 to raw8
@@ -1431,6 +1512,7 @@ class RawImage:
         else:
             return image_raw8
 
+    @log_in_out
     def __raw8_to_rgb(self, raw8_image, convert_type, pixel_color_filter, flip):
         """
         :brief      convert raw8 to RGB
@@ -1463,6 +1545,7 @@ class RawImage:
 
         return image_rgb
 
+    @log_in_out
     def convert(self, mode, flip=False, valid_bits=DxValidBit.BIT4_11,
                 convert_type=DxBayerConvertType.NEIGHBOUR):
         """
@@ -1537,6 +1620,7 @@ class RawImage:
             print('''RawImage.convert: mode="%s", isn't support''' % mode)
             return None
 
+    @log_in_out
     def get_numpy_array(self)->Optional[numpy.ndarray]:
         """
         :brief      Return data as a numpy.Array type with dimension Image.height * Image.width
@@ -1559,6 +1643,7 @@ class RawImage:
 
         return image_np
 
+    @log_in_out
     def get_data(self)->bytes:
         """
         :brief      get Raw data
@@ -1582,6 +1667,7 @@ class RawImage:
         except Exception as error:
             raise UnexpectedError(f"RawImage.save_raw: {error}")
 
+    @log_in_out
     def get_status(self):
         """
         :brief      get raw data status
@@ -1589,6 +1675,7 @@ class RawImage:
         """
         return self.frame_data.status
 
+    @log_in_out
     def get_width(self):
         """
         :brief      get width of raw data
@@ -1596,6 +1683,7 @@ class RawImage:
         """
         return self.frame_data.width
 
+    @log_in_out
     def get_height(self):
         """
         :brief     get height of raw data
@@ -1603,6 +1691,7 @@ class RawImage:
         """
         return self.frame_data.height
 
+    @log_in_out
     def get_pixel_format(self):
         """
         :brief      Get image pixel format
@@ -1610,6 +1699,7 @@ class RawImage:
         """
         return self.frame_data.pixel_format
 
+    @log_in_out
     def get_image_size(self):
         """
         :brief      Get raw data size
@@ -1617,6 +1707,7 @@ class RawImage:
         """
         return self.frame_data.image_size
 
+    @log_in_out
     def get_frame_id(self):
         """
         :brief      Get  frame id of raw data
@@ -1624,6 +1715,7 @@ class RawImage:
         """
         return self.frame_data.frame_id
 
+    @log_in_out
     def get_timestamp(self):
         """
         :brief      Get timestamp of raw data
@@ -1638,6 +1730,7 @@ class Utility:
         pass
 
     @staticmethod
+    @log_in_out
     def get_gamma_lut(gamma=1):
         if not (isinstance(gamma, (INT_TYPE, float))):
             raise ParameterTypeError("Utility.get_gamma_lut: "
@@ -1655,6 +1748,7 @@ class Utility:
         return Buffer(gamma_lut)
 
     @staticmethod
+    @log_in_out
     def get_contrast_lut(contrast=0):
         if not (isinstance(contrast, INT_TYPE)):
             raise ParameterTypeError("Utility.get_contrast_lut: "
@@ -1678,24 +1772,27 @@ class Utility:
 class DeviceManager(object):
     __instance_num = 0
 
+    @log_in_out
     def __new__(cls, *args, **kw):
         cls.__instance_num += 1
         status = gx_init_lib()
         StatusProcessor.process(status, 'DeviceManager', 'init_lib')
         return object.__new__(cls, *args)
-    
+
     def __init__(self):
         self.__device_num = 0
         self.__device_info_list = []
 
-        
 
+
+    @log_in_out
     def __del__(self):
         self.__class__.__instance_num -= 1
         if self.__class__.__instance_num <= 0:
             status = gx_close_lib()
             StatusProcessor.process(status, 'DeviceManager', 'close_lib')
 
+    @log_in_out
     def __get_device_info_list(self, base_info, ip_info, num):
         """
         :brief      Convert GxDeviceBaseInfo and GxDeviceIPInfo to device info list
@@ -1729,6 +1826,7 @@ class DeviceManager(object):
 
         return device_info_list
 
+    @log_in_out
     def __get_ip_info(self, base_info_list, dev_mum):
         """
         :brief      Get the network information
@@ -1745,6 +1843,7 @@ class DeviceManager(object):
 
         return ip_info_list
 
+    @log_in_out
     def update_device_list(self, timeout=200):
         """
         :brief      enumerate the same network segment devices
@@ -1773,6 +1872,7 @@ class DeviceManager(object):
 
         return self.__device_num, self.__device_info_list
 
+    @log_in_out
     def update_all_device_list(self, timeout=200):
         """
         :brief      Enumerate devices on different network segments
@@ -1801,6 +1901,7 @@ class DeviceManager(object):
 
         return self.__device_num, self.__device_info_list
 
+    @log_in_out
     def get_device_number(self):
         """
         :brief      Get device number
@@ -1808,6 +1909,7 @@ class DeviceManager(object):
         """
         return self.__device_num
 
+    @log_in_out
     def get_device_info(self):
         """
         :brief      Get all device info
@@ -1815,6 +1917,7 @@ class DeviceManager(object):
         """
         return self.__device_info_list
 
+    @log_in_out
     def open_device_by_index(self, index, access_mode=GxAccessMode.CONTROL):
         """
         :brief      open device by index
@@ -1872,6 +1975,7 @@ class DeviceManager(object):
         else:
             raise NotFoundDevice("DeviceManager.open_device_by_index: Does not support this device type.")
 
+    @log_in_out
     def __get_device_class_by_sn(self, sn):
         """
         :brief:     1.find device by sn in self.__device_info_list
@@ -1886,6 +1990,7 @@ class DeviceManager(object):
         # don't find this id in device base info list
         return -1
 
+    @log_in_out
     def open_device_by_sn(self, sn:str, access_mode=GxAccessMode.CONTROL) -> Optional[Device]:
         """
         :brief      open device by serial number(SN)
@@ -1937,6 +2042,7 @@ class DeviceManager(object):
         else:
             raise NotFoundDevice("DeviceManager.open_device_by_sn: Does not support this device type.")
 
+    @log_in_out
     def __get_device_class_by_user_id(self, user_id):
         """
         :brief:     1.find device according to sn in self.__device_info_list
@@ -1951,6 +2057,7 @@ class DeviceManager(object):
         # don't find this id in device base info list
         return -1
 
+    @log_in_out
     def open_device_by_user_id(self, user_id, access_mode=GxAccessMode.CONTROL):
         """
         :brief      open device by user defined name
@@ -2000,6 +2107,7 @@ class DeviceManager(object):
         else:
             raise NotFoundDevice("DeviceManager.open_device_by_user_id: Does not support this device type.")
 
+    @log_in_out
     def open_device_by_ip(self, ip, access_mode=GxAccessMode.CONTROL):
         """
         :brief      open device by device ip address
@@ -2030,6 +2138,7 @@ class DeviceManager(object):
 
         return GEVDevice(handle)
 
+    @log_in_out
     def open_device_by_mac(self, mac, access_mode=GxAccessMode.CONTROL):
         """
         :brief      open device by device mac address
