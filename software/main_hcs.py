@@ -18,8 +18,8 @@ class HcsApplication(QApplication):
         super().__init__([])
 
         self.setApplicationDisplayName(SOFTWARE_NAME)
-        self.setApplicationName(SOFTWARE_NAME)
-        self.setDesktopFileName(SOFTWARE_NAME)
+        self.setApplicationName('squid')
+        self.setDesktopFileName('squid')
 
 if __name__ == "__main__":
     app = HcsApplication()
