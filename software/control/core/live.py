@@ -122,16 +122,28 @@ class LiveController(QObject):
                 if image is not None:
                     self.end_acquisition()
                 else:
-                    # timeout likely caused by camera connection issue - try solving by reconnecting
-                    while True:
+                    # Timeout likely caused by camera connection issue - try solving by reconnecting.
+                    # Limit retries to avoid infinite loop if USB is physically broken.
+                    # (original code was `while True` with bare `except: continue`)
+                    MAX_RECONNECT_ATTEMPTS = 10
+                    reconnect_success = False
+                    for reconnect_attempt in range(MAX_RECONNECT_ATTEMPTS):
                         try:
                             self.image_acquisition_in_progress=False
                             self.image_acquisition_queued=False
+                            MAIN_LOG.log(f"camera reconnection attempt {reconnect_attempt + 1}/{MAX_RECONNECT_ATTEMPTS}")
                             self.camera.attempt_reconnection()
                             self.set_microscope_mode(config)
+                            reconnect_success = True
                             break
-                        except:
-                            continue
+                        except Exception as e:
+                            MAIN_LOG.log(f"camera reconnection failed: {e}")
+                            if reconnect_attempt < MAX_RECONNECT_ATTEMPTS - 1:
+                                backoff = reconnect_attempt + 1
+                                MAIN_LOG.log(f"waiting {backoff}s before next attempt")
+                                time.sleep(backoff)
+                    if not reconnect_success:
+                        raise FatalError(f"camera reconnection failed after {MAX_RECONNECT_ATTEMPTS} attempts")
 
                     self.trigger_acquisition()
                     image = self.camera.read_frame()

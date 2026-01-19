@@ -49,12 +49,14 @@ def retry_on_failure(
     def decorator(func):
         @wraps(func)
         def wrapper(*args,**kwargs):
-            # use loop to avoid potentially very deep recursion
+            func_name = getattr(func, '__name__', '<unnamed function>')
+            retries = 0
             while True:
                 try:
                     # if function succeeds, this return will 'break' the loop
                     return func(*args,**kwargs)
                 except Exception as e:
+                    MAIN_LOG.log(f'[retry_on_failure({func_name})] caught error: {e}')
                     do_allow_retry=True
                     if allow_retry_check is not None:
                         if function_uses_self:
@@ -70,8 +72,11 @@ def retry_on_failure(
                         try_recover()(args[0])
                     else:
                         try_recover()
-                
-                time.sleep(timeout_s)
+
+                backoff = timeout_s * (retries +  1)
+                MAIN_LOG.log(f'[retry_on_failure({func_name})] waiting {backoff}s before next attempt (retries {retries})')
+                time.sleep(backoff)
+                retries += 1
 
         return wrapper
     return decorator
@@ -222,8 +227,26 @@ class Camera(object):
 
     @TypecheckFunction
     def close(self):
-        assert self.camera is not None
-        self.camera.close_device()
+        """
+        Close device handle. Always stops streaming first to properly release
+        the USB interface claim - failure to do so causes "did not claim interface
+        before use" errors on reconnection.
+        """
+        if self.camera is None:
+            return
+
+        # Stop streaming first (fix ported from slaide/seafront)
+        self.is_streaming = False
+        try:
+            self.camera.stream_off()
+        except Exception as e:
+            MAIN_LOG.log(f"[camera close] stream_off failed: {e}")
+
+        try:
+            self.camera.close_device()
+        except Exception as e:
+            MAIN_LOG.log(f"[camera close] close_device failed: {e}")
+
         self.device_info_list = None
         self.camera = None
         self.is_color = None
@@ -343,17 +366,25 @@ class Camera(object):
             return False
         
     def attempt_reconnection(self):
-        # try to close the device handle, and ignore failures
+        """
+        Attempt to recover from a camera connection failure.
+
+        close() now stops streaming before releasing the device handle, which
+        fixes "did not claim interface before use" kernel errors on reconnection.
+        """
         try:
             self.close()
         except Exception as e:
-            pass
+            MAIN_LOG.log(f"[camera reconnect] close failed: {e}")
 
-        # attempt reconnecting, ignore failures and recurse (into sleep + retry)
+        # wait for USB subsystem to release the interface
+        time.sleep(0.5)
+
         try:
             self.open_default()
         except Exception as e:
-            pass
+            MAIN_LOG.log(f"[camera reconnect] open_default failed: {e}")
+            raise  # let caller's retry loop handle it (live.py, @retry_on_failure)
 
         # if software expects camera to be streaming, actually start streaming after reconnect
         if self.is_streaming:
