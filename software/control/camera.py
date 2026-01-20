@@ -120,7 +120,6 @@ class Camera(object):
         self.current_frame:Optional[numpy.ndarray] = None
 
         self.callback_is_enabled = False
-        self.is_streaming = False
 
         self.GAIN_MAX = 24
         self.GAIN_MIN = 0
@@ -237,7 +236,6 @@ class Camera(object):
 
         # Stop streaming first (fix ported from slaide/seafront)
         if self.is_streaming:
-            self.is_streaming = False
             try:
                 self.camera.stream_off()
             except Exception as e:
@@ -413,10 +411,7 @@ class Camera(object):
     def start_streaming(self):
         if not self.is_streaming:
             assert not self.camera is None
-            
             self.camera.stream_on()
-
-            self.is_streaming = True
 
     @retry_on_failure(
         function_uses_self=True,
@@ -428,10 +423,24 @@ class Camera(object):
         """ this takes 350ms!!!! avoid calling this function if at all possible! """
 
         # under some weird circumstances (actually a race condition....) this camera object can have been destroyed before this callback is called, e.g. when the program is closed while a live view is active (this should not happen, but it does)
-        if self.is_streaming and not self.camera is None:
+        if self.is_streaming and self.camera is not None:
             self.camera.stream_off()
-                    
-            self.is_streaming = False
+
+    @property
+    def is_streaming(self) -> bool:
+        """
+        Query the actual streaming state from the camera's data stream.
+
+        This queries the acquisition_flag directly rather than relying on
+        a cached value, which could get out of sync with hardware state.
+
+        Backported from Cephla-Lab/Squid (upstream).
+        """
+        if self.camera is None:
+            return False
+        if len(self.camera.data_stream) < 1:
+            return False
+        return self.camera.data_stream[0].acquisition_flag
 
     @TypecheckFunction
     def set_pixel_format(self,pixel_format:str):
