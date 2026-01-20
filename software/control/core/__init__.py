@@ -555,6 +555,9 @@ class Core(QObject):
             control_illumination=True,
             for_displacement_measurement=True,
         )
+        # Keep focus camera streaming to avoid USB interface claim errors from
+        # repeated stream_on/stream_off cycles during LAF (runs every ~5s)
+        focus_camera.start_streaming()
 
         self.navigation:          core.NavigationController = core.NavigationController(self.microcontroller)
         self.autofocusController: core.AutoFocusController  = core.AutoFocusController(self.camera,self.navigation,self.liveController)
