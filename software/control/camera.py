@@ -377,6 +377,9 @@ class Camera(object):
         close() now stops streaming before releasing the device handle, which
         fixes "did not claim interface before use" kernel errors on reconnection.
         """
+        # Save streaming state before close() clears it
+        was_streaming = self.is_streaming
+
         try:
             self.close()
         except Exception as e:
@@ -391,10 +394,8 @@ class Camera(object):
             MAIN_LOG.log(f"[camera reconnect] open_default failed: {e}")
             raise  # let caller's retry loop handle it (live.py, @retry_on_failure)
 
-        # if software expects camera to be streaming, actually start streaming after reconnect
-        if self.is_streaming:
-            # reset flag to actually start streaming again
-            self.is_streaming=False
+        # Restart streaming if it was active before reconnection
+        if was_streaming:
             self.start_streaming()
 
         # after reconnection, if these values have been set before (at runtime), apply them to the camera again
