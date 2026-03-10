@@ -21,7 +21,7 @@ class HcsApplication(QApplication):
         self.setApplicationName('squid')
         self.setDesktopFileName('squid')
 
-if __name__ == "__main__":
+def main():
     app = HcsApplication()
 
     if True:
@@ -54,3 +54,6 @@ if __name__ == "__main__":
         root_exception_str=traceback.format_exc()
         MAIN_LOG.log(f"error - exception will terminate program: {root_exception_str}")
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()

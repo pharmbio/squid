@@ -1,0 +1,40 @@
+[project]
+name = "squid"
+version = "0.1.0"
+requires-python = "==3.8.*"
+dependencies = [
+    "crc==1.2.0",
+    "flask==3.0.3",
+    "imagecodecs==2023.3.16",
+    "imageio==2.35.1",
+    "lxml==6.0.0",
+    "matplotlib==3.1.2",
+    "numpy==1.23.5",
+    "opencv-contrib-python==4.12.0.88",
+    "opencv-python==4.12.0.88",
+    "Pillow==9.3.0",
+    "PyQt5==5.14.1",
+    "pyqtgraph==0.12.4",
+    "pyserial==3.5",
+    "QtPy==2.2.1",
+    "scikit-image==0.21.0",
+    "scipy==1.9.3",
+    "tqdm==4.67.1",
+]
+
+[project.scripts]
+squid-hcs = "main_hcs:main"
+
+[project.gui-scripts]
+squid-hcs-gui = "main_hcs:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["control"]
+
+[tool.uv]
+# daheng camera driver is vendored in control/gxipy, not on pypi
+# PyQt5 may need system Qt libs: apt install python3-pyqt5
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
