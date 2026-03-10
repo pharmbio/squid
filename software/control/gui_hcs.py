@@ -6,7 +6,7 @@ from pathlib import Path
 from glob import glob
 import traceback
 
-from qtpy.QtCore import Qt, QEvent, Signal
+from qtpy.QtCore import Qt, QEvent, Signal, QTimer
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup
 
 from control.camera import Camera
@@ -20,8 +20,6 @@ from control.widgets import ComponentLabel
 from control.typechecker import TypecheckFunction
 
 from control.web_service import web_service
-
-from threading import Thread, Lock
 
 LAST_PROGRAM_STATE_BACKUP_FILE_PATH="last_program_state.json"
 
@@ -458,7 +456,11 @@ class Gui(QMainWindow):
                     web_service.set_status(progress_data={})
                     web_service.set_status(progress_bar_text='')
                     web_service.set_status(estimated_duration=None)
-                    Thread(target=lambda: self.start_experiment()).start()
+                    # This QTimer.singleShot is similar to
+                    # Thread(target=lambda: self.start_experiment()).start()
+                    # but in the Qt event loop so that GUI calls
+                    # happen on the main thread, avoiding stale widgets.
+                    QTimer.singleShot(0, lambda: self.start_experiment())
                 return ok
 
             @web_service.expose
