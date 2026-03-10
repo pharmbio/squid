@@ -5,17 +5,22 @@
 from ctypes import *
 import sys
 
+_DAHENG_SDK_INSTALL_HINT = (
+    "Install the Daheng Galaxy camera SDK:\n"
+    "  cd 'drivers and libraries/daheng camera/Galaxy_Linux-x86_Gige-U3_32bits-64bits_1.2.1911.9122'\n"
+    "  sudo ./Galaxy_camera.run"
+)
 
 if sys.platform == 'linux2' or sys.platform == 'linux':
     try:
         dll = CDLL('/usr/lib/libgxiapi.so')
     except OSError:
-        print("Cannot find libgxiapi.so.")
+        raise RuntimeError("Cannot find libgxiapi.so. " + _DAHENG_SDK_INSTALL_HINT)
 else:
     try:
         dll = WinDLL('GxIAPI.dll')
     except OSError:
-        print('Cannot find GxIAPI.dll.')
+        raise RuntimeError("Cannot find GxIAPI.dll. " + _DAHENG_SDK_INSTALL_HINT)
 
 
 # Error code
