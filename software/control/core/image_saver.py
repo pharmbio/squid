@@ -96,8 +96,9 @@ class ImageSaver(QObject):
                     raise
 
         write_metadata = dict(
-            filename=full_path,
             dt=datetime.now().astimezone().isoformat(),
+            pathname=str(Path(full_path).parent),  # matching images.jsonl
+            filename=str(Path(full_path).name),    # matching images.jsonl
             attempts=attempts,
             num_bytes=len(data),
             sha256=hashlib.sha256(data).hexdigest(),
