@@ -14,6 +14,11 @@ import numpy
 
 import imageio as iio
 import tifffile
+import io
+import errno
+import json
+import hashlib
+from pathlib import Path
 
 from typing import Optional, List, Union, Tuple
 from control.typechecker import TypecheckFunction
@@ -50,16 +55,60 @@ class ImageSaver(QObject):
         if image.dtype == np.uint16 and file_format != ImageFormat.TIFF_COMPRESSED:
             file_format=ImageFormat.TIFF
 
-        # use tifffile to save tiff images
+        full_path = path + '.' + ImageFormat.extension(file_format)
+        buf = io.BytesIO()
+
+        # serialize image into memory buffer (avoids tifffile silently suppressing
+        # write errors on NFS via its contextlib.suppress(Exception) in close)
         if file_format in (ImageFormat.TIFF_COMPRESSED,ImageFormat.TIFF):
             if file_format==ImageFormat.TIFF_COMPRESSED:
-                tifffile.imwrite(path + '.' + ImageFormat.extension(file_format),image,compression=tifffile.COMPRESSION.LZW) # lossless and should be widely supported
+                tifffile.imwrite(buf,image,compression=tifffile.COMPRESSION.LZW)
             else:
-                tifffile.imwrite(path + '.' + ImageFormat.extension(file_format),image) # takes 7ms
-        # use imageio to save other formats
+                tifffile.imwrite(buf,image)
         else:
             assert file_format==ImageFormat.BMP
-            iio.imwrite(path + '.' + ImageFormat.extension(file_format),image)
+            iio.imwrite(buf,image,extension=".bmp")
+
+        data = buf.getvalue()
+        attempts = 0
+        error_log = []
+        while True:
+            try:
+                with open(full_path, 'wb') as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                MAIN_LOG.log(f"written {len(data)} bytes to {full_path}")
+                break
+            except OSError as e:
+                attempts += 1
+                if e.errno in (errno.EIO, errno.ESTALE) and attempts < 10:
+                    error_log.append(
+                        dict(
+                            error=repr(e),
+                            errno=e.errno,
+                            dt=datetime.now().astimezone().isoformat(),
+                        )
+                    )
+                    MAIN_LOG.log(f"warning - image write failed ({e}), retry {attempts}/10 for {full_path}")
+                    time.sleep(0.5 * attempts)
+                else:
+                    raise
+
+        write_metadata = dict(
+            filename=full_path,
+            dt=datetime.now().astimezone().isoformat(),
+            attempts=attempts,
+            num_bytes=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            error_log=error_log,
+        )
+        try:
+            with open(Path(path).parent / 'writes.jsonl', 'a') as file:
+                print(json.dumps(write_metadata, separators=(',', ':')), file=file)
+        except Exception as e:
+            MAIN_LOG.log(f"warning - failed to write metadata for {full_path}: {e}")
+
 
     @TypecheckFunction
     def process_queue(self):
