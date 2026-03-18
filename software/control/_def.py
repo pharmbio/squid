@@ -1142,7 +1142,11 @@ class MachineConfiguration:
     CONTROLLER_VERSION:ControllerType = ControllerType.TEENSY
 
     MAIN_CAMERA_MODEL:str="MER2-1220-32U3M"
+    MAIN_CAMERA_SN:Optional[str]=None
     FOCUS_CAMERA_MODEL:str="MER2-630-60U3M"
+    FOCUS_CAMERA_SN:Optional[str]=None
+
+    CONTROLLER_SN:Optional[str]=None
 
     FOCUS_CAMERA_EXPOSURE_TIME_MS:float = 1.0
     FOCUS_CAMERA_ANALOG_GAIN:float = 0.0

@@ -495,7 +495,7 @@ class Core(QObject):
 
         # load objects
         try:
-            main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
+            main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,sn=MACHINE_CONFIG.MAIN_CAMERA_SN,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
             main_camera.open()
 
             if debug_camera_timings:
@@ -510,7 +510,7 @@ class Core(QObject):
             raise e
 
         try:
-            focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,used_for_laser_autofocus=True)
+            focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,sn=MACHINE_CONFIG.FOCUS_CAMERA_SN,used_for_laser_autofocus=True)
             focus_camera.open()
 
             if debug_camera_timings:
@@ -525,7 +525,7 @@ class Core(QObject):
             raise e
 
         try:
-            self.microcontroller:microcontroller.Microcontroller = microcontroller.Microcontroller(version=MACHINE_CONFIG.CONTROLLER_VERSION)
+            self.microcontroller:microcontroller.Microcontroller = microcontroller.Microcontroller(version=MACHINE_CONFIG.CONTROLLER_VERSION,sn=MACHINE_CONFIG.CONTROLLER_SN)
         except Exception as e:
             MAIN_LOG.log("! microcontroller not detected !")
             raise e
