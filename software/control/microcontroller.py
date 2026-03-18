@@ -112,7 +112,10 @@ class Microcontroller:
             if self.sn is not None:
                 controller_ports = [ p.device for p in serial.tools.list_ports.comports() if self.sn == p.serial_number]
             else:
-                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if p.manufacturer == 'Teensyduino']
+                matching_ports = [ p for p in serial.tools.list_ports.comports() if p.manufacturer == 'Teensyduino']
+                if matching_ports:
+                    self.sn = matching_ports[0].serial_number
+                controller_ports = [ p.device for p in matching_ports]
         
         if not controller_ports:
             if first_connection:

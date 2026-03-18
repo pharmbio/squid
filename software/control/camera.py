@@ -162,6 +162,7 @@ class Camera(object):
             MAIN_LOG.log(f"connecting camera by model {self.model=}")
             camera_sn=get_sn_by_model(self.model)
             if camera_sn is not None:
+                self.sn=camera_sn
                 self.camera=self.device_manager.open_device_by_sn(camera_sn)
             else:
                 error_msg=f"no camera of model {self.model} found"
