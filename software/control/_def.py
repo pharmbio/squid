@@ -1037,8 +1037,8 @@ class MachineConfiguration:
     STAGE_MOVEMENT_SIGN_Z:int = -1
     STAGE_MOVEMENT_SIGN_THETA:int = 1
 
-    STAGE_ROD_X: float = 23.0
-    STAGE_ROD_Y: float = 83.0
+    STAGE_ROD_X: Union[float, None] = None
+    STAGE_ROD_Y: Union[float, None] = None
 
     STAGE_POS_SIGN_X:int = STAGE_MOVEMENT_SIGN_X
     STAGE_POS_SIGN_Y:int = STAGE_MOVEMENT_SIGN_Y

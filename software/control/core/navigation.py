@@ -233,33 +233,57 @@ class NavigationController(QObject):
         self.microcontroller.home_z()
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
-        MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod")
+        if MACHINE_CONFIG.STAGE_ROD_X:
+            MAIN_LOG.log("loading position - STAGE_ROD_X is set, moving to 180 degree rotated stage rod")
+            MAIN_LOG.log("loading position - removing software limits and zig-zagging to the rod")
 
-        self.set_x_limit_pos_mm(+10000)
-        self.set_x_limit_neg_mm(-10000)
-        self.set_y_limit_pos_mm(+10000)
-        self.set_y_limit_neg_mm(-10000)
+            self.set_x_limit_pos_mm(+10000)
+            self.set_x_limit_neg_mm(-10000)
+            self.set_y_limit_pos_mm(+10000)
+            self.set_y_limit_neg_mm(-10000)
 
-        MAIN_LOG.log(f"loading position - step 1/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            MAIN_LOG.log(f"loading position - step 1/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
-        self.move_y_to(74.0) # make sure we can get around the rod
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 2/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            self.move_y_to(74.0) # make sure we can get around the rod
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+            MAIN_LOG.log(f"loading position - step 2/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
-        self.move_x_to(2.0) # move away from the rod
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 3/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            self.move_x_to(2.0) # move away from the rod
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+            MAIN_LOG.log(f"loading position - step 3/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
-        self.move_y_to(MACHINE_CONFIG.STAGE_ROD_Y) # to the corner
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 4/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            self.move_y_to(MACHINE_CONFIG.STAGE_ROD_Y) # to the corner
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+            MAIN_LOG.log(f"loading position - step 4/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
-        self.move_x_to(MACHINE_CONFIG.STAGE_ROD_X) # to the rod
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
-        MAIN_LOG.log(f"loading position - step 5/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            self.move_x_to(MACHINE_CONFIG.STAGE_ROD_X) # to the rod
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005)
+            MAIN_LOG.log(f"loading position - step 5/5: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+
+        else:
+            MAIN_LOG.log("loading position - STAGE_ROD_X not set, moving to rod in standard orientation stage and perform homing")
+            MAIN_LOG.log("loading position - removing software limits")
+
+            self.set_x_limit_pos_mm(+10000)
+            self.set_x_limit_neg_mm(-10000)
+            self.set_y_limit_pos_mm(+10000)
+            self.set_y_limit_neg_mm(-10000)
+
+            MAIN_LOG.log(f"loading position - step 1/4: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+            # for this design, need to home y before home x; x also needs to be at > + 10 mm when homing y
+            self.move_x_to(25.0)
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x moving timeout, the program will exit')
+            MAIN_LOG.log(f"loading position - step 2/4: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+
+            self.microcontroller.home_y()
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
+            MAIN_LOG.log(f"loading position - step 3/4: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
+
+            self.microcontroller.home_x()
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
+            MAIN_LOG.log(f"loading position - step 4/4: ({round(self.x_pos_mm, 3)}, {round(self.y_pos_mm, 3)})")
 
         self.is_in_loading_position=True
-
         MAIN_LOG.log("loading position - ready to load")
 
     def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True,move_objective_up_afterwards:bool=True):
@@ -269,21 +293,21 @@ class NavigationController(QObject):
 
         self.is_in_loading_position=False
 
-        MAIN_LOG.log('homing - objective retracted')
-
 	    # retract the objective
         self.microcontroller.home_z()
         self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='z homing timeout, the program will exit')
 
-        self.microcontroller.home_y()
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
+        if MACHINE_CONFIG.STAGE_ROD_X:
+            MAIN_LOG.log("leaving loading position - STAGE_ROD_X is set, homing by going to standard homing corner")
+            self.microcontroller.home_y()
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
 
-        self.microcontroller.home_x()
-        self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
+            self.microcontroller.home_x()
+            self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
 
-
-
-        MAIN_LOG.log("homing - in homing position")
+        else:
+            MAIN_LOG.log("leaving loading position - STAGE_ROD_X not set, moving away from the standard orientation stage rod")
+            self.move_y(y_mm=12.0,wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
 
         self.set_x_limit_pos_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_POSITIVE)
         self.set_x_limit_neg_mm(MACHINE_CONFIG.SOFTWARE_POS_LIMIT.X_NEGATIVE)
@@ -303,8 +327,11 @@ class NavigationController(QObject):
         MAIN_LOG.log("homing - left homing position, software limits are set")
 
     def home(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
-        #self.loading_position_enter(home_x,home_y,home_z)
-        self.loading_position_leave(home_x,home_y,home_z)
+        if MACHINE_CONFIG.STAGE_ROD_X:
+            self.loading_position_leave(home_x,home_y,home_z)
+        else:
+            self.loading_position_enter(home_x,home_y,home_z)
+            self.loading_position_leave(home_x,home_y,home_z)
 
     def set_x_limit_pos_mm(self,value_mm):
         u_steps=int(value_mm/self.microcontroller.mm_per_ustep_x)
