@@ -333,6 +333,11 @@ class Gui(QMainWindow):
             camera_wrapper=self.core.main_camera,
 
             on_live_status_changed=lambda is_now_live:None,
+            # on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[
+            #     self.imaging_channels_widget.interactive_widgets.live_button,
+            #     self.position_widget.btn_moveZ_forward,
+            #     self.position_widget.btn_moveZ_backward
+            # ]),
             on_snap_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live),
             move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um),
             measure_displacement=self.core.laserAutofocusController.measure_displacement,
@@ -366,8 +371,22 @@ class Gui(QMainWindow):
             debug_laser_af=MACHINE_CONFIG.DISPLAY.DEBUG_LASER_AF
         )
 
+        n_width = self.fontMetrics().horizontalAdvance('n')
+
         splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(TabBar(*[
+        splitter.setHandleWidth(n_width * 2)
+        splitter.setStyleSheet("""
+            QSplitter::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.499 transparent, stop:0.5 #ccc, stop:1 #ccc);
+                image: none;
+            }
+            QSplitter::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.499 transparent, stop:0.5 #aaa, stop:1 #aaa);
+            }
+        """)
+        left_panel = TabBar(*[
             Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
             Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
             *([] if self.autofocus_widget.laser_af_debug_display is None else
@@ -376,7 +395,8 @@ class Gui(QMainWindow):
             *([] if self.autofocus_widget.software_af_debug_display is None else
                 [Tab(title="Software Autofocus debug",widget=self.autofocus_widget.software_af_debug_display)]
             ),
-        ]).widget)
+        ])
+        splitter.addWidget(left_panel.widget)
         acquisition_tab = VBox(
             self.acquisition_widget.storage_widget,
             self.acquisition_widget.grid_widget,
