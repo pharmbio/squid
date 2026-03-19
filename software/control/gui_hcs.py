@@ -7,7 +7,7 @@ from glob import glob
 import traceback
 
 from qtpy.QtCore import Qt, QEvent, Signal, QTimer
-from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup
+from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup, QSplitter
 
 from control.camera import Camera
 from control._def import MACHINE_CONFIG, TriggerMode, WELLPLATE_NAMES, WellplateFormatPhysical, WELLPLATE_FORMATS, Profiler, AcqusitionProgress, AcquisitionStartResult, AcquisitionImageData, SOFTWARE_NAME, MAIN_LOG, create_current_timestamp
@@ -332,11 +332,7 @@ class Gui(QMainWindow):
             configuration_manager=self.core.main_camera.configuration_manager,
             camera_wrapper=self.core.main_camera,
 
-            on_live_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live,exceptions=[
-                self.imaging_channels_widget.interactive_widgets.live_button,
-                self.position_widget.btn_moveZ_forward,
-                self.position_widget.btn_moveZ_backward
-            ]),
+            on_live_status_changed=lambda is_now_live:None,
             on_snap_status_changed=lambda is_now_live:self.set_all_interactible_enabled(not is_now_live),
             move_to_offset=lambda offset_um:self.core.laserAutofocusController.move_to_target(target_um=offset_um),
             measure_displacement=self.core.laserAutofocusController.measure_displacement,
@@ -370,39 +366,44 @@ class Gui(QMainWindow):
             debug_laser_af=MACHINE_CONFIG.DISPLAY.DEBUG_LASER_AF
         )
 
-        self.setCentralWidget(HBox(
-            TabBar(*[
-                Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
-                Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
-                *([] if self.autofocus_widget.laser_af_debug_display is None else
-                    [Tab(title="Laser Reflection Autofocus debug",widget=self.autofocus_widget.laser_af_debug_display)]
-                ),
-                *([] if self.autofocus_widget.software_af_debug_display is None else
-                    [Tab(title="Software Autofocus debug",widget=self.autofocus_widget.software_af_debug_display)]
-                ),
-            ]),
-            VBox(
-                self.basic_settings,
-                TabBar(
-                    Tab(title="Acquisition",widget=VBox(
-                        self.acquisition_widget.storage_widget,
-                        self.acquisition_widget.grid_widget,
-                        self.acquisition_widget.imaging_widget,
-                        self.well_widget,
-                    ).widget),
-                    Tab(title="Lighting and Focus",widget=VBox(
-                        self.imaging_channels_widget.snap_channels,
-                        self.imaging_channels_widget.channel_config,
-                        self.imaging_channels_widget.live_config,
-                        Dock(
-                            self.position_widget,
-                            "Objective/Stage position"
-                        ),
-                        self.autofocus_widget.af_control,
-                    ).widget)
-                )
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(TabBar(*[
+            Tab(title="Live View",widget=self.imaging_channels_widget.live_display.widget),
+            Tab(title="Channel View",widget=self.imaging_channels_widget.channel_display),
+            *([] if self.autofocus_widget.laser_af_debug_display is None else
+                [Tab(title="Laser Reflection Autofocus debug",widget=self.autofocus_widget.laser_af_debug_display)]
+            ),
+            *([] if self.autofocus_widget.software_af_debug_display is None else
+                [Tab(title="Software Autofocus debug",widget=self.autofocus_widget.software_af_debug_display)]
+            ),
+        ]).widget)
+        acquisition_tab = VBox(
+            self.acquisition_widget.storage_widget,
+            self.acquisition_widget.grid_widget,
+            self.acquisition_widget.imaging_widget,
+            self.well_widget,
+        )
+        acquisition_tab.layout.addStretch()
+        lighting_tab = VBox(
+            self.imaging_channels_widget.snap_channels,
+            self.imaging_channels_widget.channel_config,
+            self.imaging_channels_widget.live_config,
+            Dock(
+                self.position_widget,
+                "Objective/Stage position"
+            ),
+            self.autofocus_widget.af_control,
+        )
+        lighting_tab.layout.addStretch()
+        right_panel = VBox(
+            self.basic_settings,
+            TabBar(
+                Tab(title="Acquisition",widget=acquisition_tab.widget),
+                Tab(title="Lighting and Focus",widget=lighting_tab.widget),
             )
-        ).widget)
+        )
+        splitter.addWidget(right_panel.widget)
+        self.setCentralWidget(splitter)
 
         # on change of deltax, deltay, wellselection: self.change_acquisition_preview()
         self.acquisition_widget.position_mask_has_changed.connect(lambda:self.change_acquisition_preview())
