@@ -321,6 +321,14 @@ class Gui(QMainWindow):
 
         self.core=Core(home=do_home)
 
+        try:
+            camera_sn = self.core.main_camera.camera.cn
+        except:
+            camera_sn = None
+
+        if camera_sn:
+            self.setWindowTitle(f'{SOFTWARE_NAME} | {camera_sn}')
+
         self.basic_settings=BasicSettings(
             main_camera=self.core.main_camera,
 
