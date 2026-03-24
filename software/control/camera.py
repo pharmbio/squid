@@ -14,7 +14,7 @@ from qtpy.QtWidgets import QApplication
 
 from functools import wraps
 
-def get_sn_by_model(model_name:str)->Optional[Any]:
+def get_serial_number_by_model(model_name:str)->Optional[Any]:
     try:
         device_manager = gx.DeviceManager()
         device_num, device_info_list = device_manager.update_device_list()
@@ -85,7 +85,7 @@ class Camera(object):
 
     @TypecheckFunction
     def __init__(self,
-        sn:Optional[str]=None,
+        serial_number:Optional[str]=None,
         model:Optional[str]=None,
         is_global_shutter:bool=False,
         rotate_image_angle:int=0,
@@ -94,7 +94,7 @@ class Camera(object):
     ):
 
         # many to be purged
-        self.sn = sn
+        self.serial_number = serial_number
         self.model = model
         self.is_global_shutter = is_global_shutter
         self.device_manager = gx.DeviceManager()
@@ -153,17 +153,17 @@ class Camera(object):
 
     def open_default(self):
         camera_identifier=None
-        if self.sn is not None:
-            camera_identifier=f"sn: {self.sn}"
-            MAIN_LOG.log(f"connecting camera by sn {self.sn=}")
-            self.camera = self.device_manager.open_device_by_sn(self.sn)
+        if self.serial_number is not None:
+            camera_identifier=f"serial number: {self.serial_number}"
+            MAIN_LOG.log(f"connecting camera by serial number {self.serial_number=}")
+            self.open_by_serial_number(self.serial_number)
         elif self.model is not None:
             camera_identifier=f"model: {self.model}"
             MAIN_LOG.log(f"connecting camera by model {self.model=}")
-            camera_sn=get_sn_by_model(self.model)
-            if camera_sn is not None:
-                self.sn=camera_sn
-                self.camera=self.device_manager.open_device_by_sn(camera_sn)
+            camera_serial_number=get_serial_number_by_model(self.model)
+            if camera_serial_number is not None:
+                self.serial_number=camera_serial_number
+                self.open_by_serial_number(camera_serial_number)
             else:
                 error_msg=f"no camera of model {self.model} found"
                 MAIN_LOG.log(error_msg)
@@ -208,22 +208,20 @@ class Camera(object):
         (device_num, self.device_info_list) = self.device_manager.update_device_list()
         if device_num == 0:
             raise RuntimeError('Could not find any USB camera devices!')
-        
-        if self.sn is None and self.model is None:
+
+        if self.serial_number is None and self.model is None:
             self.device_index = index
-            
+
         self.open_default()
 
     @TypecheckFunction
-    def open_by_sn(self,sn:str):
+    def open_by_serial_number(self,serial_number:str):
         (device_num, self.device_info_list) = self.device_manager.update_device_list()
         if device_num == 0:
             raise RuntimeError('Could not find any USB camera devices!')
 
-        self.camera = self.device_manager.open_device_by_sn(sn)
-        assert not self.camera is None
-        self.is_color = self.camera.PixelColorFilter.is_implemented()
-        self._update_image_improvement_params()
+        self.camera = self.device_manager.open_device_by_sn(serial_number)
+        assert self.camera is not None
 
     @TypecheckFunction
     def close(self):
@@ -266,7 +264,7 @@ class Camera(object):
     def set_exposure_time(self,exposure_time_ms:float):
         assert not self.camera is None
         if self.exposure_time_ms!=exposure_time_ms: # takes 10ms, so avoid if possible
-            MAIN_LOG.log(f"{self.sn} {self.model} setting exposure time to {exposure_time_ms} ms")
+            MAIN_LOG.log(f"{self.serial_number} {self.model} setting exposure time to {exposure_time_ms} ms")
             # import traceback
             # traceback.print_stack()
             # print()

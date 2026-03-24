@@ -8,7 +8,7 @@ from control._def import *
 from control.typechecker import TypecheckFunction, TypecheckClass
 from .configuration import Configuration, ConfigurationManager
 
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Dict
 
 from pathlib import Path
 
@@ -495,7 +495,7 @@ class Core(QObject):
 
         # load objects
         try:
-            main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,sn=MACHINE_CONFIG.MAIN_CAMERA_SN,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
+            main_camera = camera.Camera(model=MACHINE_CONFIG.MAIN_CAMERA_MODEL,serial_number=MACHINE_CONFIG.MAIN_CAMERA_SN,rotate_image_angle=MACHINE_CONFIG.ROTATE_IMAGE_ANGLE,flip_image=MACHINE_CONFIG.FLIP_IMAGE)
             main_camera.open()
 
             if debug_camera_timings:
@@ -510,7 +510,7 @@ class Core(QObject):
             raise e
 
         try:
-            focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,sn=MACHINE_CONFIG.FOCUS_CAMERA_SN,used_for_laser_autofocus=True)
+            focus_camera = camera.Camera(model=MACHINE_CONFIG.FOCUS_CAMERA_MODEL,serial_number=MACHINE_CONFIG.FOCUS_CAMERA_SN,used_for_laser_autofocus=True)
             focus_camera.open()
 
             if debug_camera_timings:
@@ -525,7 +525,7 @@ class Core(QObject):
             raise e
 
         try:
-            self.microcontroller:microcontroller.Microcontroller = microcontroller.Microcontroller(version=MACHINE_CONFIG.CONTROLLER_VERSION,sn=MACHINE_CONFIG.CONTROLLER_SN)
+            self.microcontroller:microcontroller.Microcontroller = microcontroller.Microcontroller(version=MACHINE_CONFIG.CONTROLLER_VERSION,serial_number=MACHINE_CONFIG.CONTROLLER_SN)
         except Exception as e:
             MAIN_LOG.log("! microcontroller not detected !")
             raise e
@@ -720,16 +720,18 @@ class Core(QObject):
 
         import uuid
         complete_experiment_data = dict(complete_experiment_data, acquisition_uuid=str(uuid.uuid4()))
-
-        complete_experiment_data["device_serial_numbers"] = {
-            "main_camera": self.main_camera.camera.sn,
-            "focus_camera": self.focus_camera.camera.sn,
-            "controller": self.microcontroller.sn,
-        }
+        complete_experiment_data.update(self.serial_numbers())
 
         # config : complete set of config used for the experiment
         complete_data_path = Path(output_path) / 'parameters.json'
         complete_data_path.write_text(json.encoder.JSONEncoder(indent=2).encode(complete_experiment_data))
+
+    def serial_numbers(self) -> Dict[str, str]:
+        return {
+            "MAIN_CAMERA_SN": self.main_camera.camera.serial_number,
+            "FOCUS_CAMERA_SN": self.focus_camera.camera.serial_number,
+            "CONTROLLER_SN": self.microcontroller.serial_number,
+        }
 
     @TypecheckFunction
     def close(self):

@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from glob import glob
 import traceback
+import json
 
 from qtpy.QtCore import Qt, QEvent, Signal, QTimer
 from qtpy.QtWidgets import QMainWindow, QWidget, QSizePolicy, QApplication, QRadioButton, QButtonGroup, QSplitter
@@ -320,6 +321,11 @@ class Gui(QMainWindow):
         do_home=os.environ.get('skip_homing', '0') != '1'
 
         self.core=Core(home=do_home)
+
+        print('=== serial_numbers ===')
+        for k, v in self.core.serial_numbers().items():
+            print(f'  {json.dumps(k)}: {json.dumps(v)},')
+        print()
 
         self.basic_settings=BasicSettings(
             main_camera=self.core.main_camera,

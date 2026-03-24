@@ -35,7 +35,7 @@ def write_command_name(func):
 
 class Microcontroller:
     @TypecheckFunction
-    def __init__(self,version:ControllerType=ControllerType.DUE,sn:Optional[str]=None,parent:Any=None):
+    def __init__(self,version:ControllerType=ControllerType.DUE,serial_number:Optional[str]=None,parent:Any=None):
         self.platform_name = platform.system()
 
         self.tx_buffer_length = MicrocontrollerDef.CMD_LENGTH
@@ -74,7 +74,7 @@ class Microcontroller:
         """ number of times the last command has been resent """
 
         self.version=version
-        self.sn=sn
+        self.serial_number=serial_number
         self.serial=None
 
         self.last_command_str=""
@@ -109,12 +109,12 @@ class Microcontroller:
         if self.version == ControllerType.DUE:
             controller_ports = [p.device for p in serial.tools.list_ports.comports() if 'Arduino Due' == p.description] # autodetect - based on Deepak's code
         else:
-            if self.sn is not None:
-                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if self.sn == p.serial_number]
+            if self.serial_number is not None:
+                controller_ports = [ p.device for p in serial.tools.list_ports.comports() if self.serial_number == p.serial_number]
             else:
                 matching_ports = [ p for p in serial.tools.list_ports.comports() if p.manufacturer == 'Teensyduino']
                 if matching_ports:
-                    self.sn = matching_ports[0].serial_number
+                    self.serial_number = matching_ports[0].serial_number
                 controller_ports = [ p.device for p in matching_ports]
         
         if not controller_ports:
