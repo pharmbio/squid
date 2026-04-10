@@ -101,7 +101,7 @@ class Microcontroller:
 
         call_stack=inspect.stack()
         formatted_stack=" <- ".join(f"{frame.function} in ({frame.filename}:{frame.lineno})" for frame in call_stack)
-        MAIN_LOG.log(f"connecting to microcontroller (callstack: {formatted_stack})")
+        MAIN_LOG.log(f"connecting to microcontroller: serial_number={self.serial_number!r} (callstack: {formatted_stack})")
 
         if len(self.last_command_str)>0:
             MAIN_LOG.log(f"attempt reconnection with last sent command: {self.last_command_str}")

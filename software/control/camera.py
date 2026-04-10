@@ -152,6 +152,7 @@ class Camera(object):
         self.in_a_state_to_be_used_directly=False
 
     def open_default(self):
+        MAIN_LOG.log(f"open_default: serial_number={self.serial_number!r}, model={self.model!r}")
         camera_identifier=None
         if self.serial_number is not None:
             camera_identifier=f"serial number: {self.serial_number}"
