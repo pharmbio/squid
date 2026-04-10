@@ -1172,12 +1172,8 @@ class MachineConfiguration:
     DISPLAY:MachineDisplayConfiguration
 
     def from_file(filename:str)->"MachineConfiguration":
-        try:
-            with open(filename,"r",encoding="utf-8") as json_file:
-                kwargs=json.decoder.JSONDecoder().decode(json_file.read())
-
-        except FileNotFoundError:
-            kwargs={}
+        with open(filename,"r",encoding="utf-8") as json_file:
+            kwargs=json.decoder.JSONDecoder().decode(json_file.read())
 
         if 'MUTABLE_STATE' in kwargs:
             mutable_state=MutableMachineConfiguration.from_json(kwargs['MUTABLE_STATE'])
@@ -1188,7 +1184,9 @@ class MachineConfiguration:
 
         return MachineConfiguration(**kwargs)
 
-MACHINE_CONFIG=MachineConfiguration.from_file("machine_config.json")
+_machine_config_path = os.environ.get("squid_machine_config", "machine_config.json")
+print(f"loading machine config from {_machine_config_path}")
+MACHINE_CONFIG=MachineConfiguration.from_file(_machine_config_path)
 
 SOFTWARE_NAME=f"{MACHINE_CONFIG.MACHINE_NAME}"
 
