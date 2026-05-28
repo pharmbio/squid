@@ -1075,6 +1075,17 @@ class MachineConfiguration:
     MAX_ACCELERATION_Y_mm:float = 500.0
     MAX_ACCELERATION_Z_mm:float = 100.0
 
+    # Soft (two-pass) homing for X and Y. The firmware's homing speed is
+    # HOMING_VELOCITY_{X,Y} * MAX_VELOCITY_{X,Y}_mm, so we temporarily lower
+    # MAX_VELOCITY_{X,Y}_mm to these values for the precise second pass.
+    # Run-of-the-mill mechanical limit switches have speed-dependent trip
+    # hysteresis; the slow second pass eliminates run-to-run jitter.
+    SOFT_HOMING_VELOCITY_X_mm:float = 4.0
+    SOFT_HOMING_VELOCITY_Y_mm:float = 4.0
+    SOFT_HOMING_ACCELERATION_X_mm:float = 100.0
+    SOFT_HOMING_ACCELERATION_Y_mm:float = 100.0
+    SOFT_HOMING_BACK_OFF_MM:float = 3.0
+
     # end of actuator specific configurations
 
     SCAN_STABILIZATION_TIME_MS_X:float = 160.0

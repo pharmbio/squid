@@ -81,6 +81,22 @@ class Microcontroller:
 
         self.has_been_initialized_at_least_once=False
 
+        # increments on every successful (re)connection; NavigationController
+        # uses it to invalidate has_been_homed when the firmware position frame
+        # is no longer valid (a microcontroller reboot resets its counter).
+        self.connection_session_id:int = 0
+
+        # Python-side mirror of the per-axis MAX_VELOCITY/ACCELERATION currently
+        # programmed into the firmware. Kept in sync by set_max_velocity_acceleration
+        # so soft_home_* can restore the *actually-active* values instead of the
+        # MACHINE_CONFIG defaults (which may have been overridden by other code).
+        self._max_velocity_x_mm:float = float(MACHINE_CONFIG.MAX_VELOCITY_X_mm)
+        self._max_velocity_y_mm:float = float(MACHINE_CONFIG.MAX_VELOCITY_Y_mm)
+        self._max_velocity_z_mm:float = float(MACHINE_CONFIG.MAX_VELOCITY_Z_mm)
+        self._max_acceleration_x_mm:float = float(MACHINE_CONFIG.MAX_ACCELERATION_X_mm)
+        self._max_acceleration_y_mm:float = float(MACHINE_CONFIG.MAX_ACCELERATION_Y_mm)
+        self._max_acceleration_z_mm:float = float(MACHINE_CONFIG.MAX_ACCELERATION_Z_mm)
+
         self.attempt_connection()
 
         self.new_packet_callback_external = None
@@ -141,7 +157,11 @@ class Microcontroller:
             MAIN_LOG.log('controller reconnected')
 
         self.has_been_initialized_at_least_once=True
-        
+        # New connection means the firmware position counter restarted at 0
+        # (in whatever physical pose the stage happens to be in). Bump the
+        # session id so anything depending on a prior home invalidates itself.
+        self.connection_session_id += 1
+
         return True
         
     def close(self):
@@ -445,6 +465,74 @@ class Microcontroller:
         cmd[4] = int((MACHINE_CONFIG.STAGE_MOVEMENT_SIGN_Y+1)/2) # "move backward" if SIGN is 1, "move forward" if SIGN is -1
         self.send_command(cmd)
 
+    # The firmware computes homing speed as HOMING_VELOCITY_{X,Y} * MAX_VELOCITY_{X,Y}_mm,
+    # and MAX_VELOCITY_{X,Y}_mm is mutable from the host. soft_home_* does a coarse home
+    # at the current MAX_VELOCITY, backs off, then re-homes at SOFT_HOMING_VELOCITY for a
+    # repeatable trip point that doesn't depend on approach speed.
+
+    def soft_home_x(self):
+        # snapshot the active firmware MAX_VELOCITY/ACCELERATION for X so the
+        # finally block restores whatever was actually programmed, not the
+        # MACHINE_CONFIG default (which may have been overridden elsewhere).
+        saved_v_x, saved_a_x = self._max_velocity_x_mm, self._max_acceleration_x_mm
+        self.home_x()
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x soft-home (coarse) timeout, the program will exit')
+        # back off so the second pass actually traverses the switch trip point
+        self.move_x_usteps(self.mm_to_ustep_x(MACHINE_CONFIG.SOFT_HOMING_BACK_OFF_MM))
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x soft-home (back-off) timeout, the program will exit')
+        # try covers everything that runs after MAX_VELOCITY is lowered, so a
+        # timeout on any intermediate wait still restores the original value.
+        try:
+            # lower MAX_VELOCITY so HOMING_VELOCITY_X * MAX_VELOCITY_X_mm becomes gentle
+            self.set_max_velocity_acceleration(AXIS.X, MACHINE_CONFIG.SOFT_HOMING_VELOCITY_X_mm, MACHINE_CONFIG.SOFT_HOMING_ACCELERATION_X_mm)
+            self.wait_till_operation_is_completed()
+            self.home_x()
+            self.wait_till_operation_is_completed(30, time_step=0.005, timeout_msg='x soft-home (fine) timeout, the program will exit')
+        finally:
+            self.set_max_velocity_acceleration(AXIS.X, saved_v_x, saved_a_x)
+            self.wait_till_operation_is_completed()
+
+    def soft_home_y(self):
+        saved_v_y, saved_a_y = self._max_velocity_y_mm, self._max_acceleration_y_mm
+        self.home_y()
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y soft-home (coarse) timeout, the program will exit')
+        self.move_y_usteps(self.mm_to_ustep_y(MACHINE_CONFIG.SOFT_HOMING_BACK_OFF_MM))
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y soft-home (back-off) timeout, the program will exit')
+        try:
+            self.set_max_velocity_acceleration(AXIS.Y, MACHINE_CONFIG.SOFT_HOMING_VELOCITY_Y_mm, MACHINE_CONFIG.SOFT_HOMING_ACCELERATION_Y_mm)
+            self.wait_till_operation_is_completed()
+            self.home_y()
+            self.wait_till_operation_is_completed(30, time_step=0.005, timeout_msg='y soft-home (fine) timeout, the program will exit')
+        finally:
+            self.set_max_velocity_acceleration(AXIS.Y, saved_v_y, saved_a_y)
+            self.wait_till_operation_is_completed()
+
+    def soft_home_xy(self):
+        saved_v_x, saved_a_x = self._max_velocity_x_mm, self._max_acceleration_x_mm
+        saved_v_y, saved_a_y = self._max_velocity_y_mm, self._max_acceleration_y_mm
+        # coarse simultaneous home
+        self.home_xy()
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='xy soft-home (coarse) timeout, the program will exit')
+        # back off both axes
+        self.move_x_usteps(self.mm_to_ustep_x(MACHINE_CONFIG.SOFT_HOMING_BACK_OFF_MM))
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x soft-home (back-off) timeout, the program will exit')
+        self.move_y_usteps(self.mm_to_ustep_y(MACHINE_CONFIG.SOFT_HOMING_BACK_OFF_MM))
+        self.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y soft-home (back-off) timeout, the program will exit')
+        try:
+            # lower both MAX_VELOCITY; try covers from the first lower onward so
+            # an X-only lower (with a subsequent Y-lower failure) still restores.
+            self.set_max_velocity_acceleration(AXIS.X, MACHINE_CONFIG.SOFT_HOMING_VELOCITY_X_mm, MACHINE_CONFIG.SOFT_HOMING_ACCELERATION_X_mm)
+            self.wait_till_operation_is_completed()
+            self.set_max_velocity_acceleration(AXIS.Y, MACHINE_CONFIG.SOFT_HOMING_VELOCITY_Y_mm, MACHINE_CONFIG.SOFT_HOMING_ACCELERATION_Y_mm)
+            self.wait_till_operation_is_completed()
+            self.home_xy()
+            self.wait_till_operation_is_completed(30, time_step=0.005, timeout_msg='xy soft-home (fine) timeout, the program will exit')
+        finally:
+            self.set_max_velocity_acceleration(AXIS.X, saved_v_x, saved_a_x)
+            self.wait_till_operation_is_completed()
+            self.set_max_velocity_acceleration(AXIS.Y, saved_v_y, saved_a_y)
+            self.wait_till_operation_is_completed()
+
     def zero_x(self):
         cmd = bytearray(self.tx_buffer_length)
         cmd[1] = CMD_SET.HOME_OR_ZERO
@@ -535,6 +623,17 @@ class Microcontroller:
         cmd[5] = int(acceleration*10) >> 8
         cmd[6] = int(acceleration*10) & 0xff
         self.send_command(cmd)
+        # mirror the value the firmware now has, so soft_home_* and any future
+        # save/restore-style code can use the *active* value as the baseline.
+        if axis == AXIS.X:
+            self._max_velocity_x_mm = float(velocity)
+            self._max_acceleration_x_mm = float(acceleration)
+        elif axis == AXIS.Y:
+            self._max_velocity_y_mm = float(velocity)
+            self._max_acceleration_y_mm = float(acceleration)
+        elif axis == AXIS.Z:
+            self._max_velocity_z_mm = float(velocity)
+            self._max_acceleration_z_mm = float(acceleration)
 
     @TypecheckFunction
     def set_leadscrew_pitch(self,axis:int,pitch_mm:Union[float,int]):

@@ -473,7 +473,10 @@ class Gui(QMainWindow):
         """
         if loading_position_enter: # entering loading position
             self.set_all_interactible_enabled(set_enabled=False,exceptions=[self.position_widget.btn_goToLoadingPosition]) # disable everything except the single button that can leave the loading position
-            self.core.navigation.loading_position_enter()
+            # First press of the session homes; subsequent presses move directly
+            # via absolute coordinates so the limit-switch trip point is only
+            # exercised once per session (avoids plate-to-plate calibration drift).
+            self.core.navigation.loading_position_enter(with_homing=not self.core.navigation.has_been_homed)
 
         else: # leaving loading position
             self.core.navigation.loading_position_leave()
