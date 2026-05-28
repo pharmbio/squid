@@ -46,6 +46,18 @@ class NavigationController(QObject):
         self.microcontroller.set_callback(self.update_pos)
 
         self.is_in_loading_position:bool=False
+        # Record the microcontroller connection session_id at the time of the
+        # most recent successful homing. A subsequent reconnect bumps the MCU's
+        # session_id, so comparing the two tells us whether the firmware
+        # position frame is still the one we homed against. -1 means "never
+        # homed in this session".
+        self._homed_at_session_id:int=-1
+
+    @property
+    def has_been_homed(self)->bool:
+        """True iff the stage was homed in this session AND the firmware
+        position frame is still valid (no microcontroller reconnect since)."""
+        return self._homed_at_session_id == self.microcontroller.connection_session_id and self._homed_at_session_id >= 0
 
     @property
     def plate_type(self)->WellplateFormatPhysical:
@@ -222,11 +234,48 @@ class NavigationController(QObject):
     #def home_theta(self):
     #    self.microcontroller.home_theta()
 
-    def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
+    def loading_position_enter(self,home_x:bool=True,home_y:bool=True,home_z:bool=True,*,with_homing:bool=True):
+        """Move the stage to the loading position.
+
+        with_homing=True (default): run the full homing sequence (Z retracted
+        first, then a two-pass soft home of Y and X). Use this on startup or
+        whenever the firmware position frame may be stale.
+
+        with_homing=False: skip homing and move via absolute coordinates.
+        Requires a prior successful home in the same microcontroller session
+        (raises RuntimeError otherwise).
+
+        home_x/home_y/home_z are legacy per-axis flags retained for the
+        existing startup-config call in core/__init__.py:587. They behave as
+        an all-or-nothing switch: the full XY homing only runs when all three
+        are True; home_z=False short-circuits the whole function. Prefer
+        with_homing for new callers.
+        """
         # if used through GUI, this should never be the case
         # but the API must account for this function being called twice
         if self.is_in_loading_position:
             MAIN_LOG.log("tried to enter loading position when already in loading position")
+            return
+
+        if not with_homing:
+            # Move to the loading position using absolute moves, without re-homing.
+            # The firmware position counter MUST already be valid; otherwise
+            # move_z_to(0) can drive the objective into the plate. Refuse the
+            # call if we have no record of a valid prior home in this session.
+            if not self.has_been_homed:
+                raise RuntimeError(
+                    "loading_position_enter(with_homing=False) requires a prior "
+                    "soft_home in this microcontroller session — the firmware "
+                    "position frame is not known to be valid."
+                )
+            # Z retracts first so the objective clears the sample, then Y and X
+            # move to the home corner.
+            self.move_z_to(0.0, wait_for_completion={'timeout_limit_s':10, 'time_step':0.005})
+            self.is_in_loading_position=True
+            MAIN_LOG.log('no-homing - objective retracted')
+            self.move_y_to(0.0, wait_for_completion={'timeout_limit_s':30, 'time_step':0.005})
+            self.move_x_to(0.0, wait_for_completion={'timeout_limit_s':30, 'time_step':0.005})
+            MAIN_LOG.log("no-homing - in loading position")
             return
 
         if home_z:
@@ -240,17 +289,29 @@ class NavigationController(QObject):
             MAIN_LOG.log('homing - objective retracted')
 
             if home_z and home_y and home_x:
+                # Snapshot the session_id before any XY motion. wait_till_operation_is_completed
+                # can autorecover from timeouts by calling attempt_connection() (which bumps
+                # session_id); if that happens mid-sequence we don't trust the resulting frame
+                # and force the next attempt to re-home.
+                session_id_before_xy_homing = self.microcontroller.connection_session_id
+
                 # for the new design, need to home y before home x; x also needs to be at > + 10 mm when homing y
                 self.move_x(12.0)
                 self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x moving timeout, the program will exit')
-                
-                self.microcontroller.home_y()
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='y homing timeout, the program will exit')
-                
-                self.microcontroller.home_x()
-                self.microcontroller.wait_till_operation_is_completed(10, time_step=0.005, timeout_msg='x homing timeout, the program will exit')
 
-                MAIN_LOG.log("homing - in loading position")
+                # Two-pass soft homing: coarse home at MAX_VELOCITY, back off, then a slow
+                # second pass for a repeatable trip point (limit-switch trip varies with
+                # approach speed, which was the source of plate-to-plate calibration drift).
+                self.microcontroller.soft_home_y()
+                self.microcontroller.soft_home_x()
+
+                if self.microcontroller.connection_session_id == session_id_before_xy_homing:
+                    self._homed_at_session_id = session_id_before_xy_homing
+                    MAIN_LOG.log("homing - in loading position")
+                else:
+                    # _homed_at_session_id intentionally left unchanged: next GUI press will
+                    # see has_been_homed=False and run the full homing path again.
+                    MAIN_LOG.log("warning - microcontroller reconnected during XY homing; has_been_homed left invalid so next attempt re-homes")
 
     def loading_position_leave(self,home_x:bool=True,home_y:bool=True,home_z:bool=True):
         if not self.is_in_loading_position:
